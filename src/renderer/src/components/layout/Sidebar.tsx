@@ -35,6 +35,9 @@ import { GroupPickerDialog } from '../session/GroupPickerDialog'
 import { useHistoryStore } from '../../store/history-store'
 import { useSidebarDnd } from '../../hooks/use-sidebar-dnd'
 import { SidebarFooter, UpdateBanner } from './SidebarFooter'
+import { ClaudeAccountMenuHeader } from './ClaudeAccountMenuHeader'
+import { accountSpawnFields, accountSessionFields } from '../../store/claude-profile-store'
+import { primeClaudeAccountsUsage } from '../../store/usage-store'
 import { WordmarkStrip } from './Wordmark'
 import { ScrollArea } from '../ui/scroll-area'
 import { shortcutLabel } from '../../store/keymap-store'
@@ -268,7 +271,12 @@ export function Sidebar() {
   // Load Claude account profiles. (Workspace boot + .clave file watchers moved
   // to AppShell's sequential boot effect — adoption needs the registry first.)
   useEffect(() => {
-    import('../../store/claude-profile-store').then(({ loadClaudeProfiles }) => loadClaudeProfiles())
+    import('../../store/claude-profile-store').then(async ({ loadClaudeProfiles, useClaudeProfileStore }) => {
+      await loadClaudeProfiles()
+      // Every account's read, so the launcher's rows and the session menus
+      // have a number the first time they open.
+      void primeClaudeAccountsUsage(useClaudeProfileStore.getState().profiles.map((p) => p.id))
+    })
   }, [])
 
   // Detect file drag over window (for showing pinned section as drop target).
@@ -829,6 +837,10 @@ export function Sidebar() {
         // Local session
         try {
           const dupOtherProvider = session.antigravityMode || session.codexMode || session.piMode || session.claudeAgentsMode
+          // A Claude account belongs to a Claude session of either kind:
+          // `claude agents` takes the token like `claude` does (round 2 of
+          // verification found the clone of an agents tab on the machine login).
+          const dupClaudeKind = !(session.antigravityMode || session.codexMode || session.piMode)
           // Re-prime the clone with the same one-shot prompt (agent modes only;
           // `claude agents` rejects a positional prompt). Undefined for a normal
           // (un-primed) session → same as today.
@@ -845,6 +857,10 @@ export function Sidebar() {
             piProvider: session.piProvider,
             piThinking: session.piThinking,
             initialPrompt,
+            // The clone runs on its source's account: main reads the token by
+            // this id at spawn, so leaving it out would put the clone on the
+            // machine login while every readout still named the account.
+            ...(dupClaudeKind ? accountSpawnFields(session) : {}),
             // A duplicate belongs where its source lives, not to the active view.
             workspaceId: session.workspaceId
           })
@@ -869,6 +885,7 @@ export function Sidebar() {
             launchProfileId: sessionInfo.launchProfileId,
             piProvider: sessionInfo.piProvider,
             piThinking: sessionInfo.piThinking,
+            ...(dupClaudeKind ? accountSessionFields(session) : {}),
             // Persist so re-duplicating the clone also re-primes.
             initialPrompt,
             sessionType: 'local',
@@ -914,6 +931,8 @@ export function Sidebar() {
           piProvider: session.piProvider,
           piThinking: session.piThinking,
           resumeSessionId: conversationId,
+          // The conversation resumes on the account it ran on.
+          ...(isPi ? {} : accountSpawnFields(session)),
           // The resumed conversation stays in its session's workspace.
           workspaceId: session.workspaceId
         })
@@ -936,6 +955,7 @@ export function Sidebar() {
           launchProfileId: sessionInfo.launchProfileId,
           piProvider: sessionInfo.piProvider,
           piThinking: sessionInfo.piThinking,
+          ...(isPi ? {} : accountSessionFields(session)),
           sessionType: 'local'
         })
         useSessionStore.getState().selectSession(sessionInfo.id, false)
@@ -1045,6 +1065,13 @@ export function Sidebar() {
           onClick: () => handleDuplicateSession(sessionId)
         }
       ]
+      // A Claude session says which account it runs on, and how much of that
+      // account is left, at the top of its menu: the one place to look when a
+      // window runs out and the question is "which subscription is this on".
+      const header =
+        session && (session.claudeMode || session.claudeAgentsMode) ? (
+          <ClaudeAccountMenuHeader session={session} />
+        ) : undefined
       if (session && !session.alive && ((session.claudeMode && session.claudeSessionId) || (session.piMode && session.piSessionId))) {
         items.push(
           {
@@ -1077,7 +1104,7 @@ export function Sidebar() {
         onClick: () => handleDeleteSession(sessionId)
       })
       const { clientX: x, clientY: y } = e
-      setContextMenu({ x, y, items })
+      setContextMenu({ x, y, items, header })
       // The window entries arrive a beat later (main is asked which windows
       // exist); the menu re-renders in place with them appended.
       if (session?.alive) {
