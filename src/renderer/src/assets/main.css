@@ -3302,6 +3302,20 @@ button.extension-card:hover {
   outline: none;
   font-family: inherit;
 }
+/* MDXEditor's popups (the link dialog, the row/column menus behind a table's
+   "···" triggers) portal into this container, which it appends to <body> at
+   z-index 2 — under every pane, so a menu opened and nobody saw it. It takes
+   the menu material and sits above the panes. */
+.mdxeditor-popup-container {
+  z-index: 100;
+  --basePageBg: var(--surface-0);
+  --baseBg: var(--color-border);
+}
+.mdxeditor-popup-container [class*='PopoverContent'] {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--overlay-shadow);
+  filter: none;
+}
 .markdown-page-editor h1 {
   font-size: 1.9rem;
   line-height: 1.25;
@@ -3390,11 +3404,26 @@ button.extension-card:hover {
   border-radius: var(--radius-lg);
   margin: 1rem 0;
 }
+/* Tables. MDXEditor wraps every table in a frame of tool cells — a 2rem
+   column of row "···" triggers on the left, a column of "···" triggers above,
+   add-row / add-column / delete buttons on the far edges. Two things made
+   that frame read as a broken table: the element rules below dressed the
+   tool cells as data cells (borders, padding — a padded 2rem cell crops a
+   2rem button into a half-visible "··", which is the "cropped column that
+   will not scroll"), and `table-layout: fixed` split the width evenly so a
+   long column wrapped while a short one sat empty. The tool columns hang in
+   the page's side gutters so the data columns line up with the text; sizing
+   follows the content. */
 .markdown-page-editor table {
   width: 100%;
   font-size: 0.875rem;
   border-collapse: collapse;
   margin-bottom: 1rem;
+}
+.markdown-page-editor .markdown-page-content table {
+  table-layout: auto;
+  width: calc(100% + 4rem);
+  margin-left: -2rem;
 }
 .markdown-page-editor th {
   text-align: left;
@@ -3406,6 +3435,25 @@ button.extension-card:hover {
 .markdown-page-editor td {
   padding: 0.375rem 0.75rem;
   border-bottom: 1px solid var(--border-subtle-color);
+}
+.markdown-page-editor .markdown-page-content table [data-tool-cell],
+.markdown-page-editor .markdown-page-content table thead th,
+.markdown-page-editor .markdown-page-content table tfoot th {
+  padding: 0;
+  border: 0;
+  vertical-align: middle;
+  text-align: center;
+}
+/* Only the two edge columns are 2rem. The column "···" cells in thead carry
+   data-tool-cell too — sizing every [data-tool-cell] would pin each data
+   column to 2rem and hand the surplus out evenly, the even split all over
+   again. */
+.markdown-page-editor .markdown-page-content table tbody [data-tool-cell],
+.markdown-page-editor .markdown-page-content table thead th:first-child,
+.markdown-page-editor .markdown-page-content table thead th:last-child,
+.markdown-page-editor .markdown-page-content table col:first-child,
+.markdown-page-editor .markdown-page-content table col:last-child {
+  width: 2rem;
 }
 .markdown-page-editor strong {
   font-weight: 600;

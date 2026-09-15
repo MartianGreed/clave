@@ -143,11 +143,16 @@ export function MarkdownPageEditor({
   /** The page fills its pane and a click anywhere on it lands in the text: a
    *  short document is mostly margin, and a margin that swallows clicks reads
    *  as a document that cannot be edited. Clicks on the text itself pass
-   *  through untouched — this only catches the empty page around it. */
+   *  through untouched — this only catches the empty page around it. So do
+   *  clicks in MDXEditor's popups (a table row's menu, the link dialog): they
+   *  portal to <body>, outside this element, but React bubbles their events
+   *  up the component tree to here — and moving the caret to the end of the
+   *  document under a "Delete this row" button is how that button did nothing. */
   const focusDocumentEnd = useCallback(
     (e: React.MouseEvent): void => {
       const el = rootRef.current?.querySelector<HTMLElement>('.markdown-page-content')
-      if (!el || el.contains(e.target as Node)) return
+      const target = e.target as Node
+      if (!el || el.contains(target) || !rootRef.current?.contains(target)) return
       e.preventDefault()
       placeCaret(el)
     },
@@ -190,7 +195,7 @@ export function MarkdownPageEditor({
     <div
       ref={rootRef}
       onMouseDown={focusDocumentEnd}
-      className="markdown-page-editor mx-auto w-full max-w-[44rem] min-h-full px-10 py-12"
+      className="markdown-page-editor w-full min-h-full px-10 py-12"
     >
       {initial.title && (
         <h1 className="text-[1.9rem] leading-tight tracking-tight font-semibold text-text-primary mb-4">

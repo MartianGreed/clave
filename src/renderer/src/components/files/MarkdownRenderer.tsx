@@ -63,8 +63,7 @@ const STYLES = {
     img: 'max-w-full rounded my-3'
   },
   page: {
-    wrapper:
-      'markdown-page mx-auto w-full max-w-[44rem] px-10 py-12 text-[15px] leading-7 text-text-primary',
+    wrapper: 'markdown-page w-full px-10 py-12 text-[15px] leading-7 text-text-primary',
     h1: 'text-[1.9rem] leading-tight tracking-tight font-semibold text-text-primary mt-10 mb-4 first:mt-0',
     h2: 'text-[1.35rem] tracking-tight font-semibold text-text-primary mt-8 mb-3 first:mt-0',
     h3: 'text-lg font-semibold text-text-primary mt-6 mb-2 first:mt-0',
