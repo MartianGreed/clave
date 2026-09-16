@@ -1,11 +1,11 @@
-import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { useSessionStore } from '../../store/session-store'
 import { useGitStatus } from '../../hooks/use-git-status'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { ContextMenu } from '../ui/ContextMenu'
 import { Tooltip, TooltipTrigger, TooltipContent } from '../ui/tooltip'
 import { shortenPath } from '../../lib/utils'
-import { ArrowTopRightOnSquareIcon, ArrowUturnLeftIcon, PlusIcon, MinusIcon, InformationCircleIcon, ArrowPathIcon, FolderIcon, CubeIcon, ChevronUpIcon, CheckIcon } from '@heroicons/react/24/outline'
+import { ArrowTopRightOnSquareIcon, ArrowUturnLeftIcon, PlusIcon, MinusIcon, InformationCircleIcon, ArrowPathIcon, FolderIcon, CubeIcon, ChevronUpIcon } from '@heroicons/react/24/outline'
 import { buildGitTree, compactTree, collectAllDirPaths } from '../../lib/git-file-tree'
 import {
   buildRepoTree,
@@ -1076,18 +1076,82 @@ const TREE_GLYPH_CENTER_PX = 23
  * a folder's indentation says "inside", without the row being a folder. The
  * last worktree ends the line at its dot.
  */
-function WorktreeGuide({ last, merged }: { last: boolean; merged: boolean }): React.JSX.Element {
+function WorktreeGuide({
+  merged,
+  card
+}: {
+  merged: boolean
+  /** The dot's popover: the worktree's minimal metadata (PRDCT-2360). */
+  card: React.ReactNode
+}): React.JSX.Element {
   return (
-    <span
-      className={`git-worktree-guide ${last ? 'git-worktree-guide--last' : ''} ${
-        merged ? 'git-worktree-guide--merged' : ''
-      }`}
-      data-git-worktree-merged={merged ? 'true' : undefined}
-      aria-hidden
-    >
-      {/* A merged worktree's dot is a check: its work is in the base. */}
-      {merged && <CheckIcon className="git-worktree-check" strokeWidth={3} />}
-    </span>
+    <Tooltip delayDuration={300}>
+      <TooltipTrigger asChild>
+        <span
+          // The last worktree's line ending is the line element's business
+          // (.git-worktree-line--last); the guide carries the dot alone.
+          className={`git-worktree-guide ${merged ? 'git-worktree-guide--merged' : ''}`}
+          data-git-worktree-merged={merged ? 'true' : undefined}
+        />
+      </TooltipTrigger>
+      {/* The popover's own material, as the toolbar's workspace popover: the
+          menu surface, a label, item-shaped rows. */}
+      <TooltipContent side="bottom" align="start" className="menu-surface git-worktree-card !p-1">
+        {card}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+/** `16 Sep, 12:02` in the reader's locale; the year only when it is not this one. */
+function formatMoment(ms: number): string {
+  const d = new Date(ms)
+  const sameYear = d.getFullYear() === new Date().getFullYear()
+  return new Intl.DateTimeFormat(undefined, {
+    day: 'numeric',
+    month: 'short',
+    ...(sameYear ? {} : { year: 'numeric' }),
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(d)
+}
+
+/**
+ * What the dot says on hover, in the shape of the toolbar's workspace
+ * popover: a label, then two rows of a primary line over a tertiary one.
+ * The branch with where it was cut from and both counts; when it was
+ * created, with whether it is merged. Minimal by Romain's ask; no action.
+ */
+function WorktreeCard({
+  branch,
+  wt
+}: {
+  branch: string
+  wt: NonNullable<GitStatusResult['worktree']>
+}): React.JSX.Element {
+  const baseLine = wt.base
+    ? [
+        `cut from ${wt.baseLabel}`,
+        ...(wt.behind > 0 ? [`${wt.behind} behind`] : []),
+        `${wt.ahead} ahead`
+      ].join(' · ')
+    : 'cut from no branch'
+  return (
+    <>
+      <div className="menu-label">Worktree</div>
+      <div className="git-worktree-card-row">
+        <span className="git-worktree-card-primary">{branch === 'HEAD' ? 'detached' : branch}</span>
+        <span className="git-worktree-card-secondary">{baseLine}</span>
+      </div>
+      {wt.createdAt && (
+        <div className="git-worktree-card-row">
+          <span className="git-worktree-card-primary">Created {formatMoment(wt.createdAt)}</span>
+          <span className="git-worktree-card-secondary">
+            {wt.merged ? `merged into ${wt.baseLabel}` : wt.base ? 'not merged yet' : ''}
+          </span>
+        </div>
+      )}
+    </>
   )
 }
 
@@ -1310,7 +1374,12 @@ function MultiRepoSection({
         {/* A worktree row leads with its guide and folds AFTER it: the dot is
             the row's place under its repo, the chevron its own fold, so the
             name lands one step deeper than the repo's and reads as nested. */}
-        {worktree && <WorktreeGuide last={worktree.last} merged={!!wt?.merged} />}
+        {worktree && wt && (
+          <WorktreeGuide
+            merged={wt.merged}
+            card={<WorktreeCard branch={status.branch} wt={wt} />}
+          />
+        )}
 
         {/* Chevron */}
         <svg
@@ -1327,34 +1396,21 @@ function MultiRepoSection({
 
         {!worktree && <RepoGlyph />}
 
-        {/* Repo name — long hover reveals the full path */}
-        <Tooltip delayDuration={2000}>
-          <TooltipTrigger asChild>
-            <span
-              className="git-tree-row-name text-text-primary font-medium truncate"
-              // The floor is five characters. A shorter name keeps exactly its
-              // own width instead: the floor would give it a wider box than
-              // its text, and a button centres its text, so the slack showed
-              // as a gap before the name (Romain, on the app).
-              style={name.length <= 5 ? { minWidth: 'max-content' } : undefined}
-            >
-              {name}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" className="font-mono">
-            {shortenPath(repoPath)}
-            {/* The base stays reachable at any width: a narrow row hides the
-                badge that names it (verifier round 3, finding 13). */}
-            {wt?.base && (
-              <div className="text-text-tertiary">
-                {wt.behind > 0
-                  ? `cut from ${wt.base}, ${wt.behind} behind, ${wt.ahead} ahead`
-                  : `cut from ${wt.base}, ${wt.ahead} ahead`}
-                {wt.merged ? ` · merged into ${wt.baseLabel}` : ''}
-              </div>
-            )}
-          </TooltipContent>
-        </Tooltip>
+        {/* Repo name. No tooltip on it: the path popover it used to carry on
+            a long hover was noise (Romain, on the app); a worktree's path and
+            base live in the popover on its dot. */}
+        <span
+          className={`git-tree-row-name font-medium truncate ${
+            wt?.merged ? 'git-tree-row-name--merged' : 'text-text-primary'
+          }`}
+          // The floor is five characters. A shorter name keeps exactly its
+          // own width instead: the floor would give it a wider box than
+          // its text, and a button centres its text, so the slack showed
+          // as a gap before the name (Romain, on the app).
+          style={name.length <= 5 ? { minWidth: 'max-content' } : undefined}
+        >
+          {name}
+        </span>
 
         {/* Branch badge. It gives way before the name does: in a narrow panel a
             worktree row carries up to four badges, and a name cut to one letter
@@ -1370,6 +1426,9 @@ function MultiRepoSection({
             label={wt.baseLabel}
             behind={wt.behind}
             active={showBase}
+            // Merged, the drift is what the base gained since a landed
+            // squash, still true and no longer news, like the count.
+            muted={wt.merged}
             onToggle={(e) => toggleSection(e, 'base')}
             title={
               wt.behind > 0
@@ -1738,7 +1797,8 @@ export function MultiRepoGitPanel({
     () =>
       nestedRepos.map((r) => ({
         ...r,
-        worktreeOf: worktreeSourcePath(r.status.worktree?.of, roots)
+        worktreeOf: worktreeSourcePath(r.status.worktree?.of, roots),
+        createdAt: r.status.worktree?.createdAt ?? null
       })),
     [nestedRepos, roots]
   )
@@ -1749,7 +1809,12 @@ export function MultiRepoGitPanel({
       basePath
         ? buildRepoTree(
             basePath,
-            withSources.map((r) => ({ name: r.name, path: r.path, worktreeOf: r.worktreeOf }))
+            withSources.map((r) => ({
+              name: r.name,
+              path: r.path,
+              worktreeOf: r.worktreeOf,
+              createdAt: r.createdAt
+            }))
           )
         : null,
     [basePath, withSources]

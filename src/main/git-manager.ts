@@ -1,5 +1,5 @@
 import simpleGit, { type StatusResult } from 'simple-git'
-import { execFile } from 'child_process'
+import { execFile, spawn } from 'child_process'
 import * as fs from 'fs'
 import * as path from 'path'
 import { getLoginShellEnv } from './pty-manager'
@@ -50,6 +50,22 @@ export function parseCreatedAt(reflog: string): string | null {
 }
 
 /**
+ * The branch's creation, sha and moment, from the same oldest entry given as
+ * `<sha>\t<branch>@{<unix seconds>}\t<subject>` lines (`%H%x09%gd%x09%gs`
+ * under `--date=unix`): the moment orders a repo's worktrees (PRDCT-2360),
+ * the sha tells a fresh worktree from a merged one. The moment is the ENTRY's
+ * (`%gd`), not the commit's (`%ct`, which on a creation is the date of the
+ * commit the branch was cut at, the same for every branch cut there). Null
+ * when the reflog opens with anything but a creation.
+ */
+export function parseCreation(reflog: string): { sha: string; at: number } | null {
+  const lines = reflog.trim().split('\n').filter(Boolean)
+  const oldest = (lines[lines.length - 1] ?? '').trim()
+  const match = /^([0-9a-f]{7,40})\t[^\t]*@\{(\d+)\}\tbranch: Created from /.exec(oldest)
+  return match ? { sha: match[1], at: parseInt(match[2], 10) * 1000 } : null
+}
+
+/**
  * A git instance for a call that talks to a REMOTE, and can therefore hang
  * forever on someone else's server.
  *
@@ -64,6 +80,43 @@ function networkGit(cwd: string): ReturnType<typeof simpleGit> {
   return simpleGit(cwd, { timeout: { block: GIT_NETWORK_TIMEOUT_MS } }).env({
     ...process.env,
     GIT_TERMINAL_PROMPT: '0'
+  })
+}
+
+/** Past this many base commits since the merge-base, the squash reading is not attempted. */
+const SQUASH_SCAN_LIMIT = 500
+
+/**
+ * `git patch-id --stable` over the output of another git command in `cwd`:
+ * one `{ id, commit }` per patch, in the order the input listed them (`git
+ * log -p` newest first; a plain `git diff` yields one entry with an all-zero
+ * commit). An empty diff yields none. Two processes, the diff piped into
+ * the hasher, nothing written anywhere.
+ */
+function patchIds(cwd: string, diffArgs: string[]): Promise<Array<{ id: string; commit: string }>> {
+  return new Promise((resolve, reject) => {
+    const producer = spawn('git', diffArgs, { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+    const hasher = spawn('git', ['patch-id', '--stable'], { cwd, stdio: ['pipe', 'pipe', 'pipe'] })
+    producer.stdout.pipe(hasher.stdin)
+    let out = ''
+    let err = ''
+    hasher.stdout.on('data', (d: Buffer) => (out += d.toString()))
+    hasher.stderr.on('data', (d: Buffer) => (err += d.toString()))
+    producer.on('error', reject)
+    hasher.on('error', reject)
+    hasher.on('close', (code) => {
+      if (code !== 0) return reject(new Error(`git patch-id exited ${code}: ${err.trim()}`))
+      resolve(
+        out
+          .split('\n')
+          .map((l) => l.trim())
+          .filter(Boolean)
+          .map((l) => {
+            const [id, commit = ''] = l.split(/\s+/)
+            return { id, commit }
+          })
+      )
+    })
   })
 }
 
@@ -123,6 +176,14 @@ export interface GitWorktreeInfo {
    * row says so. False when the base cannot be named.
    */
   merged: boolean
+  /**
+   * When the worktree's branch was created (its reflog's creation entry), in
+   * epoch milliseconds; a detached checkout takes its directory's birth time.
+   * Null when neither is known. Orders a repo's worktrees (PRDCT-2360).
+   */
+  createdAt: number | null
+  /** The head commit's moment and subject, for the dot's popover. */
+  lastCommit: { at: number; subject: string } | null
 }
 
 export interface GitStatusResult {
@@ -616,19 +677,60 @@ class GitManager {
       const commonDir = path.resolve(cwd, dirs[1])
       if (gitDir === commonDir) return undefined
       const of = path.dirname(commonDir)
+      const onBranch = !!branch && branch !== 'HEAD'
+      // The branch's creation entry: its moment orders the worktrees, its
+      // sha serves the merged reading. A detached checkout has no branch;
+      // its directory's birth time stands in for the moment.
+      let creation: { sha: string; at: number } | null = null
+      if (onBranch) {
+        try {
+          creation = parseCreation(
+            await git.raw(['reflog', 'show', '--date=unix', '--format=%H%x09%gd%x09%gs', branch])
+          )
+        } catch {
+          creation = null
+        }
+      }
+      let createdAt: number | null = creation?.at ?? null
+      if (createdAt === null) {
+        try {
+          createdAt = Math.round((await fs.promises.stat(cwd)).birthtimeMs) || null
+        } catch {
+          createdAt = null
+        }
+      }
+      let lastCommit: GitWorktreeInfo['lastCommit'] = null
+      try {
+        const [at, ...subject] = (await git.raw(['log', '-1', '--format=%ct%x09%s'])).trim().split('\t')
+        const seconds = parseInt(at, 10)
+        if (seconds) lastCommit = { at: seconds * 1000, subject: subject.join('\t') }
+      } catch {
+        lastCommit = null
+      }
       // A detached checkout was cut from nothing: no branch, no reflog to
       // name a base, and the default-branch fallback would only pin it to
       // whatever the remote's HEAD is. It hangs under its source and says
       // no more.
-      const base = branch && branch !== 'HEAD' ? await this.resolveWorktreeBase(git, branch) : null
-      if (!base) return { of, base: null, baseLabel: '', ahead: 0, behind: 0, merged: false }
+      const base = onBranch ? await this.resolveWorktreeBase(git, branch) : null
+      if (!base) {
+        return { of, base: null, baseLabel: '', ahead: 0, behind: 0, merged: false, createdAt, lastCommit }
+      }
       const counts = (await git.raw(['rev-list', '--left-right', '--count', `${base}...HEAD`]))
         .trim()
         .split(/\s+/)
       const behind = parseInt(counts[0] ?? '', 10) || 0
       const ahead = parseInt(counts[1] ?? '', 10) || 0
-      const merged = await this.isMergedInto(git, base, branch, ahead)
-      return { of, base, baseLabel: await this.shortRefLabel(git, base), ahead, behind, merged }
+      const merged = await this.isMergedInto(git, cwd, base, creation?.sha ?? null, ahead, behind)
+      return {
+        of,
+        base,
+        baseLabel: await this.shortRefLabel(git, base),
+        ahead,
+        behind,
+        merged,
+        createdAt,
+        lastCommit
+      }
     } catch {
       return undefined
     }
@@ -645,37 +747,42 @@ class GitManager {
    *   which); a branch with no reflog is never claimed merged this way.
    * - the base carries the branch's whole net diff as ONE commit, which is
    *   what a squash-merge leaves: none of the commits is in the base, so the
-   *   count says ahead. The branch is squashed onto its merge-base as a
-   *   throwaway commit object (no ref, no working tree touched) and
-   *   `git cherry` says whether the base already holds that patch: a `-` line
-   *   is a patch the base has, a `+` one it lacks.
+   *   count says ahead. The branch's net diff since the merge-base is hashed
+   *   with `git patch-id`, forward AND reversed, and the base's commits since
+   *   the merge-base are hashed the same way; the NEWEST of the base's
+   *   commits carrying either id decides: the forward patch means the squash
+   *   landed, the reverse one means it was reverted since, and a revert
+   *   after a squash reads as not merged (review of PR #55, finding 17).
+   *   Nothing is written to the object store: the earlier reading squashed
+   *   the branch into a throwaway commit per status read, one unreachable
+   *   object every poll (finding 21). The scan is bounded: a worktree more
+   *   than SQUASH_SCAN_LIMIT commits behind its base is not claimed merged
+   *   by this arm, rather than diffing hundreds of commits every five seconds.
    */
   private async isMergedInto(
     git: ReturnType<typeof simpleGit>,
+    cwd: string,
     base: string,
-    branch: string,
-    ahead: number
+    createdAtSha: string | null,
+    ahead: number,
+    behind: number
   ): Promise<boolean> {
     try {
       if (ahead === 0) {
-        const createdAt = parseCreatedAt(
-          await git.raw(['reflog', 'show', '--format=%H%x09%gs', branch])
-        )
-        if (!createdAt) return false
+        if (!createdAtSha) return false
         const head = (await git.raw(['rev-parse', 'HEAD'])).trim()
-        return head !== createdAt
+        return head !== createdAtSha
       }
+      if (behind === 0 || behind > SQUASH_SCAN_LIMIT) return false
       const mergeBase = (await git.raw(['merge-base', base, 'HEAD'])).trim()
-      const tree = (await git.raw(['rev-parse', 'HEAD^{tree}'])).trim()
-      if (!mergeBase || !tree) return false
-      const squashed = (
-        await git.raw(['commit-tree', tree, '-p', mergeBase, '-m', 'squash (clave, merged check)'])
-      ).trim()
-      const lines = (await git.raw(['cherry', base, squashed, mergeBase]))
-        .split('\n')
-        .map((l) => l.trim())
-        .filter(Boolean)
-      return lines.length > 0 && lines.every((l) => l.startsWith('-'))
+      if (!mergeBase) return false
+      const [forward] = await patchIds(cwd, ['diff', mergeBase, 'HEAD'])
+      const [reverse] = await patchIds(cwd, ['diff', 'HEAD', mergeBase])
+      if (!forward || !reverse) return false
+      // Newest first, as `git log` lists them.
+      const history = await patchIds(cwd, ['log', '-p', '--no-merges', `${mergeBase}..${base}`])
+      const newest = history.find((h) => h.id === forward.id || h.id === reverse.id)
+      return !!newest && newest.id === forward.id
     } catch {
       return false
     }
@@ -725,8 +832,12 @@ class GitManager {
       }
     }
     if (!candidate || candidate === branch) return null
+    // `--verify --quiet` on a ref that is gone exits 1 with NOTHING on either
+    // stream, which simple-git resolves rather than throws (review of PR #55,
+    // finding 16): the answer is the output, empty when the ref is no more.
     try {
-      await git.raw(['rev-parse', '--verify', '--quiet', `${candidate}^{commit}`])
+      const sha = (await git.raw(['rev-parse', '--verify', '--quiet', `${candidate}^{commit}`])).trim()
+      if (!sha) return null
     } catch {
       return null
     }

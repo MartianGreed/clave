@@ -8,7 +8,7 @@ import path from 'node:path'
 // in node-pty — a native module built for Electron's ABI, not this runner's.
 vi.mock('./pty-manager', () => ({ getLoginShellEnv: () => process.env }))
 
-import { gitManager, parseCreatedFrom, parseCreatedAt } from './git-manager'
+import { gitManager, parseCreatedFrom, parseCreatedAt, parseCreation } from './git-manager'
 
 /**
  * The worktree reading of a checkout (PRDCT-2356), over real repositories:
@@ -51,6 +51,12 @@ let wtPureDetached: string
 let wtSquashed: string
 /** Its commit merged into main with a merge commit. */
 let wtMerged: string
+/** Cut from a branch that was deleted afterwards: under its repo, no base. */
+let wtGone: string
+/** Squash-merged into `alt`, then that squash reverted on `alt`: not merged. */
+let wtReverted: string
+/** Squash-merged into `alt`, reverted, then the revert reverted: merged again. */
+let wtReapplied: string
 
 beforeAll(() => {
   root = realpathSync(mkdtempSync(path.join(tmpdir(), 'clave-git-worktree-')))
@@ -116,6 +122,37 @@ beforeAll(() => {
   git(repo, 'worktree', 'add', '-q', wtMerged, '-b', 'lane/merged', 'main')
   commit(wtMerged, 'm1.txt', 'merge one')
   git(repo, '-c', 'user.email=t@example.com', '-c', 'user.name=T', 'merge', '-q', '--no-ff', '--no-edit', 'lane/merged')
+
+  // Cut from a branch that is deleted afterwards (review of PR #55, finding 16).
+  git(repo, 'branch', 'tempbase', 'main')
+  wtGone = path.join(root, 'wt-gone')
+  git(repo, 'worktree', 'add', '-q', wtGone, '-b', 'lane/gone', 'tempbase')
+  commit(wtGone, 'g.txt', 'gone one')
+  git(repo, 'branch', '-q', '-D', 'tempbase')
+
+  // On a base of its own, `alt`, so main's counts above stay what they are:
+  // a squash reverted afterwards (finding 17), and one reverted then re-applied.
+  git(repo, 'branch', 'alt', 'main')
+  const altCommit = (msg: string): string =>
+    git(repo, '-c', 'user.email=t@example.com', '-c', 'user.name=T', 'commit', '-qm', msg)
+  const revertHead = (): string =>
+    git(repo, '-c', 'user.email=t@example.com', '-c', 'user.name=T', 'revert', '--no-edit', 'HEAD')
+  git(repo, 'checkout', '-q', 'alt')
+  wtReverted = path.join(root, 'wt-reverted')
+  git(repo, 'worktree', 'add', '-q', wtReverted, '-b', 'lane/reverted', 'alt')
+  commit(wtReverted, 'v.txt', 'reverted one')
+  git(repo, 'merge', '-q', '--squash', 'lane/reverted')
+  altCommit('Squash of lane/reverted')
+  revertHead()
+
+  wtReapplied = path.join(root, 'wt-reapplied')
+  git(repo, 'worktree', 'add', '-q', wtReapplied, '-b', 'lane/reapplied', 'alt')
+  commit(wtReapplied, 'w.txt', 'reapplied one')
+  git(repo, 'merge', '-q', '--squash', 'lane/reapplied')
+  altCommit('Squash of lane/reapplied')
+  revertHead()
+  revertHead()
+  git(repo, 'checkout', '-q', 'main')
 })
 
 afterAll(() => {
@@ -133,6 +170,18 @@ describe('parseCreatedFrom', () => {
   it('names nothing when the oldest entry is not a creation', () => {
     expect(parseCreatedFrom('commit: something\n')).toBeNull()
     expect(parseCreatedFrom('')).toBeNull()
+  })
+})
+
+describe('parseCreation', () => {
+  it('reads the sha and the moment of the creation entry, the last line', () => {
+    const reflog =
+      'bbbbbbb\tlane/x@{1758024000}\tcommit: lane a\naaaaaaa\tlane/x@{1758020524}\tbranch: Created from origin/dev\n'
+    expect(parseCreation(reflog)).toEqual({ sha: 'aaaaaaa', at: 1758020524000 })
+  })
+  it('names nothing when the oldest entry is not a creation', () => {
+    expect(parseCreation('bbbbbbb\tlane/x@{1758024000}\tcommit: something\n')).toBeNull()
+    expect(parseCreation('')).toBeNull()
   })
 })
 
@@ -166,6 +215,16 @@ describe('getStatus on a worktree cut from the local branch', () => {
     // Two base commits, the squash and the merge commit: main has moved on.
     expect(status.worktree!.behind).toBe(5)
     expect(status.worktree!.merged).toBe(false)
+  })
+
+  it('carries when the branch was created and its last commit', async () => {
+    const status = await gitManager.getStatus(wtLocal)
+    const created = status.worktree!.createdAt
+    expect(created).not.toBeNull()
+    // Epoch milliseconds, within the last hour: the fixture was cut just now.
+    expect(Date.now() - created!).toBeLessThan(60 * 60 * 1000)
+    expect(status.worktree!.lastCommit?.subject).toBe('lane c')
+    expect(status.worktree!.lastCommit!.at).toBeGreaterThanOrEqual(created!)
   })
 
   it('the worktree range lists what the worktree added, the base range what the base gained', async () => {
@@ -235,6 +294,39 @@ describe('merged into the base', () => {
     expect(status.worktree?.ahead).toBe(0)
     expect(status.worktree?.merged).toBe(false)
   })
+
+  it('a squash reverted on the base is not merged; reverted then re-applied, it is', async () => {
+    const reverted = await gitManager.getStatus(wtReverted)
+    expect(reverted.worktree?.base).toBe('alt')
+    expect(reverted.worktree?.ahead).toBe(1)
+    expect(reverted.worktree?.merged).toBe(false)
+
+    const reapplied = await gitManager.getStatus(wtReapplied)
+    expect(reapplied.worktree?.base).toBe('alt')
+    expect(reapplied.worktree?.merged).toBe(true)
+  })
+
+  it('reads nothing into the object store', async () => {
+    const loose = (): number => {
+      const out = git(repo, 'count-objects', '-v')
+      return parseInt(/^count: (\d+)/m.exec(out)?.[1] ?? '0', 10)
+    }
+    const before = loose()
+    await gitManager.getStatus(wtSquashed)
+    await gitManager.getStatus(wtLocal)
+    await gitManager.getStatus(wtReverted)
+    expect(loose()).toBe(before)
+  })
+})
+
+describe('getStatus on a worktree whose base branch was deleted', () => {
+  it('still hangs under its repo, with no base rather than a guessed one', async () => {
+    const status = await gitManager.getStatus(wtGone)
+    expect(status.worktree).toBeDefined()
+    expect(realpathSync(status.worktree!.of)).toBe(repo)
+    expect(status.worktree!.base).toBeNull()
+    expect(status.worktree!.ahead).toBe(0)
+  })
 })
 
 describe('getStatus on a detached checkout', () => {
@@ -245,6 +337,9 @@ describe('getStatus on a detached checkout', () => {
     expect(status.worktree!.base).toBeNull()
     expect(status.worktree!.ahead).toBe(0)
     expect(status.worktree!.behind).toBe(0)
+    // No branch, so no creation entry: the directory's birth time stands in.
+    expect(status.worktree!.createdAt).not.toBeNull()
+    expect(Date.now() - status.worktree!.createdAt!).toBeLessThan(60 * 60 * 1000)
   })
 
   it('and its worktree ranges are empty rather than guessed', async () => {

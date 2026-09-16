@@ -2691,26 +2691,42 @@ body,
 .git-worktree-line--last {
   bottom: auto;
 }
-/* A merged worktree (its work in the base, by merge or by squash) marks its
-   dot with a check in the success ink: the row's news is that it is done. */
-.git-worktree-guide--merged::after {
-  display: none;
-}
-.git-worktree-check {
-  position: absolute;
-  left: 18px;
-  top: 50%;
-  width: 11px;
-  height: 11px;
-  margin-top: -5.5px;
-  color: var(--color-success);
-  background-color: var(--surface-0);
-  border-radius: 50%;
-  padding: 1px;
+/* A merged worktree fades its name (its dot's colour is with the dot rule
+   below, after the rule it must beat). */
+.git-tree-row-name--merged {
+  color: var(--text-tertiary);
 }
 /* The count of a merged worktree: still true, no longer news. */
 .git-sync-badge-muted {
   opacity: 0.45;
+}
+/* The dot's popover (PRDCT-2360): the worktree's minimal metadata on the
+   menu surface, in the shape of the toolbar's workspace popover: a menu
+   label, then rows cut like menu items (the same padding and radius, no
+   hover, since nothing here is a choice), each a 13px line over an 11px
+   tertiary one. */
+.git-worktree-card {
+  width: 16rem;
+}
+.git-worktree-card-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-lg);
+}
+.git-worktree-card-primary {
+  font-size: 13px;
+  line-height: 1.25;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.git-worktree-card-secondary {
+  font-size: 11px;
+  line-height: 1.25;
+  color: var(--text-tertiary);
+  overflow-wrap: anywhere;
 }
 /* The dot, centred on that column. */
 .git-worktree-guide::after {
@@ -2723,6 +2739,13 @@ body,
   margin-top: -2.5px;
   border-radius: 50%;
   background-color: var(--text-tertiary);
+}
+/* A merged worktree (its work in the base, by merge or by squash) turns its
+   dot dark green: the row's news is that it is done, said quietly (Romain,
+   on the app: the dot, no check in it). Declared AFTER the dot rule at the
+   same specificity, which it must beat. */
+.git-worktree-guide--merged::after {
+  background-color: color-mix(in srgb, var(--color-success) 85%, black);
 }
 
 /* The label above a block of rows inside a repo — STAGED / MODIFIED /
