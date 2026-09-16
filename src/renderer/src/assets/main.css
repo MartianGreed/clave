@@ -37,6 +37,10 @@
      and now the only one, so it reads. */
   --color-git-modified: #a78bfa;
   --color-git-incoming: #38bdf8;
+  /* The worktree badges of the git panel (PRDCT-2356): the modified purple's
+     family, restated per theme because one hex fails contrast at 10px on the
+     light grounds (2.6:1 on light, 2.4:1 on coffee). */
+  --color-git-worktree: var(--git-worktree);
 
   --color-wellbeing-gentle: oklch(0.75 0.15 85);
   --color-wellbeing-gentle-bg: oklch(0.25 0.03 85);
@@ -199,9 +203,14 @@
   --rule-alpha: 0.045;
   --rule-intensity: 1;
   --rule-color: rgb(var(--rule-rgb) / calc(var(--rule-alpha) * var(--rule-intensity)));
+  /* The ink of the worktree guides in the repo tree (PRDCT-2356): the
+     tertiary text at half strength, so the guide reads as structure under
+     the labels rather than as one of them. */
+  --tree-guide-color: color-mix(in srgb, var(--text-tertiary) 55%, transparent);
   --text-primary: rgba(255, 255, 255, 0.95);
   --text-secondary: rgba(255, 255, 255, 0.6);
   --text-tertiary: rgba(255, 255, 255, 0.4);
+  --git-worktree: #a78bfa;
   /* Resting text color for sidebar rows — slightly more opaque than --text-secondary */
   --sidebar-item-text: rgba(255, 255, 255, 0.78);
   /* Resting color for sidebar tab icons — more opaque than --text-tertiary */
@@ -274,6 +283,7 @@
   --text-primary: #1b1b18;
   --text-secondary: #6c6c65;
   --text-tertiary: #9b9b94;
+  --git-worktree: #7c3aed;
   --sidebar-item-text: #45453f;
   --sidebar-icon-color: #6c6c65;
   --selected-ring: rgba(0, 0, 0, 0.12);
@@ -332,6 +342,7 @@
   --text-primary: #1b1610;
   --text-secondary: #756e66;
   --text-tertiary: #9b9590;
+  --git-worktree: #7c3aed;
   --sidebar-item-text: #4d4840;
   --sidebar-icon-color: #756e66;
   --selected-ring: rgba(0, 0, 0, 0.12);
@@ -423,6 +434,7 @@
   --text-primary: #efece9;
   --text-secondary: #a39f9b;
   --text-tertiary: #84807b;
+  --git-worktree: #a78bfa;
   --sidebar-item-text: #c7c3c0;
   --sidebar-icon-color: #9f9a96;
   --selected-ring: rgba(255, 243, 232, 0.07);
@@ -2600,8 +2612,117 @@ body,
    height so the tree never jumps when a trailing badge appears or disappears
    — expanding a folder hides its roll-up, and that used to resize the row. */
 .git-tree-row {
+  position: relative;
   height: var(--git-tree-row-h);
   flex-shrink: 0;
+  /* With a floor under the name (below) a row can, in the edge of a long
+     name behind five badges at the panel's narrowest, want more than it has:
+     it clips its last badge rather than hand the panel a horizontal
+     scrollbar. */
+  overflow: hidden;
+}
+/* The repo list is the container the narrow-row rules read (below): the
+   LIST, not the row, so every row flips together at one panel width. On the
+   row, a row's content box shrank by one indent per tree depth and the rows
+   inside a folder crossed the threshold while the rows at the root did not,
+   two spellings of the same badge on one screen. */
+.git-repo-list {
+  container-type: inline-size;
+}
+/* The repo's name is the one thing a row must never lose: a floor, so the
+   badges take their room from the branch name first and the name is cut with
+   an ellipsis rather than to a letter (verifier round 1, finding 1). Five
+   characters (40px at the row's type): with the narrow-row rules below, a
+   worktree row with four badges still fits the 216px of content a row has at
+   the panel's default width. The narrow-row rule for the badges sits with
+   the badge family below, after the rules it must beat. */
+.git-tree-row-name {
+  min-width: 5ch;
+  /* A button centres its text: were the box ever wider than the name, the
+     slack would split around it. The row keeps a short name at its own width
+     (see the component), and this keeps any slack after the name. */
+  text-align: left;
+}
+
+/* ── Worktree rows in the repo tree (PRDCT-2356) ── */
+/* A worktree sits under the repo it was cut from, behind a guide rather than
+   an icon: a hairline dropping from the repo's glyph and a dot at the row's
+   centre, so the row reads as "of this repo" without being a folder of it.
+   The stem under the glyph is drawn only while the repo row is folded:
+   unfolded, the repo's own file lists sit between the two rows and the line
+   would cut through their labels. The guide spans the repo row's chevron and
+   glyph columns (chevron, gap, glyph: 30px), the line on the glyph's centre,
+   and the worktree's own chevron follows it, so the name lands one step
+   deeper than the repo's and the unfolded content one indent deeper than the
+   repo's content. The ink is the tree's, not a status tone: this is
+   structure, not news. */
+.git-worktree-stem {
+  position: absolute;
+  top: calc(var(--git-tree-row-h) / 2 + 9px);
+  bottom: 0;
+  width: 1px;
+  background-color: var(--tree-guide-color);
+  pointer-events: none;
+}
+.git-worktree-guide {
+  position: relative;
+  align-self: stretch;
+  width: 30px;
+  flex-shrink: 0;
+}
+/* The line of a worktree block runs beside the whole block, the row and
+   what it unfolds, on the same column as the stem above it (the glyph's
+   centre, 23px in from the row's chevron); the block's content sits two
+   indents further in, so the line runs clear of its labels. The last
+   worktree's line stops at its dot. */
+.git-worktree-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: var(--tree-guide-color);
+  pointer-events: none;
+  /* Above the row it runs beside, whose hover fill would otherwise paint
+     over it: the row is positioned too, and later in the tree. */
+  z-index: 1;
+}
+/* The last worktree's line stops at its dot; the height is set by the row,
+   which knows whether a hairline sits above it. */
+.git-worktree-line--last {
+  bottom: auto;
+}
+/* A merged worktree (its work in the base, by merge or by squash) marks its
+   dot with a check in the success ink: the row's news is that it is done. */
+.git-worktree-guide--merged::after {
+  display: none;
+}
+.git-worktree-check {
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  margin-top: -5.5px;
+  color: var(--color-success);
+  background-color: var(--surface-0);
+  border-radius: 50%;
+  padding: 1px;
+}
+/* The count of a merged worktree: still true, no longer news. */
+.git-sync-badge-muted {
+  opacity: 0.45;
+}
+/* The dot, centred on that column. */
+.git-worktree-guide::after {
+  content: '';
+  position: absolute;
+  left: 21px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  margin-top: -2.5px;
+  border-radius: 50%;
+  background-color: var(--text-tertiary);
 }
 
 /* The label above a block of rows inside a repo — STAGED / MODIFIED /
@@ -2662,6 +2783,38 @@ body,
 .git-sync-badge-on {
   background-color: color-mix(in srgb, currentColor 15%, transparent);
   border-color: color-mix(in srgb, currentColor 60%, transparent);
+}
+/* The base badge with no drift (PRDCT-2356) is a label: the shape of its
+   siblings, none of their hover, since there is nothing to open. Declared
+   AFTER the badge's own hover, which it must beat at equal specificity. */
+.git-sync-badge-static {
+  cursor: default;
+}
+.git-sync-badge-static:hover {
+  background-color: transparent;
+  border-color: color-mix(in srgb, currentColor 30%, transparent);
+}
+/* A narrow panel has no room for four badges beside a name: the base badge
+   keeps its drift and folds its name away, its title still naming the base;
+   a base with no drift has nothing left to show and goes entirely. The
+   container is the repo list (.git-repo-list), and a container's inline size
+   is its CONTENT box, which for the list is its width: the panel opens at
+   240px, and 300 is the width from which the badges spell out. A container
+   query adds no specificity, so this block stands AFTER .git-sync-badge,
+   whose display it must beat (verifier round 2, finding 10). */
+@container (max-width: 299px) {
+  .git-base-badge-name {
+    display: none;
+  }
+  .git-sync-badge-static {
+    display: none;
+  }
+  /* A worktree row also gives up its branch name here, which the badges had
+     already squeezed to nothing while its gap still cost 6px; the branch
+     stays on the repo rows, which carry fewer badges. */
+  [data-tree-kind='worktree'] .git-tree-row-branch {
+    display: none;
+  }
 }
 
 /* The sync action inside an Incoming/Outgoing header — Pull / Push. Same

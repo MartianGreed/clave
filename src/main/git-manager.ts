@@ -15,6 +15,39 @@ import {
   PULL_BATCH_CONCURRENCY,
   GIT_NETWORK_TIMEOUT_MS
 } from './constants'
+import type { GitRangeDirection } from '../shared/git-range'
+
+/**
+ * The branch a worktree was cut from, read off its own reflog. `git worktree
+ * add -b lane origin/dev` and `git checkout -b lane dev` both open the
+ * branch's reflog with `branch: Created from <ref>`; that oldest entry is the
+ * LAST line of `git reflog show`. `Created from HEAD` names nothing (a branch
+ * cut from a detached position), so it reads as no base and the caller falls
+ * through to its next source.
+ */
+export function parseCreatedFrom(reflog: string): string | null {
+  const lines = reflog.trim().split('\n').filter(Boolean)
+  const oldest = (lines[lines.length - 1] ?? '').trim()
+  const match = /^branch: Created from (.+)$/.exec(oldest)
+  if (!match) return null
+  const from = match[1].trim()
+  return from === 'HEAD' || from === '' ? null : from
+}
+
+/**
+ * The commit a branch was created AT, from the same oldest reflog entry when
+ * it is a creation, given as `<sha>\t<subject>` lines (`%H%x09%gs`). It is
+ * what tells a worktree that has done nothing yet (its head still that
+ * commit) from one whose commits the base took with a merge commit (its head
+ * moved on, yet nothing of it is outside the base). Null when the reflog
+ * opens with anything else.
+ */
+export function parseCreatedAt(reflog: string): string | null {
+  const lines = reflog.trim().split('\n').filter(Boolean)
+  const oldest = (lines[lines.length - 1] ?? '').trim()
+  const match = /^([0-9a-f]{7,40})\tbranch: Created from /.exec(oldest)
+  return match ? match[1] : null
+}
 
 /**
  * A git instance for a call that talks to a REMOTE, and can therefore hang
@@ -65,6 +98,33 @@ export interface GitFileStatus {
   staged: boolean
 }
 
+/**
+ * The worktree reading of a checkout (PRDCT-2356): present only on a linked
+ * worktree, absent on a repo that is its own checkout.
+ */
+export interface GitWorktreeInfo {
+  /** Absolute path of the main checkout this worktree belongs to. */
+  of: string
+  /**
+   * The ref the worktree's branch was cut from (`origin/dev`, `dev`), or null
+   * when it cannot be named — the row then carries no base badge.
+   */
+  base: string | null
+  /** `base` as the badge shows it: the remote prefix dropped (`dev`). */
+  baseLabel: string
+  /** Commits the worktree has that the base does not — the `+N` badge. */
+  ahead: number
+  /** Commits the base gained that the worktree lacks — the `−N` on the base badge. */
+  behind: number
+  /**
+   * The worktree's work is already in the base: its head is an ancestor of
+   * the base (a merge or a fast-forward), or the base carries its whole net
+   * diff as one commit (a squash-merge, how a lane lands). The dot on the
+   * row says so. False when the base cannot be named.
+   */
+  merged: boolean
+}
+
 export interface GitStatusResult {
   isRepo: boolean
   branch: string
@@ -73,6 +133,7 @@ export interface GitStatusResult {
   hasUpstream: boolean
   files: GitFileStatus[]
   repoRoot: string
+  worktree?: GitWorktreeInfo
 }
 
 export interface GitCommitResult {
@@ -459,15 +520,11 @@ class GitManager {
    * Fails soft (empty list) when there is no branch or no remote ref, like
    * getIncomingCommits.
    */
-  async getRangeFiles(cwd: string, direction: 'incoming' | 'outgoing'): Promise<GitCommitFileStatus[]> {
+  async getRangeFiles(cwd: string, direction: GitRangeDirection): Promise<GitCommitFileStatus[]> {
     try {
       const git = simpleGit(cwd)
-      // The REAL tracking ref, not a guessed origin/<branch>: a branch can
-      // track a differently-named upstream, and the ahead/behind badges come
-      // from that tracking info — the range must agree with them.
-      const tracking = (await git.status()).tracking
-      if (!tracking) return []
-      const spec = direction === 'incoming' ? `HEAD...${tracking}` : `${tracking}...HEAD`
+      const spec = await this.rangeSpec(git, direction)
+      if (!spec) return []
       const numRaw = await git.raw(['diff', '--numstat', '--diff-filter=AMDRTC', spec])
       const nameRaw = await git.raw(['diff', '--name-status', '--diff-filter=AMDRTC', spec])
 
@@ -498,16 +555,194 @@ class GitManager {
   }
 
   /** Aggregate per-file diff of a sync range — the net effect, not per-commit. */
-  async getRangeDiff(cwd: string, direction: 'incoming' | 'outgoing', filePath: string): Promise<string> {
+  async getRangeDiff(cwd: string, direction: GitRangeDirection, filePath: string): Promise<string> {
     try {
       const git = simpleGit(cwd)
-      const tracking = (await git.status()).tracking
-      if (!tracking) return ''
-      const spec = direction === 'incoming' ? `HEAD...${tracking}` : `${tracking}...HEAD`
+      const spec = await this.rangeSpec(git, direction)
+      if (!spec) return ''
       return await git.raw(['diff', spec, '--', filePath])
     } catch (err) {
       console.warn('[git] getRangeDiff failed:', direction, filePath, (err as Error).message)
       return ''
+    }
+  }
+
+  /**
+   * The three-dot spec of a range, or null when there is nothing to compare
+   * against (no branch, no remote counterpart, no nameable base). The remote
+   * ranges use the REAL tracking ref, not a guessed origin/<branch>: a branch
+   * can track a differently-named upstream, and the ahead/behind badges come
+   * from that tracking info — the range must agree with them. The worktree
+   * ranges use the same base the status read, so the badge and its list agree
+   * the same way.
+   */
+  private async rangeSpec(
+    git: ReturnType<typeof simpleGit>,
+    direction: GitRangeDirection
+  ): Promise<string | null> {
+    const status = await git.status()
+    if (direction === 'incoming' || direction === 'outgoing') {
+      const tracking = status.tracking
+      if (!tracking) return null
+      return direction === 'incoming' ? `HEAD...${tracking}` : `${tracking}...HEAD`
+    }
+    if (!status.current || status.current === 'HEAD') return null
+    const base = await this.resolveWorktreeBase(git, status.current)
+    if (!base) return null
+    return direction === 'worktree' ? `${base}...HEAD` : `HEAD...${base}`
+  }
+
+  /**
+   * The worktree reading of a checkout (PRDCT-2356): which main checkout it
+   * belongs to, which branch it was cut from, and the two-sided count against
+   * that base. `undefined` for a repo that is its own checkout — one
+   * `rev-parse` is the whole cost there. A worktree whose base cannot be named
+   * still reports where it belongs (so the panel places it under its source)
+   * with `base: null`, and its row carries no base badge and no count: never
+   * a base guessed from the folder name.
+   */
+  private async readWorktree(
+    git: ReturnType<typeof simpleGit>,
+    cwd: string,
+    branch: string
+  ): Promise<GitWorktreeInfo | undefined> {
+    try {
+      const dirs = (await git.raw(['rev-parse', '--git-dir', '--git-common-dir']))
+        .trim()
+        .split('\n')
+        .map((d) => d.trim())
+      if (dirs.length < 2) return undefined
+      const gitDir = path.resolve(cwd, dirs[0])
+      const commonDir = path.resolve(cwd, dirs[1])
+      if (gitDir === commonDir) return undefined
+      const of = path.dirname(commonDir)
+      // A detached checkout was cut from nothing: no branch, no reflog to
+      // name a base, and the default-branch fallback would only pin it to
+      // whatever the remote's HEAD is. It hangs under its source and says
+      // no more.
+      const base = branch && branch !== 'HEAD' ? await this.resolveWorktreeBase(git, branch) : null
+      if (!base) return { of, base: null, baseLabel: '', ahead: 0, behind: 0, merged: false }
+      const counts = (await git.raw(['rev-list', '--left-right', '--count', `${base}...HEAD`]))
+        .trim()
+        .split(/\s+/)
+      const behind = parseInt(counts[0] ?? '', 10) || 0
+      const ahead = parseInt(counts[1] ?? '', 10) || 0
+      const merged = await this.isMergedInto(git, base, branch, ahead)
+      return { of, base, baseLabel: await this.shortRefLabel(git, base), ahead, behind, merged }
+    } catch {
+      return undefined
+    }
+  }
+
+  /**
+   * Whether the checkout's work is in `base`. Two ways it can be, and both are
+   * local and cheap:
+   *
+   * - nothing of the head is outside the base (`ahead` is 0): a merge commit
+   *   or a fast-forward took the commits themselves. A worktree that has done
+   *   NOTHING yet reads the same way, so this counts only when the head has
+   *   moved on from the commit the branch was created at (its reflog says
+   *   which); a branch with no reflog is never claimed merged this way.
+   * - the base carries the branch's whole net diff as ONE commit, which is
+   *   what a squash-merge leaves: none of the commits is in the base, so the
+   *   count says ahead. The branch is squashed onto its merge-base as a
+   *   throwaway commit object (no ref, no working tree touched) and
+   *   `git cherry` says whether the base already holds that patch: a `-` line
+   *   is a patch the base has, a `+` one it lacks.
+   */
+  private async isMergedInto(
+    git: ReturnType<typeof simpleGit>,
+    base: string,
+    branch: string,
+    ahead: number
+  ): Promise<boolean> {
+    try {
+      if (ahead === 0) {
+        const createdAt = parseCreatedAt(
+          await git.raw(['reflog', 'show', '--format=%H%x09%gs', branch])
+        )
+        if (!createdAt) return false
+        const head = (await git.raw(['rev-parse', 'HEAD'])).trim()
+        return head !== createdAt
+      }
+      const mergeBase = (await git.raw(['merge-base', base, 'HEAD'])).trim()
+      const tree = (await git.raw(['rev-parse', 'HEAD^{tree}'])).trim()
+      if (!mergeBase || !tree) return false
+      const squashed = (
+        await git.raw(['commit-tree', tree, '-p', mergeBase, '-m', 'squash (clave, merged check)'])
+      ).trim()
+      const lines = (await git.raw(['cherry', base, squashed, mergeBase]))
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+      return lines.length > 0 && lines.every((l) => l.startsWith('-'))
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * The ref a branch was cut from, in this order: the branch's own reflog
+   * (`branch: Created from <ref>`), an upstream of a DIFFERENT name (a branch
+   * tracking itself says nothing about where it came from), the remote's
+   * default branch. Whatever names it must still resolve to a commit — a
+   * reflog naming a ref that was since deleted is no base. Never the folder
+   * name.
+   */
+  async resolveWorktreeBase(
+    git: ReturnType<typeof simpleGit>,
+    branch: string
+  ): Promise<string | null> {
+    let candidate: string | null = null
+    try {
+      candidate = parseCreatedFrom(await git.raw(['reflog', 'show', '--format=%gs', branch]))
+    } catch {
+      candidate = null
+    }
+    if (!candidate) {
+      try {
+        const merge = (await git.raw(['config', '--get', `branch.${branch}.merge`])).trim()
+        const name = merge.replace(/^refs\/heads\//, '')
+        if (name && name !== branch) {
+          let remote = ''
+          try {
+            remote = (await git.raw(['config', '--get', `branch.${branch}.remote`])).trim()
+          } catch {
+            remote = ''
+          }
+          candidate = remote && remote !== '.' ? `${remote}/${name}` : name
+        }
+      } catch {
+        candidate = null
+      }
+    }
+    if (!candidate) {
+      try {
+        const head = (await git.raw(['symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD'])).trim()
+        if (head && head !== `origin/${branch}`) candidate = head
+      } catch {
+        candidate = null
+      }
+    }
+    if (!candidate || candidate === branch) return null
+    try {
+      await git.raw(['rev-parse', '--verify', '--quiet', `${candidate}^{commit}`])
+    } catch {
+      return null
+    }
+    return candidate
+  }
+
+  /** `origin/dev` → `dev` when `origin` is one of the repo's remotes; a local ref stays as it is. */
+  private async shortRefLabel(git: ReturnType<typeof simpleGit>, ref: string): Promise<string> {
+    const bare = ref.replace(/^refs\/remotes\//, '')
+    const slash = bare.indexOf('/')
+    if (slash <= 0) return bare
+    try {
+      const remotes = (await git.raw(['remote'])).split('\n').map((r) => r.trim())
+      return remotes.includes(bare.slice(0, slash)) ? bare.slice(slash + 1) : bare
+    } catch {
+      return bare
     }
   }
 
@@ -959,6 +1194,8 @@ No quotes, no markdown, no extra formatting. Just two lines of plain text.`
         }
       }
 
+      const worktree = await this.readWorktree(git, cwd, status.current ?? '')
+
       return {
         isRepo: true,
         branch: status.current ?? '',
@@ -966,7 +1203,8 @@ No quotes, no markdown, no extra formatting. Just two lines of plain text.`
         behind: status.behind,
         hasUpstream,
         files: mapFiles(status),
-        repoRoot
+        repoRoot,
+        ...(worktree ? { worktree } : {})
       }
     } catch {
       return {

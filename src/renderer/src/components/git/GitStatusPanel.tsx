@@ -5,21 +5,30 @@ import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { ContextMenu } from '../ui/ContextMenu'
 import { Tooltip, TooltipTrigger, TooltipContent } from '../ui/tooltip'
 import { shortenPath } from '../../lib/utils'
-import { ArrowTopRightOnSquareIcon, ArrowUturnLeftIcon, PlusIcon, MinusIcon, InformationCircleIcon, ArrowPathIcon, FolderIcon, CubeIcon, ChevronUpIcon } from '@heroicons/react/24/outline'
+import { ArrowTopRightOnSquareIcon, ArrowUturnLeftIcon, PlusIcon, MinusIcon, InformationCircleIcon, ArrowPathIcon, FolderIcon, CubeIcon, ChevronUpIcon, CheckIcon } from '@heroicons/react/24/outline'
 import { buildGitTree, compactTree, collectAllDirPaths } from '../../lib/git-file-tree'
 import {
   buildRepoTree,
   flattenRepoTree,
   collectRepoTreeDirPaths,
+  orderWithWorktrees,
+  worktreeSourcePath,
   type FlatRepoRow,
   type RepoTreeDir
 } from '../../lib/git-repo-tree'
 import { collapsedFromExpanded, toRelative } from '../../lib/panel-expansion'
 import { GitLogView } from './GitLogView'
 import { FileRow, GitTreeSection } from './GitFileRows'
-import { SectionHeader, ErrorBanner, GitSyncBadge, GitSyncActionButton } from './GitPanelControls'
+import {
+  SectionHeader,
+  ErrorBanner,
+  GitSyncBadge,
+  GitSyncActionButton,
+  GitBaseBadge
+} from './GitPanelControls'
 import { CommitBar } from './GitCommitBar'
 import type { GitFileStatus, GitStatusResult } from '../../../../preload/index.d'
+import type { GitRangeDirection } from '../../../../shared/git-range'
 
 // ---------------------------------------------------------------------------
 // Per-cwd expanded directory cache — survives RepoSection unmount/remount
@@ -67,9 +76,24 @@ const RANGE_STATUS_WORD: Record<string, GitFileStatus['status']> = {
   C: 'staged'
 }
 
+/** The section's header: the two remote ranges by name, the two worktree ranges by their base. */
+function rangeLabel(direction: GitRangeDirection, baseLabel: string): string {
+  switch (direction) {
+    case 'incoming':
+      return 'Incoming'
+    case 'outgoing':
+      return 'Outgoing'
+    case 'worktree':
+      return `Since ${baseLabel}`
+    case 'base':
+      return `Behind ${baseLabel}`
+  }
+}
+
 function RangeSection({
   cwd,
   direction,
+  baseLabel = '',
   sectionIndentPx,
   fileIndentPx,
   treeBaseIndentPx,
@@ -80,7 +104,9 @@ function RangeSection({
   operating
 }: {
   cwd: string
-  direction: 'incoming' | 'outgoing'
+  direction: GitRangeDirection
+  /** The base branch as the badge shows it — names the two worktree sections (PRDCT-2356). */
+  baseLabel?: string
   sectionIndentPx: number
   fileIndentPx: number
   treeBaseIndentPx: number
@@ -90,8 +116,9 @@ function RangeSection({
   refreshTick: number
   /** Names the honest empty state: no upstream means nothing to compare against. */
   hasUpstream: boolean
-  /** Runs the sync this section previews — pull for incoming, push for outgoing. */
-  onSync: () => void
+  /** Runs the sync this section previews — pull for incoming, push for outgoing.
+   *  The worktree ranges have no one-click action and pass none. */
+  onSync?: () => void
   operating: boolean
 }): React.JSX.Element | null {
   const gitViewMode = useSessionStore((s) => s.gitViewMode)
@@ -152,21 +179,25 @@ function RangeSection({
 
   // The rows themselves stay view-only — clicking a file opens its net diff and
   // never syncs. The one thing that does sync is the header's spelled-out
-  // Pull / Push button. An empty result explains itself instead of going silent.
+  // Pull / Push button, on the two remote ranges only: the worktree ranges
+  // (PRDCT-2356) show what a rebase would bring or what the worktree added,
+  // and neither is a click away by design. An empty result explains itself
+  // instead of going silent.
+  const remoteTone = direction === 'incoming' || direction === 'outgoing' ? direction : null
   return (
     <>
       <SectionHeader
-        label={direction === 'incoming' ? 'Incoming' : 'Outgoing'}
+        label={rangeLabel(direction, baseLabel)}
         indentPx={sectionIndentPx}
         count={files.length}
         disabled={operating}
         trailing={
-          files.length > 0 ? (
+          files.length > 0 && remoteTone && onSync ? (
             <GitSyncActionButton
-              tone={direction}
-              label={direction === 'incoming' ? 'Pull (rebase)' : 'Push'}
+              tone={remoteTone}
+              label={remoteTone === 'incoming' ? 'Pull (rebase)' : 'Push'}
               title={
-                direction === 'incoming'
+                remoteTone === 'incoming'
                   ? `Pull ${files.length} incoming file${files.length === 1 ? '' : 's'} — fast-forward if possible, otherwise rebase (autostash)`
                   : `Push ${files.length} outgoing file${files.length === 1 ? '' : 's'} to the remote`
               }
@@ -178,11 +209,15 @@ function RangeSection({
       />
       {files.length === 0 ? (
         <div className="flex items-center h-[var(--panel-row-h)] pr-3 text-[11px] text-text-tertiary" style={{ paddingLeft: fileIndentPx }}>
-          {hasUpstream
-            ? direction === 'incoming'
-              ? 'Nothing incoming — up to date with the remote.'
-              : 'Nothing to push.'
-            : 'This branch has no published counterpart to compare against yet.'}
+          {direction === 'worktree'
+            ? 'No commits of its own since the cut.'
+            : direction === 'base'
+              ? `Nothing gained on ${baseLabel} since the cut.`
+              : hasUpstream
+                ? direction === 'incoming'
+                  ? 'Nothing incoming — up to date with the remote.'
+                  : 'Nothing to push.'
+                : 'This branch has no published counterpart to compare against yet.'}
         </div>
       ) : gitViewMode === 'tree' ? (
         <GitTreeSection
@@ -271,6 +306,8 @@ function RepoSection({
   depth = 0,
   showIncoming = false,
   showOutgoing = false,
+  showWorktree = false,
+  showBase = false,
   showChanges = true
 }: {
   cwd: string
@@ -285,6 +322,10 @@ function RepoSection({
   showIncoming?: boolean
   /** Unfold the aggregate push preview (opened by the ↑ badge-button). */
   showOutgoing?: boolean
+  /** Unfold what the worktree added since its base (opened by the purple + badge, PRDCT-2356). */
+  showWorktree?: boolean
+  /** Unfold what the base gained since the cut (opened by the base badge's drift). */
+  showBase?: boolean
   /** Show the local work — staged, modified, untracked. On by default; the
    *  + badge-button folds it away so only the sync ranges remain. */
   showChanges?: boolean
@@ -608,8 +649,42 @@ function RepoSection({
   // ↓/↑ badge-buttons; rendered in both the clean and the dirty layout.
   const incomingOpen = showIncoming && status.behind > 0
   const outgoingOpen = showOutgoing && status.ahead > 0
+  // The two worktree ranges (PRDCT-2356), against the branch the worktree was
+  // cut from; only a worktree with a nameable base has them.
+  const wt = status.worktree
+  const baseOpen = showBase && !!wt?.base && wt.behind > 0
+  const worktreeOpen = showWorktree && !!wt?.base && wt.ahead > 0
+  const anyRangeOpen = incomingOpen || outgoingOpen || baseOpen || worktreeOpen
   const rangeSections = (
     <>
+      {baseOpen && wt && (
+        <RangeSection
+          cwd={repoRoot}
+          direction="base"
+          baseLabel={wt.baseLabel}
+          sectionIndentPx={sectionIndentPx}
+          fileIndentPx={fileIndentPx}
+          treeBaseIndentPx={treeBaseIndentPx}
+          localPaths={localPaths}
+          refreshTick={wt.behind}
+          hasUpstream={status.hasUpstream}
+          operating={operating}
+        />
+      )}
+      {worktreeOpen && wt && (
+        <RangeSection
+          cwd={repoRoot}
+          direction="worktree"
+          baseLabel={wt.baseLabel}
+          sectionIndentPx={sectionIndentPx}
+          fileIndentPx={fileIndentPx}
+          treeBaseIndentPx={treeBaseIndentPx}
+          localPaths={localPaths}
+          refreshTick={wt.ahead}
+          hasUpstream={status.hasUpstream}
+          operating={operating}
+        />
+      )}
       {incomingOpen && (
         <RangeSection
           cwd={repoRoot}
@@ -668,7 +743,7 @@ function RepoSection({
           {rangeSections}
           {/* Only when something below the box can actually scroll — an
               unconditional gutter would just push the filling box up. */}
-          {(incomingOpen || outgoingOpen) && <ScrollGutter />}
+          {anyRangeOpen && <ScrollGutter />}
         </div>
         {gitShowCommitBar &&
           (changesHidden ||
@@ -990,6 +1065,35 @@ function RepoGlyph(): React.JSX.Element {
   return <CubeIcon className="w-3.5 h-3.5 text-text-tertiary flex-shrink-0" />
 }
 
+/** Chevron (10) + gap (6) + half the glyph (7): the column the stem and the guides share. */
+const TREE_GLYPH_CENTER_PX = 23
+
+/**
+ * The worktree row's leading mark (PRDCT-2356): a guide spanning the repo
+ * row's chevron-and-glyph columns, the line continuing from the source repo
+ * above on the glyph's centre and a dot at this row, with the row's own
+ * chevron after it. The line IS the icon: it says "of the repo above" the way
+ * a folder's indentation says "inside", without the row being a folder. The
+ * last worktree ends the line at its dot.
+ */
+function WorktreeGuide({ last, merged }: { last: boolean; merged: boolean }): React.JSX.Element {
+  return (
+    <span
+      className={`git-worktree-guide ${last ? 'git-worktree-guide--last' : ''} ${
+        merged ? 'git-worktree-guide--merged' : ''
+      }`}
+      data-git-worktree-merged={merged ? 'true' : undefined}
+      aria-hidden
+    >
+      {/* A merged worktree's dot is a check: its work is in the base. */}
+      {merged && <CheckIcon className="git-worktree-check" strokeWidth={3} />}
+    </span>
+  )
+}
+
+/** The sections a repo row's badges toggle open. */
+type RowSection = 'incoming' | 'outgoing' | 'changes' | 'worktree' | 'base'
+
 /**
  * The hairline between two rows of the repo tree.
  *
@@ -1009,15 +1113,21 @@ function RepoGlyph(): React.JSX.Element {
  * `data-tree-rule` carries that depth for the E2E spec, which asserts on the
  * boundaries rather than on pixels.
  */
-function TreeRule({ depth }: { depth: number }): React.JSX.Element {
+function TreeRule({ depth, insetPx = 0 }: { depth: number; insetPx?: number }): React.JSX.Element {
   return (
     <div
       className="tree-rule"
       data-tree-rule={depth}
-      style={{ marginLeft: 12 + depth * TREE_INDENT_PX, marginRight: 12 }}
+      // `insetPx` moves the rule's start past a column it must not cross:
+      // a worktree row's rule begins after its guide, so the vertical line
+      // there runs through unbroken.
+      style={{ marginLeft: 12 + depth * TREE_INDENT_PX + insetPx, marginRight: 12 }}
     />
   )
 }
+
+/** Where a worktree row's own chevron starts: past the guide (30px) and a gap. */
+const WORKTREE_RULE_INSET_PX = 36
 
 function MultiRepoSection({
   name,
@@ -1028,7 +1138,9 @@ function MultiRepoSection({
   onSelect,
   selectedRepoPaths,
   depth = 0,
-  rule = false
+  rule = false,
+  worktree,
+  hasWorktrees = false
 }: {
   name: string
   repoPath: string
@@ -1040,11 +1152,16 @@ function MultiRepoSection({
   depth?: number
   /** Close the block above this one with a rule at this row's own depth. */
   rule?: boolean
+  /** This row is a worktree hanging under its source repo (PRDCT-2356); `last` ends the guide here. */
+  worktree?: { last: boolean }
+  /** Worktree rows follow this repo — draw the stem their guides continue. */
+  hasWorktrees?: boolean
 }) {
   const gitPanelMode = useSessionStore((s) => s.gitPanelMode)
   const openJourneyPanel = useSessionStore((s) => s.openJourneyPanel)
   const collapseAllTrigger = useSessionStore((s) => s.collapseAllTrigger)
   const changeCount = status.files.length
+  const wt = status.worktree
   // The opened folder isn't itself a repo root — git resolved it to a parent
   // repository, so the changes shown actually belong to that parent.
   const isParentRepo = !!status.repoRoot && status.repoRoot !== repoPath
@@ -1067,23 +1184,27 @@ function MultiRepoSection({
   const [expanded, setExpanded] = useState(false)
   const [showIncoming, setShowIncoming] = useState(false)
   const [showOutgoing, setShowOutgoing] = useState(false)
+  // A worktree row's two purple sections (PRDCT-2356): what its base gained
+  // since the cut, and what the worktree added.
+  const [showBase, setShowBase] = useState(false)
+  const [showWorktree, setShowWorktree] = useState(false)
   // The local work is what the panel is for, so this one starts on — it is
   // what the row unfolds INTO once you open it, not whether it is open.
   const [showChanges, setShowChanges] = useState(true)
 
-  // The ↓/↑/+ badges are buttons: each unfolds its own section inside the
-  // repo's content (and opens the repo if it was folded).
+  // The badges are buttons: each unfolds its own section inside the repo's
+  // content (and opens the repo if it was folded).
   const toggleSection = useCallback(
-    (e: React.MouseEvent, section: 'incoming' | 'outgoing' | 'changes') => {
+    (e: React.MouseEvent, section: RowSection) => {
       e.stopPropagation()
-      const isOpen =
-        section === 'incoming' ? showIncoming : section === 'outgoing' ? showOutgoing : showChanges
-      const setter =
-        section === 'incoming'
-          ? setShowIncoming
-          : section === 'outgoing'
-            ? setShowOutgoing
-            : setShowChanges
+      const sections: Record<RowSection, [boolean, (open: boolean) => void]> = {
+        incoming: [showIncoming, setShowIncoming],
+        outgoing: [showOutgoing, setShowOutgoing],
+        changes: [showChanges, setShowChanges],
+        worktree: [showWorktree, setShowWorktree],
+        base: [showBase, setShowBase]
+      }
+      const [isOpen, setter] = sections[section]
       if (!isOpen) {
         setter(true)
         setExpanded(true)
@@ -1094,7 +1215,7 @@ function MultiRepoSection({
         setter(false)
       }
     },
-    [showIncoming, showOutgoing, showChanges, expanded]
+    [showIncoming, showOutgoing, showChanges, showWorktree, showBase, expanded]
   )
 
   // Collapse all when trigger fires. Still honoured — a press must shut a row
@@ -1133,13 +1254,32 @@ function MultiRepoSection({
   )
 
   return (
-    <div>
-      {rule && <TreeRule depth={depth} />}
+    <div className={worktree ? 'relative' : undefined}>
+      {rule && <TreeRule depth={depth} insetPx={worktree ? WORKTREE_RULE_INSET_PX : 0} />}
+      {/* The guide line of a worktree block, row AND unfolded content: the
+          content sits far enough in to leave the line clear (see the depth
+          it takes below). The last worktree's line stops at its dot, which
+          sits one hairline lower when a rule opens the block. */}
+      {worktree && (
+        <span
+          className={`git-worktree-line ${worktree.last ? 'git-worktree-line--last' : ''}`}
+          style={{
+            left: 12 + depth * TREE_INDENT_PX + TREE_GLYPH_CENTER_PX,
+            ...(worktree.last
+              ? { height: `calc(var(--git-tree-row-h) / 2 + ${rule ? 1 : 0}px)` }
+              : {})
+          }}
+          aria-hidden
+        />
+      )}
       {/* Collapsible header */}
       <button
         data-tree-row={depth}
-        data-tree-kind="repo"
+        data-tree-kind={worktree ? 'worktree' : 'repo'}
         data-tree-name={name}
+        data-tree-worktree-of={wt?.of}
+        data-tree-worktree-last={worktree?.last ? 'true' : undefined}
+        data-tree-has-worktrees={hasWorktrees ? 'true' : undefined}
         // Same marker the directory rows carry. A repo row said nothing about
         // whether it was open, so a spec could only infer it from what was
         // rendered below — which reads as "shut" just as well when the folder
@@ -1157,6 +1297,21 @@ function MultiRepoSection({
         draggable
         onDragStart={handleDragStart}
       >
+        {/* The stem the worktree guides below continue — folded rows only:
+            unfolded, the repo's own lists sit between and the line would cut
+            through their labels. */}
+        {hasWorktrees && !expanded && (
+          <span
+            className="git-worktree-stem"
+            style={{ left: 12 + depth * TREE_INDENT_PX + TREE_GLYPH_CENTER_PX }}
+            aria-hidden
+          />
+        )}
+        {/* A worktree row leads with its guide and folds AFTER it: the dot is
+            the row's place under its repo, the chevron its own fold, so the
+            name lands one step deeper than the repo's and reads as nested. */}
+        {worktree && <WorktreeGuide last={worktree.last} merged={!!wt?.merged} />}
+
         {/* Chevron */}
         <svg
           width="10"
@@ -1170,20 +1325,79 @@ function MultiRepoSection({
           <path d="M3 1.5l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
 
-        <RepoGlyph />
+        {!worktree && <RepoGlyph />}
 
         {/* Repo name — long hover reveals the full path */}
         <Tooltip delayDuration={2000}>
           <TooltipTrigger asChild>
-            <span className="text-text-primary font-medium truncate">{name}</span>
+            <span
+              className="git-tree-row-name text-text-primary font-medium truncate"
+              // The floor is five characters. A shorter name keeps exactly its
+              // own width instead: the floor would give it a wider box than
+              // its text, and a button centres its text, so the slack showed
+              // as a gap before the name (Romain, on the app).
+              style={name.length <= 5 ? { minWidth: 'max-content' } : undefined}
+            >
+              {name}
+            </span>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="font-mono">
             {shortenPath(repoPath)}
+            {/* The base stays reachable at any width: a narrow row hides the
+                badge that names it (verifier round 3, finding 13). */}
+            {wt?.base && (
+              <div className="text-text-tertiary">
+                {wt.behind > 0
+                  ? `cut from ${wt.base}, ${wt.behind} behind, ${wt.ahead} ahead`
+                  : `cut from ${wt.base}, ${wt.ahead} ahead`}
+                {wt.merged ? ` · merged into ${wt.baseLabel}` : ''}
+              </div>
+            )}
           </TooltipContent>
         </Tooltip>
 
-        {/* Branch badge */}
-        <span className="text-text-tertiary truncate">{status.branch}</span>
+        {/* Branch badge. It gives way before the name does: in a narrow panel a
+            worktree row carries up to four badges, and a name cut to one letter
+            says less than a branch cut short. */}
+        <span className="git-tree-row-branch text-text-tertiary truncate [flex-shrink:4]">
+          {status.branch}
+        </span>
+
+        {/* The base badge (PRDCT-2356): the branch this worktree was cut from
+            and how far it has moved since — its own toggle when it has. */}
+        {wt?.base && (
+          <GitBaseBadge
+            label={wt.baseLabel}
+            behind={wt.behind}
+            active={showBase}
+            onToggle={(e) => toggleSection(e, 'base')}
+            title={
+              wt.behind > 0
+                ? `Cut from ${wt.base}, which has ${wt.behind} commit${wt.behind === 1 ? '' : 's'} this worktree lacks — show what they change`
+                : `Cut from ${wt.base}, which has not moved since`
+            }
+          />
+        )}
+
+        {/* The worktree's own commits since the cut, beside the base badge:
+            the two purple numbers are one comparison, against the base; the
+            right-hand group is against the remote and the working tree. */}
+        {wt?.base && wt.ahead > 0 && (
+          <GitSyncBadge
+            tone="worktree"
+            count={wt.ahead}
+            active={showWorktree}
+            onToggle={(e) => toggleSection(e, 'worktree')}
+            // Merged, the commits are still not IN the base as commits (a
+            // squash lands one), so the count stays and reads muted.
+            muted={wt.merged}
+            title={
+              wt.merged
+                ? `${wt.ahead} commit${wt.ahead === 1 ? '' : 's'} since ${wt.baseLabel}, already merged into it — show what they changed`
+                : `Show what this worktree changed since ${wt.baseLabel}`
+            }
+          />
+        )}
 
         {/* Badges (right-aligned) — one toggle per section of the repo's content */}
         <span className="ml-auto flex-shrink-0 flex items-center gap-1.5">
@@ -1251,9 +1465,13 @@ function MultiRepoSection({
               status={status}
               refresh={refresh}
               fillHeight={false}
-              depth={depth + 1}
+              // A worktree's content sits two indents deeper than its repo's
+              // would: past the guide line, which runs on beside it.
+              depth={depth + (worktree ? 3 : 1)}
               showIncoming={showIncoming}
               showOutgoing={showOutgoing}
+              showWorktree={showWorktree}
+              showBase={showBase}
               showChanges={showChanges}
             />
           )}
@@ -1510,17 +1728,35 @@ export function MultiRepoGitPanel({
     [repos]
   )
 
+  // Each worktree's source, as discovery spells the source's path (PRDCT-2356):
+  // git names it resolved, the list may hold it through a symlink.
+  const roots = useMemo(
+    () => repos.map((r) => ({ path: r.path, repoRoot: r.status.repoRoot })),
+    [repos]
+  )
+  const withSources = useMemo(
+    () =>
+      nestedRepos.map((r) => ({
+        ...r,
+        worktreeOf: worktreeSourcePath(r.status.worktree?.of, roots)
+      })),
+    [nestedRepos, roots]
+  )
+
   // The spatial tree of the (nested) repos, rooted at the panel's folder.
   const repoTree = useMemo(
     () =>
       basePath
         ? buildRepoTree(
             basePath,
-            nestedRepos.map((r) => ({ name: r.name, path: r.path }))
+            withSources.map((r) => ({ name: r.name, path: r.path, worktreeOf: r.worktreeOf }))
           )
         : null,
-    [basePath, nestedRepos]
+    [basePath, withSources]
   )
+
+  // The flat fallback's order, with each repo's worktrees under it (PRDCT-2356).
+  const flatRows = useMemo(() => orderWithWorktrees(withSources), [withSources])
 
   // Folded directories, DERIVED from the panel's shared expanded set rather
   // than held here (see panel-expansion.ts). Two things follow from that, and
@@ -1600,6 +1836,7 @@ export function MultiRepoGitPanel({
     }
     const status = statusByPath.get(row.node.path)
     if (!status) return null
+    const isWorktree = row.node.type === 'worktree'
     return (
       <MultiRepoSection
         key={row.node.path}
@@ -1612,13 +1849,16 @@ export function MultiRepoGitPanel({
         selectedRepoPaths={selectedRepoPaths}
         depth={row.depth}
         rule={rule}
+        worktree={isWorktree ? { last: row.last ?? true } : undefined}
+        hasWorktrees={row.node.type === 'repo' && row.node.worktrees.length > 0}
       />
     )
   }
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex-1 overflow-y-auto">
+      {/* The list is the container the narrow-row rules read: see .git-repo-list. */}
+      <div className="git-repo-list flex-1 overflow-y-auto">
         {/* Root repo */}
         {rootRepo && (
           <MultiRepoSection
@@ -1654,7 +1894,7 @@ export function MultiRepoGitPanel({
         {!(hasRoot && nestedDocked) &&
           (treeRows
             ? treeRows.map((row, i) => renderTreeRow(row, i))
-            : nestedRepos.map((repo, i) => (
+            : flatRows.map(({ repo, worktree, last }, i) => (
                 <MultiRepoSection
                   key={repo.path}
                   name={repo.name}
@@ -1665,6 +1905,8 @@ export function MultiRepoGitPanel({
                   onSelect={handleRepoSelect}
                   selectedRepoPaths={selectedRepoPaths}
                   rule={i > 0}
+                  worktree={worktree ? { last } : undefined}
+                  hasWorktrees={!worktree && flatRows[i + 1]?.worktree === true}
                 />
               )))}
         <ScrollGutter />

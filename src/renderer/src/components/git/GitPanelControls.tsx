@@ -18,13 +18,18 @@ import { useGitBatch } from './git-batch-context'
 // Sync badges — the ↓ / ↑ / + counters that toggle a repo's sections open
 // ---------------------------------------------------------------------------
 
-export type GitSyncTone = 'incoming' | 'outgoing' | 'changes'
+export type GitSyncTone = 'incoming' | 'outgoing' | 'changes' | 'worktree'
 
-/** One text color per tone — the badge derives its border and fill from it. */
+/** One text color per tone — the badge derives its border and fill from it.
+ *  A worktree's own commits take the purple of the modified tone (PRDCT-2356),
+ *  the same family as a file you changed since both are your work in
+ *  progress, on a token of its own restated per theme so the light grounds
+ *  get a violet that still reads at 10px. */
 const TONE_TEXT_CLASS: Record<GitSyncTone, string> = {
   incoming: 'text-git-incoming',
   outgoing: 'text-green-400',
-  changes: 'text-text-secondary'
+  changes: 'text-text-secondary',
+  worktree: 'text-git-worktree'
 }
 
 /**
@@ -37,13 +42,16 @@ export function GitSyncBadge({
   count,
   active,
   onToggle,
-  title
+  title,
+  muted = false
 }: {
   tone: GitSyncTone
   count: number
   active: boolean
   onToggle: (e: React.MouseEvent) => void
   title: string
+  /** Still true, no longer news: a worktree's count once its work is merged (PRDCT-2356). */
+  muted?: boolean
 }): React.JSX.Element {
   return (
     <span
@@ -59,14 +67,79 @@ export function GitSyncBadge({
           onToggle(e as unknown as React.MouseEvent)
         }
       }}
-      className={`git-sync-badge ${TONE_TEXT_CLASS[tone]} ${active ? 'git-sync-badge-on' : ''}`}
+      className={`git-sync-badge ${TONE_TEXT_CLASS[tone]} ${active ? 'git-sync-badge-on' : ''} ${
+        muted ? 'git-sync-badge-muted' : ''
+      }`}
+      data-git-sync-tone={tone}
+      data-git-sync-muted={muted ? 'true' : undefined}
     >
-      {tone === 'changes' ? (
+      {tone === 'changes' || tone === 'worktree' ? (
         <PlusIcon className="w-2.5 h-2.5" strokeWidth={2.5} />
       ) : (
         <span aria-hidden>{tone === 'incoming' ? '↓' : '↑'}</span>
       )}
       {count}
+    </span>
+  )
+}
+
+/**
+ * The base badge of a worktree row (PRDCT-2356): the branch the worktree was
+ * cut from, and how far that branch has moved since as `−N`. With a drift it
+ * is a toggle like the counters, opening the list of what the base gained;
+ * with none it is a label, there being nothing to open.
+ */
+export function GitBaseBadge({
+  label,
+  behind,
+  active,
+  onToggle,
+  title
+}: {
+  label: string
+  behind: number
+  active: boolean
+  onToggle: (e: React.MouseEvent) => void
+  title: string
+}): React.JSX.Element {
+  if (behind <= 0) {
+    // A label, not a button: the click must not reach the row beneath, which
+    // would unfold it for nothing (verifier round 1, finding 3).
+    return (
+      <span
+        className={`git-sync-badge git-sync-badge-static ${TONE_TEXT_CLASS.worktree}`}
+        title={title}
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+        data-git-base-badge="label"
+      >
+        <span className="git-base-badge-name">{label}</span>
+      </span>
+    )
+  }
+  // The base's name folds away in a narrow row (the container query in the
+  // stylesheet) and the drift stays; the title and the accessible name keep
+  // the base for the reader who asks.
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      title={title}
+      aria-label={`${label} −${behind}`}
+      aria-pressed={active}
+      onClick={onToggle}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onToggle(e as unknown as React.MouseEvent)
+        }
+      }}
+      className={`git-sync-badge ${TONE_TEXT_CLASS.worktree} ${active ? 'git-sync-badge-on' : ''}`}
+      data-git-base-badge="drift"
+    >
+      <span className="git-base-badge-name">{label}</span>
+      <span aria-hidden>−{behind}</span>
     </span>
   )
 }
