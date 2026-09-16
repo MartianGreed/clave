@@ -129,9 +129,15 @@ describe('withDirToggled', () => {
     )
   })
 
-  it('collapsing takes the subtree with it', () => {
+  it('collapsing hides the subtree without forgetting it', () => {
+    // Fold `labs` and the folders open beneath it stay in the set: they are
+    // out of sight while the parent is shut, and back the moment it reopens.
+    // A fold that cleared them turned every stray fold of a parent into a
+    // Collapse All of its branch.
     const start = new Set(['labs', 'labs/products', 'labs/products/clave', 'company'])
-    expect(withDirToggled(start, 'labs', false)).toEqual(new Set(['company']))
+    const folded = withDirToggled(start, 'labs', false)
+    expect(folded).toEqual(new Set(['labs/products', 'labs/products/clave', 'company']))
+    expect(withDirToggled(folded, 'labs', true)).toEqual(start)
   })
 
   it('folding a compacted row is the exact inverse of expanding it', () => {
@@ -185,8 +191,11 @@ describe('withDirToggled', () => {
     expect(withDirToggled(open, 'folder/sub/deep', false)).toEqual(
       new Set(['folder', 'folder/sub'])
     )
-    // And one level up behaves the same way: shut the middle, keep the root.
-    expect(withDirToggled(open, 'folder/sub', false)).toEqual(new Set(['folder']))
+    // And one level up behaves the same way: shut the middle, keep the root —
+    // and keep the leaf beneath it too, hidden until the middle reopens.
+    expect(withDirToggled(open, 'folder/sub', false)).toEqual(
+      new Set(['folder', 'folder/sub/deep'])
+    )
   })
 
   it('a compacted row folds its chain because it says how long the chain is', () => {

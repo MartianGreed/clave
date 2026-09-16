@@ -1317,7 +1317,17 @@ function RepoDirRow({
       data-tree-collapsed={collapsed ? 'true' : undefined}
       className="git-tree-row w-full flex items-center gap-1.5 pr-3 text-xs hover:bg-surface-100 transition-colors"
       style={{ paddingLeft: 12 + depth * TREE_INDENT_PX }}
-      onClick={onToggle}
+      // A double-click is one gesture, not two toggles. Every click used to
+      // toggle, so a double-click on an open folder folded it and reopened it
+      // in the same breath — and, while a fold still cleared the subtree from
+      // the shared set, reopened it with everything beneath folded flat, which
+      // read as Collapse All. `detail` is the browser's own click count, so the
+      // second click of a double-click acts on nothing and the row lands where
+      // the first click put it, the same as the Files tab's rows.
+      onClick={(e) => {
+        if (e.detail > 1) return
+        onToggle()
+      }}
     >
       <svg
         width="10"

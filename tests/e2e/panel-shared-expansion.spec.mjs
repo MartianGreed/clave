@@ -363,6 +363,61 @@ export async function run(t) {
       fileDir(afterToggle, 'labs')?.expanded === true,
       afterToggle.filter((r) => r.dir)
     )
+
+    // ── A double-click on a git folder is one gesture, and a fold forgets nothing
+    // Reported 16 September 2026: with a path walked open, a double-click on
+    // one of its folders "collapses the whole tree like Collapse All". Two
+    // faults stacked: every click toggled, so the double-click folded the
+    // folder and reopened it; and a fold cleared the subtree from the shared
+    // set, so it reopened onto a branch folded flat. Each is checked on its
+    // own — remove the click guard and the first check goes red, make fold
+    // clear the subtree again and the second does.
+    await openTab(win, 'Git')
+    const gitRow = (name) => `[data-tree-row][data-tree-kind="dir"][data-tree-name="${name}"]`
+    // `labs` is open from the Files step above; walk on to `products`.
+    await clickGitDir(win, 'products')
+    const walked = await readGitTree(win)
+    const gitDirAt = (rows, name) => rows.find((r) => r.kind === 'dir' && r.name === name)
+    t.check(
+      'a path is walked open in the git tab',
+      gitDirAt(walked, 'labs')?.collapsed === false &&
+        gitDirAt(walked, 'products')?.collapsed === false,
+      walked
+    )
+
+    // A real double-click: two mouse clicks, the second carrying detail=2.
+    await win.dblclick(gitRow('labs'))
+    await win.waitForTimeout(1200)
+    const afterDbl = await readGitTree(win)
+    t.check(
+      'a double-click on an open folder folds it once — it does not reopen',
+      gitDirAt(afterDbl, 'labs')?.collapsed === true,
+      afterDbl
+    )
+
+    await clickGitDir(win, 'labs')
+    const reopened = await readGitTree(win)
+    t.check(
+      'reopening the folder brings back the folder that was open beneath it',
+      gitDirAt(reopened, 'labs')?.collapsed === false &&
+        gitDirAt(reopened, 'products')?.collapsed === false,
+      reopened
+    )
+    // A sibling nobody opened must not come along for the ride.
+    t.check(
+      'and a sibling nobody opened stays shut',
+      gitDirAt(reopened, 'services')?.collapsed === true,
+      reopened
+    )
+
+    await openTab(win, 'Files')
+    const filesReopened = await readFileTree(win)
+    t.check(
+      'the files tab shows the same remembered path',
+      fileDir(filesReopened, 'labs')?.expanded === true &&
+        fileDir(filesReopened, 'products')?.expanded === true,
+      filesReopened.filter((r) => r.dir)
+    )
   } finally {
     await app.close()
     rmSync(ROOT, { recursive: true, force: true })

@@ -116,10 +116,22 @@ export function collapsedFromExpanded(
  * shut while the Files tab still drew the path open — precisely the
  * disagreement this module exists to prevent, in the direction it advertises.
  *
- * Clicking one row therefore shuts the whole chain it stands for: the path,
- * everything under it, and the folders above it THAT THE ROW ITSELF COMPACTED.
- * A row that reads as one thing acts as one thing, and expand-then-fold
- * returns the set to where it started.
+ * Clicking one row therefore shuts the whole chain it stands for: the path and
+ * the folders above it THAT THE ROW ITSELF COMPACTED. A row that reads as one
+ * thing acts as one thing, and expand-then-fold returns the set to where it
+ * started.
+ *
+ * What is OPEN BENEATH the folded row stays in the set. A folded folder hides
+ * its subtree, it does not forget it: reopen the folder and the path you had
+ * walked beneath it is back, the way Finder and VS Code remember a branch. The
+ * fold used to clear the subtree too, so any fold of a parent — a stray click,
+ * the first half of a double-click — threw away every folder opened under it,
+ * and reopening the parent greeted you with the branch folded flat, as if
+ * Collapse All had been pressed. A row that is out of sight is out of the
+ * derivation anyway: the Files tree only draws children of an open node and
+ * the Git tree only walks into folders it has not folded, so a remembered
+ * subtree costs nothing while its parent is shut. Collapse All is still the
+ * one gesture that empties the set (session-store's triggerCollapseAll).
  *
  * `segments` is where that stops, and it is the whole reason this takes a
  * fourth argument. It is how many folders the clicked row stands for — the
@@ -147,14 +159,9 @@ export function withDirToggled(
     return next
   }
   // The path itself, and the folders above it this row compacted — never the
-  // ones the user opened by their own clicks.
+  // ones the user opened by their own clicks, and never the ones open beneath
+  // it, which the fold hides and a reopen brings back.
   const chain = ancestorsOf(relPath)
   for (const a of chain.slice(Math.max(0, chain.length - segments))) next.delete(a)
-  // And everything under it, or reopening the parent would spring the subtree
-  // back open beneath a row the user had just folded away.
-  const prefix = relPath + '/'
-  for (const p of next) {
-    if (p.startsWith(prefix)) next.delete(p)
-  }
   return next
 }
