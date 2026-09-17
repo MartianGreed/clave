@@ -198,6 +198,16 @@ export async function run(t) {
     const panel = win.locator(`[data-conversation-id="${CLAUDE}"]`)
     const composer = panel.getByRole('textbox', { name: 'Message', exact: true })
     await composer.waitFor()
+    t.equal(
+      'sent messages have no repeated You label',
+      await panel.locator('article').getByText('You', { exact: true }).count(),
+      0
+    )
+    t.equal(
+      'received messages have no repeated provider label',
+      await panel.locator('article').getByText('Claude', { exact: true }).count(),
+      0
+    )
     const calls = (type) =>
       app.evaluate(
         (_electron, type) => globalThis.__conversationUX.calls.filter((call) => call.type === type),
@@ -410,6 +420,27 @@ export async function run(t) {
         `${theme} theme is applied`,
         await win.evaluate(() => document.documentElement.dataset.theme),
         theme
+      )
+      const messages = await panel.evaluate((element) => {
+        const sent = element.querySelector('article[data-role="user"]')
+        const received = element.querySelector('article[data-role="assistant"]')
+        return {
+          sent: sent && getComputedStyle(sent).backgroundColor,
+          received: received && getComputedStyle(received).backgroundColor,
+          surface: getComputedStyle(element).backgroundColor,
+          labelled:
+            sent?.getAttribute('aria-label') === 'user message' &&
+            received?.getAttribute('aria-label') === 'assistant message'
+        }
+      })
+      t.check(
+        `${theme} distinguishes sent and received messages without author labels`,
+        messages.labelled &&
+          !!messages.sent &&
+          messages.sent !== 'rgba(0, 0, 0, 0)' &&
+          messages.sent !== messages.surface &&
+          messages.received === 'rgba(0, 0, 0, 0)',
+        messages
       )
       await panel.locator('summary').first().click()
       const fit = await panel.evaluate((element) => {

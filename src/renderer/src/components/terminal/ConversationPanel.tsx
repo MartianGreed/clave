@@ -410,9 +410,6 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
                     className="conversation-message"
                     data-role={entry.role}
                   >
-                    <div className="conversation-author">
-                      {entry.role === 'user' ? 'You' : provider}
-                    </div>
                     {entry.role === 'user' ? (
                       <p className="conversation-user-text">{entry.text}</p>
                     ) : (

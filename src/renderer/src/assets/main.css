@@ -4037,10 +4037,9 @@ button.extension-card:hover {
   border-radius: var(--radius-xl);
   background: var(--surface-100);
 }
-.conversation-author { color: var(--text-secondary); font-size: var(--text-xs); margin-bottom: calc(var(--spacing) * 2); }
 .conversation-user-text { white-space: pre-wrap; font-size: var(--text-sm); line-height: 1.7; }
 /* Compact Markdown normally pads a whole preview. A message already owns its
-   spacing; removing that extra inset aligns prose with its author and tools. */
+   spacing; removing that extra inset aligns prose with tools and the composer. */
 .conversation-message .prose-preview { padding: 0; min-width: 0; }
 .conversation-message pre,
 .conversation-message table { max-width: 100%; }
