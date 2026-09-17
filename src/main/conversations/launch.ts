@@ -1,10 +1,7 @@
 import { z } from 'zod'
 import type { PtySpawnOptions } from '../pty-manager'
-import {
-  CONVERSATION_PROVIDERS,
-  type ConversationCommand,
-  type ConversationProvider
-} from '../../shared/agent-session'
+import { type ConversationCommand, type ConversationProvider } from '../../shared/agent-session'
+import { artifactInputSchema, providerIdSchema } from './plugin-records'
 
 /** Adoption never converts an existing terminal process into a protocol session. */
 export function conversationProviderForSpawn(
@@ -24,7 +21,7 @@ const sessionId = z
   .regex(/^conversation-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
 const options = z
   .object({
-    provider: z.enum(CONVERSATION_PROVIDERS),
+    provider: providerIdSchema,
     cwd: text,
     title: z.string().max(200).optional(),
     workspaceId: text.optional(),
@@ -56,7 +53,15 @@ const command = z.discriminatedUnion('type', [
     .strict(),
   z.object({ type: z.literal('interrupt'), sessionId }).strict(),
   z.object({ type: z.literal('respond'), sessionId, response }).strict(),
-  z.object({ type: z.literal('close'), sessionId }).strict()
+  z.object({ type: z.literal('close'), sessionId }).strict(),
+  z
+    .object({
+      type: z.literal('publish-artifact'),
+      sessionId,
+      artifact: artifactInputSchema,
+      commandId: z.string().min(1).max(128)
+    })
+    .strict()
 ])
 
 export function parseConversationCommand(value: unknown): ConversationCommand {

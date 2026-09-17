@@ -11,6 +11,13 @@ import {
   type AgentResponse
 } from '../../shared/agent-session'
 import type { AdapterLaunch } from './adapter'
+import type {
+  ArtifactInput,
+  ConversationArtifact,
+  PluginBindings,
+  PluginJob,
+  PluginPin
+} from '../../shared/runtime-plugins'
 import { servicePaths, receive, transmit, type ServiceCommand } from './wire'
 
 interface ClientOptions {
@@ -48,6 +55,20 @@ export class ConversationClient {
         return await this.attach(paths.socket, token)
       } catch (error) {
         if ((error as Error).message === 'Conversation protocol mismatch') throw error
+        if ((error as Error).message === 'Conversation handshake rejected') {
+          let old: ConversationClient | undefined
+          try {
+            old = await this.attach(paths.socket, readFileSync(paths.token, 'utf8'), 1)
+          } catch {
+            /* Not a legacy owner. */
+          }
+          if (old) {
+            old.disconnect()
+            throw new Error(
+              'This profile has a conversation service from an older build. Its sessions were left running. Use a separate dev:ui profile or restart that service before using runtime plugins.'
+            )
+          }
+        }
         if (!spawned) {
           spawned = true
           const child = spawn(
@@ -68,7 +89,11 @@ export class ConversationClient {
     throw new Error('Could not connect to the conversation service')
   }
 
-  static attach(path: string, token: string): Promise<ConversationClient> {
+  static attach(
+    path: string,
+    token: string,
+    protocolVersion = SESSION_PROTOCOL_VERSION
+  ): Promise<ConversationClient> {
     return new Promise((resolve, reject) => {
       const socket = createConnection(path)
       const client = new ConversationClient(socket)
@@ -85,10 +110,10 @@ export class ConversationClient {
         clearTimeout(timer)
         if (!ready) reject(new Error('Conversation handshake rejected'))
       })
-      socket.once('connect', () => transmit(socket, { hello: SESSION_PROTOCOL_VERSION, token }))
+      socket.once('connect', () => transmit(socket, { hello: protocolVersion, token }))
       receive(socket, (message) => {
         if (!ready) {
-          if (!('ready' in message) || message.ready !== SESSION_PROTOCOL_VERSION) {
+          if (!('ready' in message) || message.ready !== protocolVersion) {
             clearTimeout(timer)
             socket.destroy()
             reject(new Error('Conversation protocol mismatch'))
@@ -152,6 +177,34 @@ export class ConversationClient {
   }
   close(sessionId: string): Promise<void> {
     return this.request({ type: 'close', sessionId })
+  }
+  bindPlugins(sessionId: string, bindings: PluginBindings): Promise<void> {
+    return this.request({ type: 'bind-plugins', sessionId, bindings })
+  }
+  pinView(sessionId: string, pin: PluginPin): Promise<PluginPin> {
+    return this.request({ type: 'pin-view', sessionId, pin })
+  }
+  publishArtifact(
+    sessionId: string,
+    artifact: ArtifactInput,
+    commandId: string
+  ): Promise<ConversationArtifact> {
+    return this.request({ type: 'publish-artifact', sessionId, artifact, commandId })
+  }
+  executePluginJob(
+    sessionId: string,
+    plugin: PluginPin,
+    argv: string[],
+    requestId: string,
+    env: Record<string, string>
+  ): Promise<PluginJob> {
+    return this.request({ type: 'plugin-job-execute', sessionId, plugin, argv, requestId, env })
+  }
+  readPluginJob(sessionId: string, plugin: PluginPin, jobId: string): Promise<PluginJob> {
+    return this.request({ type: 'plugin-job-read', sessionId, plugin, jobId })
+  }
+  cancelPluginJob(sessionId: string, plugin: PluginPin, jobId: string): Promise<PluginJob> {
+    return this.request({ type: 'plugin-job-cancel', sessionId, plugin, jobId })
   }
   updateMetadata(
     sessionId: string,

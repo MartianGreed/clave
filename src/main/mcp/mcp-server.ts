@@ -719,6 +719,23 @@ function buildServer(callerSessionId: string | undefined): McpServer {
   )
 
   server.registerTool(
+    'clave_publish_artifact',
+    {
+      description:
+        'Show a generated report, HTML page, Markdown document, or structured tool result in your current Clave conversation. Clave stores the content and plain-text fallback, so it stays readable without a UI plugin. HTML runs isolated with no privileged access. Only authenticated conversation sessions can publish; legacy terminal tabs are not supported. Reuse commandId only when retrying the same artifact.',
+      inputSchema: {
+        title: z.string().min(1).max(200),
+        mimeType: z.enum(['text/html', 'text/markdown', 'text/plain', 'application/json']),
+        content: z.string().max(128 * 1024),
+        fallback: z.string().min(1).max(32 * 1024),
+        sourceUrl: z.string().url().optional(),
+        commandId: z.string().min(1).max(128).describe('Stable ID for this publication, such as test-report-1')
+      }
+    },
+    (args) => run('publishArtifact', { ...args, callerSessionId })
+  )
+
+  server.registerTool(
     'clave_send_to_session',
     {
       description:

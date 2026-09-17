@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import type { Socket } from 'node:net'
 import type { ConversationCommand, ConversationEnvelope } from '../../shared/agent-session'
 import type { AdapterLaunch } from './adapter'
+import type { PluginBindings, PluginPin } from '../../shared/runtime-plugins'
 
 export const MAX_FRAME = 8 * 1024 * 1024
 export type ServiceCommand =
@@ -12,6 +13,18 @@ export type ServiceCommand =
       sessionId: string
       metadata: { title?: string; workspaceId?: string | null; windowKey?: string }
     }
+  | { type: 'bind-plugins'; sessionId: string; bindings: PluginBindings }
+  | { type: 'pin-view'; sessionId: string; pin: PluginPin }
+  | {
+      type: 'plugin-job-execute'
+      sessionId: string
+      plugin: PluginPin
+      argv: string[]
+      requestId: string
+      env: Record<string, string>
+    }
+  | { type: 'plugin-job-read'; sessionId: string; plugin: PluginPin; jobId: string }
+  | { type: 'plugin-job-cancel'; sessionId: string; plugin: PluginPin; jobId: string }
 export interface WireRequest {
   id: number
   command: ServiceCommand

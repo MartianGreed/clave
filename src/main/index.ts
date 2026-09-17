@@ -41,6 +41,7 @@ import { sweepSessionMcpConfigs } from './mcp/mcp-runtime'
 import { registerPreviewScheme, installPreviewProtocol } from './preview-protocol'
 import { hardenViewHost, installViewGuestPolicy } from './view-guests'
 import { disconnectConversationClient, isConversationId } from './conversations/runtime'
+import { attachRuntimePluginHost } from './runtime-plugins/host'
 
 // Scheme privileges must be declared before app ready.
 registerPreviewScheme()
@@ -230,6 +231,7 @@ function createWindow(entry: PersistedWindow): BrowserWindow {
   })
 
   hardenViewHost(win)
+  attachRuntimePluginHost(win.webContents)
 
   win.webContents.setWindowOpenHandler((details) => {
     if (details.url.startsWith('clave://')) {

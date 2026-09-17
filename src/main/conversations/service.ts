@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   mkdirSync,
   readdirSync,
@@ -12,7 +12,6 @@ import {
 import { join } from 'node:path'
 import {
   applyConversationEvent,
-  CONVERSATION_PROVIDERS,
   type ConversationOptions,
   type ConversationSnapshot,
   type ConversationEnvelope,
@@ -21,6 +20,18 @@ import {
 } from '../../shared/agent-session'
 import type { AdapterFactory, AdapterLaunch, ConversationAdapter } from './adapter'
 import { MAX_FRAME } from './wire'
+import type {
+  ArtifactInput,
+  ConversationArtifact,
+  PluginBindings,
+  PluginPin
+} from '../../shared/runtime-plugins'
+import {
+  parseArtifactInput,
+  parsePluginBindings,
+  parsePluginPin,
+  providerIdSchema
+} from './plugin-records'
 
 interface RecordState {
   snapshot: ConversationSnapshot
@@ -65,7 +76,7 @@ const OPTION_KEYS = [
 
 /** Allowlist prevents accidental persistence of a launch environment supplied by a caller. */
 function safeOptions(options: ConversationOptions): ConversationOptions {
-  if (!CONVERSATION_PROVIDERS.includes(options.provider) || typeof options.cwd !== 'string')
+  if (!providerIdSchema.safeParse(options.provider).success || typeof options.cwd !== 'string')
     throw new Error('Invalid conversation options')
   const result = {} as ConversationOptions
   for (const key of OPTION_KEYS) {
@@ -80,6 +91,7 @@ function safeOptions(options: ConversationOptions): ConversationOptions {
       Object.assign(result, { [key]: value })
     }
   }
+  if (options.pluginBindings) result.pluginBindings = parsePluginBindings(options.pluginBindings)
   return result
 }
 
@@ -277,7 +289,7 @@ export class ConversationService {
     this.flush(live)
     if (bytes(live.record.snapshot) > MAX_FRAME - 1024)
       throw new Error('Conversation snapshot exceeds transport limit')
-    return structuredClone(live.record.snapshot)
+    return { ...structuredClone(live.record.snapshot), providerConnected: !!live.adapter }
   }
 
   updateMetadata(
@@ -302,6 +314,65 @@ export class ConversationService {
       status: live.record.snapshot.session.status,
       error: live.record.snapshot.session.error
     })
+  }
+
+  bindPlugins(id: string, bindings: PluginBindings): void {
+    const live = this.get(id)
+    const validated = parsePluginBindings(bindings)
+    const existing = live.record.snapshot.session.pluginBindings
+    if (existing) {
+      if (JSON.stringify(existing.provider) !== JSON.stringify(validated.provider)) {
+        throw new Error('Conversation provider revision is already pinned')
+      }
+      return
+    }
+    live.record.snapshot.session.pluginBindings = validated
+    this.updateMetadata(id, {})
+  }
+
+  pinView(id: string, pin: PluginPin): PluginPin {
+    const live = this.get(id)
+    const validated = parsePluginPin(pin)
+    const bindings = live.record.snapshot.session.pluginBindings
+    if (!bindings) throw new Error('Conversation plugins have not been bound')
+    const existing = bindings.views.find((item) => item.pluginId === validated.pluginId)
+    if (existing) {
+      if (JSON.stringify(existing) !== JSON.stringify(validated)) {
+        throw new Error('This conversation already uses another revision of the view plugin')
+      }
+      return structuredClone(existing)
+    }
+    if (bindings.views.length >= 64) throw new Error('Conversation view plugin limit reached')
+    bindings.views.push(validated)
+    this.updateMetadata(id, {})
+    return structuredClone(validated)
+  }
+
+  publishArtifact(id: string, input: ArtifactInput, commandId: string): ConversationArtifact {
+    const live = this.get(id)
+    this.flush(live)
+    if (live.record.snapshot.session.status === 'closed') throw new Error('Conversation is closed')
+    if (typeof commandId !== 'string' || !commandId || commandId.length > 128)
+      throw new Error('Invalid command ID')
+    const data = parseArtifactInput(input)
+    const artifact: ConversationArtifact = {
+      kind: 'artifact',
+      id: `artifact-${createHash('sha256').update(`${id}:${commandId}`).digest('hex')}`,
+      ...data
+    }
+    const existing = live.record.snapshot.entries.find((entry) => entry.id === artifact.id)
+    if (existing) {
+      if (JSON.stringify(existing) !== JSON.stringify(artifact))
+        throw new Error('Artifact command ID already used')
+      return structuredClone(artifact)
+    }
+    if (live.record.capacityReached) throw new Error(CAPACITY_ERROR)
+    if (live.record.commands.length >= MAX_COMMANDS)
+      throw new Error('Conversation command limit reached')
+    live.record.commands.push(`artifact:${commandId}`)
+    this.emit(live, { type: 'artifact', artifact })
+    if (live.record.capacityReached) throw new Error(CAPACITY_ERROR)
+    return structuredClone(artifact)
   }
 
   private async start(live: Live, launch: AdapterLaunch): Promise<void> {
@@ -386,7 +457,12 @@ export class ConversationService {
   async send(id: string, text: string, commandId: string, launch?: AdapterLaunch): Promise<void> {
     const live = this.get(id)
     this.flush(live)
-    if (typeof commandId !== 'string' || !commandId || commandId.length > 200)
+    if (
+      typeof commandId !== 'string' ||
+      !commandId ||
+      commandId.length > 200 ||
+      commandId.startsWith('plugin:')
+    )
       throw new Error('Invalid command ID')
     if (live.record.commands.includes(commandId)) return
     if (typeof text !== 'string' || !text.trim() || Buffer.byteLength(text) > 128 * 1024)

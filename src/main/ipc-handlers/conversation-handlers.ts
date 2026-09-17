@@ -28,6 +28,8 @@ export function registerConversationHandlers(): void {
         return (await conversationClient()).interrupt(command.sessionId)
       case 'respond':
         return (await conversationClient()).respond(command.sessionId, command.response)
+      case 'publish-artifact':
+        return (await conversationClient()).publishArtifact(command.sessionId, command.artifact, command.commandId)
     }
   })
 }

@@ -10,6 +10,48 @@ afterEach(() =>
   directories.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }))
 )
 
+test('artifacts stay readable without their plugin and publishing is idempotent', async () => {
+  const f = fixture()
+  const service = new ConversationService(f.directory, f.factory)
+  const { session } = await service.create(f.options, f.launch)
+  const input = {
+    title: 'Report',
+    mimeType: 'text/html' as const,
+    content: '<h1>Report</h1>',
+    fallback: 'Report results'
+  }
+  const artifact = service.publishArtifact(session.id, input, 'report-one')
+  expect(service.publishArtifact(session.id, input, 'report-one')).toEqual(artifact)
+  expect(() =>
+    service.publishArtifact(session.id, { ...input, content: 'changed' }, 'report-one')
+  ).toThrow()
+  const restored = new ConversationService(f.directory, () => {
+    throw new Error('Plugin missing')
+  })
+  expect(restored.snapshot(session.id).entries).toEqual([artifact])
+  expect(f.adapter.start).not.toHaveBeenCalled()
+})
+
+test('provider and first-use view bindings survive restart and cannot be replaced', async () => {
+  const f = fixture()
+  const service = new ConversationService(f.directory, f.factory)
+  const provider = { pluginId: 'internal.echo', version: '1.0.0', revision: 'first' }
+  const view = { pluginId: 'internal.report', version: '1.0.0', revision: 'original' }
+  const options = {
+    ...f.options,
+    provider: 'internal.echo',
+    pluginBindings: { provider, views: [] }
+  }
+  const { session } = await service.create(options, { ...f.launch, options })
+  service.pinView(session.id, view)
+  expect(() => service.pinView(session.id, { ...view, revision: 'newer' })).toThrow()
+  expect(() =>
+    service.bindPlugins(session.id, { provider: { ...provider, revision: 'newer' }, views: [] })
+  ).toThrow()
+  const restored = new ConversationService(f.directory, f.factory)
+  expect(restored.snapshot(session.id).session.pluginBindings).toEqual({ provider, views: [view] })
+})
+
 test('interrupting a running turn preserves the provider for the next turn', async () => {
   const f = fixture()
   const service = new ConversationService(f.directory, f.factory)

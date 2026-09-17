@@ -21,6 +21,8 @@ import { windowRegistry } from '../window-registry'
 import { windowState } from '../window-state'
 import { conversationProviderForSpawn } from './launch'
 import { addTrustedRoot, isUnderTrustedRoot } from '../ipc-handlers/clave-file-handlers'
+import { runtimePluginRegistry } from '../runtime-plugins/registry-runtime'
+import { revokePluginSessionViews } from '../runtime-plugins/host'
 
 let connection: Promise<ConversationClient> | undefined
 
@@ -88,10 +90,14 @@ async function requireWorkspaceTrust(win: BrowserWindow | null, cwd: string): Pr
 
 function launchFor(options: ConversationOptions, sessionId?: string): AdapterLaunch {
   validateDirectory(options.cwd)
+  const registered = runtimePluginRegistry().resolveProvider(
+    options.provider,
+    options.pluginBindings?.provider
+  )
   const profile =
-    options.provider === 'opencode'
-      ? { command: ['opencode'], additionalArgs: [] }
-      : launchProfileManager.resolve(options.provider, options.workspaceId, options.launchProfileId)
+    options.provider === 'claude' || options.provider === 'codex' || options.provider === 'pi'
+      ? launchProfileManager.resolve(options.provider, options.workspaceId, options.launchProfileId)
+      : { command: registered.command, additionalArgs: [] }
   const env = buildSpawnEnv(
     getLoginShellEnv(),
     options.provider === 'claude'
@@ -134,11 +140,12 @@ export async function createConversation(
   await requireWorkspaceTrust(win, input.cwd)
   const workspaceId = input.workspaceId ?? windowRegistry.getWorkspaceForWindow(win.id) ?? undefined
   const profile =
-    input.provider === 'opencode'
-      ? undefined
-      : launchProfileManager.resolve(input.provider, workspaceId, input.launchProfileId)
+    input.provider === 'claude' || input.provider === 'codex' || input.provider === 'pi'
+      ? launchProfileManager.resolve(input.provider, workspaceId, input.launchProfileId)
+      : undefined
   const options: ConversationOptions = {
     ...input,
+    pluginBindings: runtimePluginRegistry().bindingsFor(input.provider),
     title: input.title ?? basename(input.cwd),
     workspaceId,
     windowKey: windowRegistry.getKeyForWindow(win.id) ?? undefined,
@@ -155,18 +162,37 @@ export async function createConversation(
 
 export async function sendConversation(id: string, text: string, commandId: string): Promise<void> {
   const client = await conversationClient()
-  const snapshot = await client.snapshot(id)
+  const snapshot = await ensureConversationPlugins(id)
   await requireWorkspaceTrust(windowRegistry.getWindowForSession(id), snapshot.session.cwd)
-  await client.send(id, text, commandId, {
-    ...launchFor(snapshot.session, id),
-    providerSessionId: snapshot.session.providerSessionId
-  })
+  await client.send(
+    id,
+    text,
+    commandId,
+    snapshot.providerConnected
+      ? undefined
+      : {
+          ...launchFor(snapshot.session, id),
+          providerSessionId: snapshot.session.providerSessionId
+        }
+  )
 }
 
 export async function closeConversation(id: string): Promise<void> {
+  revokePluginSessionViews(id)
   await (await conversationClient()).close(id)
   deleteSessionMcpConfig(id)
   windowRegistry.unbindSession(id)
+}
+
+/** Adopt pre-plugin conversation records once; never replace an existing pin. */
+export async function ensureConversationPlugins(id: string): Promise<ConversationSnapshot> {
+  const client = await conversationClient()
+  let snapshot = await client.snapshot(id)
+  if (!snapshot.session.pluginBindings) {
+    await client.bindPlugins(id, runtimePluginRegistry().bindingsFor(snapshot.session.provider))
+    snapshot = await client.snapshot(id)
+  }
+  return snapshot
 }
 
 export async function listConversations(win: BrowserWindow): Promise<ConversationSession[]> {

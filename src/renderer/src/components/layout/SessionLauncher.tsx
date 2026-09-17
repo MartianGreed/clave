@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAgentStore } from '../../store/agent-store'
 import { useLocationStore } from '../../store/location-store'
 import {
@@ -45,7 +45,8 @@ import {
   DropdownMenuSubContent
 } from '../ui/dropdown-menu'
 import { useShortcutLabel } from '../../store/keymap-store'
-import { launchOpenCode, restoreConversations } from '../../lib/conversation-sessions'
+import { launchOpenCode, launchRuntimeProvider, restoreConversations } from '../../lib/conversation-sessions'
+import type { PluginProviderDescriptor } from '../../../../shared/runtime-plugins'
 
 /** What the caret's remote entries hand back to the sidebar, which owns the
  *  remote directory picker (remote launches never touch the local cwd rules). */
@@ -123,6 +124,14 @@ export function SessionLauncher({ onRemoteLaunch }: SessionLauncherProps): React
   const [agentPickerOpen, setAgentPickerOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [launchError, setLaunchError] = useState<string>()
+  const [runtimeProviders, setRuntimeProviders] = useState<PluginProviderDescriptor[]>([])
+  useEffect(() => {
+    const refresh = (): void => {
+      void window.electronAPI.runtimePlugins.providers().then(setRuntimeProviders).catch(() => setRuntimeProviders([]))
+    }
+    refresh()
+    return window.electronAPI.runtimePlugins.onChanged(refresh)
+  }, [])
   const [menuAlignOffset, setMenuAlignOffset] = useState(0)
   const caretRef = useRef<HTMLButtonElement | null>(null)
   const agentButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -421,6 +430,12 @@ export function SessionLauncher({ onRemoteLaunch }: SessionLauncherProps): React
                   setLaunchError(undefined)
                   void restoreConversations().catch((error) => setLaunchError(String(error)))
                 }}>Reconnect conversations</DropdownMenuItem>
+                {runtimeProviders.filter((provider) => !['claude', 'codex', 'pi', 'opencode'].includes(provider.id)).map((provider) =>
+                  <DropdownMenuItem key={provider.id} disabled={busy} onSelect={() => {
+                    setBusy(true)
+                    void launchRuntimeProvider(provider.id).catch((error) => setLaunchError(String(error))).finally(() => setBusy(false))
+                  }}>{provider.name || provider.id}</DropdownMenuItem>
+                )}
 
                 {connectedRemoteLocations.map((loc) => (
                   <div key={loc.id}>

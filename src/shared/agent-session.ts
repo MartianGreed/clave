@@ -2,9 +2,12 @@
  * Clave's conversation protocol. Provider wire formats never cross this boundary.
  * A session owns its history and provider identity; a window is only a subscriber.
  */
+import type { ArtifactInput, ConversationArtifact, PluginBindings } from './runtime-plugins'
+
 export const CONVERSATION_PROVIDERS = ['claude', 'codex', 'opencode', 'pi'] as const
-export type ConversationProvider = (typeof CONVERSATION_PROVIDERS)[number]
-export const SESSION_PROTOCOL_VERSION = 1
+export type BuiltinConversationProvider = (typeof CONVERSATION_PROVIDERS)[number]
+export type ConversationProvider = string
+export const SESSION_PROTOCOL_VERSION = 2
 
 export interface AgentCapabilities {
   permissions: boolean
@@ -37,6 +40,8 @@ export interface ConversationOptions {
   piThinking?: string
   dangerousMode?: boolean
   resumeSessionId?: string
+  /** Assigned by the host, never accepted from an untrusted create command. */
+  pluginBindings?: PluginBindings
 }
 
 export interface ConversationSession extends ConversationOptions {
@@ -85,6 +90,7 @@ export type ConversationEvent =
   | { type: 'message'; message: ConversationMessage }
   | { type: 'text-delta'; messageId: string; text: string }
   | { type: 'tool'; tool: ConversationTool }
+  | { type: 'artifact'; artifact: ConversationArtifact }
   | { type: 'request'; request: AgentRequest }
   | { type: 'request-resolved'; requestId: string }
   | { type: 'turn-end'; outcome: 'completed' | 'interrupted' | 'failed'; error?: string }
@@ -99,8 +105,10 @@ export interface ConversationEnvelope {
 export interface ConversationSnapshot {
   session: ConversationSession
   sequence: number
-  entries: (ConversationMessage | ConversationTool)[]
+  entries: (ConversationMessage | ConversationTool | ConversationArtifact)[]
   requests: AgentRequest[]
+  /** Live service state, not persisted history or a renderer-owned process. */
+  providerConnected?: boolean
 }
 
 /** Public commands carry no executables, arbitrary environment, or credentials. */
@@ -112,6 +120,7 @@ export type ConversationCommand =
   | { type: 'interrupt'; sessionId: string }
   | { type: 'respond'; sessionId: string; response: AgentResponse }
   | { type: 'close'; sessionId: string }
+  | { type: 'publish-artifact'; sessionId: string; artifact: ArtifactInput; commandId: string }
 
 export interface ConversationAPI {
   create(options: ConversationOptions): Promise<ConversationSnapshot>
@@ -121,6 +130,11 @@ export interface ConversationAPI {
   interrupt(sessionId: string): Promise<void>
   respond(sessionId: string, response: AgentResponse): Promise<void>
   close(sessionId: string): Promise<void>
+  publishArtifact(
+    sessionId: string,
+    artifact: ArtifactInput,
+    commandId: string
+  ): Promise<ConversationArtifact>
   onEvent(callback: (event: ConversationEnvelope) => void): () => void
 }
 
@@ -175,6 +189,12 @@ export function applyConversationEvent(
       const index = next.entries.findIndex((entry) => entry.id === event.tool.id)
       if (index < 0) next.entries.push(event.tool)
       else next.entries[index] = { ...next.entries[index], ...event.tool }
+      break
+    }
+    case 'artifact': {
+      const index = next.entries.findIndex((entry) => entry.id === event.artifact.id)
+      if (index < 0) next.entries.push(event.artifact)
+      else next.entries[index] = event.artifact
       break
     }
     case 'request':

@@ -10,6 +10,10 @@ const fixture = vi.hoisted(() => {
   const session: ConversationSession = {
     id: 'conversation-7b7a0f34-ff31-4377-9725-f2a806a92a92',
     provider: 'claude',
+    pluginBindings: {
+      provider: { pluginId: 'clave.claude', revision: 'builtin', version: '1.0.0' },
+      views: []
+    },
     cwd: '/tmp',
     title: 'test',
     status: 'idle',
@@ -55,6 +59,16 @@ vi.mock('electron', () => ({
 vi.mock('../ipc-handlers/clave-file-handlers', () => ({
   isUnderTrustedRoot: fixture.trusted,
   addTrustedRoot: fixture.trust
+}))
+vi.mock('../runtime-plugins/host', () => ({ revokePluginSessionViews: vi.fn() }))
+vi.mock('../runtime-plugins/registry-runtime', () => ({
+  runtimePluginRegistry: () => ({
+    resolveProvider: (provider: string) => ({ command: [provider] }),
+    bindingsFor: (provider: string) => ({
+      provider: { pluginId: `clave.${provider}`, revision: 'builtin', version: '1.0.0' },
+      views: []
+    })
+  })
 }))
 vi.mock('./client', () => ({ ConversationClient: { connect: fixture.connect } }))
 vi.mock('../launch-profile-manager', () => ({
@@ -148,6 +162,19 @@ describe('main-process conversation integration', () => {
     await conversationClient()
     expect(fixture.connect).toHaveBeenCalledTimes(2)
     expect(fixture.client.send).not.toHaveBeenCalled()
+  })
+
+  it('does not re-resolve an already connected provider when the desktop build changes', async () => {
+    fixture.client.snapshot.mockResolvedValueOnce(
+      Object.assign(await fixture.client.snapshot(), { providerConnected: true })
+    )
+    await sendConversation(fixture.session.id, 'continue with the pinned provider', 'existing')
+    expect(fixture.client.send).toHaveBeenCalledWith(
+      fixture.session.id,
+      'continue with the pinned provider',
+      'existing',
+      undefined
+    )
   })
 
   it('does not initialize a headless provider before workspace trust is granted', async () => {

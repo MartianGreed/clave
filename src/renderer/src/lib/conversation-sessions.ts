@@ -51,12 +51,16 @@ export async function restoreConversations(): Promise<Set<string>> {
 
 /** OpenCode is deliberately direct-only, outside the pinned .clave schema. */
 export async function launchOpenCode(groupId?: string): Promise<void> {
+  return launchRuntimeProvider('opencode', groupId)
+}
+
+export async function launchRuntimeProvider(provider: string, groupId?: string): Promise<void> {
   const workspaceId = getActiveWorkspaceId()
   const cwd =
     getWorkspaceById(workspaceId)?.rootDir ?? (await window.electronAPI.openFolderDialog())
   if (!cwd) return
   const { session } = await window.electronAPI.conversations.create({
-    provider: 'opencode',
+    provider,
     cwd,
     workspaceId: workspaceId ?? undefined
   })

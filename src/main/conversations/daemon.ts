@@ -14,6 +14,9 @@ import { SESSION_PROTOCOL_VERSION } from '../../shared/agent-session'
 import type { AdapterFactory } from './adapter'
 import { ConversationService } from './service'
 import { receive, transmit, servicePaths, type WireRequest } from './wire'
+import { RuntimePluginJobs } from '../runtime-plugins/jobs'
+import { RuntimePluginRegistry } from '../runtime-plugins/registry'
+import { createPluginAdapterFactory } from '../runtime-plugins/providers'
 
 function isAlive(socket: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -79,7 +82,11 @@ export async function startDaemon(
       election.close()
       return
     }
-    writeFileSync(lock, JSON.stringify({ pid: process.pid, port }), { mode: 0o600 })
+    writeFileSync(
+      lock,
+      JSON.stringify({ pid: process.pid, port, protocolVersion: SESSION_PROTOCOL_VERSION }),
+      { mode: 0o600 }
+    )
     if (process.platform !== 'win32' && existsSync(paths.socket)) unlinkSync(paths.socket)
     let token: string
     if (existsSync(paths.token)) token = readFileSync(paths.token, 'utf8')
@@ -89,6 +96,7 @@ export async function startDaemon(
     }
     chmodSync(paths.token, 0o600)
     const service = new ConversationService(join(paths.directory, 'records'), factory)
+    const jobs = new RuntimePluginJobs(join(paths.directory, 'plugin-jobs'))
     const sockets = new Set<Socket>()
     const server = createServer((socket) => {
       if (closing) {
@@ -133,7 +141,7 @@ export async function startDaemon(
           return
         }
         const request = message as WireRequest
-        void dispatch(service, request)
+        void dispatch(service, jobs, request)
           .then(
             (result) => transmit(socket, { id: request.id, result }),
             (error: Error) => transmit(socket, { id: request.id, error: error.message })
@@ -152,7 +160,7 @@ export async function startDaemon(
       for (const socket of sockets) socket.destroy()
       let timer: NodeJS.Timeout | undefined
       void Promise.race([
-        service.shutdown(),
+        Promise.allSettled([service.shutdown(), jobs.dispose()]),
         new Promise<void>((resolve) => {
           timer = setTimeout(resolve, 2000)
         })
@@ -181,6 +189,7 @@ export async function startDaemon(
 
 async function dispatch(
   service: ConversationService,
+  jobs: RuntimePluginJobs,
   { command, launch }: WireRequest
 ): Promise<unknown> {
   switch (command.type) {
@@ -198,9 +207,42 @@ async function dispatch(
     case 'interrupt':
       return service.interrupt(command.sessionId)
     case 'close':
+      await jobs.cancelSession(command.sessionId)
       return service.close(command.sessionId)
     case 'update-metadata':
       return service.updateMetadata(command.sessionId, command.metadata)
+    case 'bind-plugins':
+      return service.bindPlugins(command.sessionId, command.bindings)
+    case 'pin-view':
+      return service.pinView(command.sessionId, command.pin)
+    case 'publish-artifact':
+      return service.publishArtifact(command.sessionId, command.artifact, command.commandId)
+    case 'plugin-job-execute':
+    case 'plugin-job-read':
+    case 'plugin-job-cancel': {
+      const snapshot = service.snapshot(command.sessionId)
+      if (
+        !snapshot.session.pluginBindings?.views.some(
+          (pin) =>
+            pin.pluginId === command.plugin.pluginId &&
+            pin.revision === command.plugin.revision &&
+            pin.version === command.plugin.version
+        )
+      ) {
+        throw new Error('Plugin job is outside the conversation scope')
+      }
+      const scope = { sessionId: command.sessionId, plugin: command.plugin }
+      if (command.type === 'plugin-job-read') return jobs.read(scope, command.jobId)
+      if (command.type === 'plugin-job-cancel') return jobs.cancel(scope, command.jobId)
+      if (snapshot.session.status === 'closed') throw new Error('Conversation is closed')
+      return jobs.execute({
+        ...scope,
+        cwd: snapshot.session.cwd,
+        argv: command.argv,
+        requestId: command.requestId,
+        env: command.env
+      })
+    }
     default:
       throw new Error('Unknown conversation command')
   }
@@ -209,8 +251,7 @@ async function dispatch(
 if (process.argv.includes('--conversation-daemon')) {
   const userData = process.argv[process.argv.indexOf('--conversation-daemon') + 1]
   if (!userData) process.exit(1)
-  void import('./adapters/index')
-    .then(({ createAdapter }) => startDaemon(userData, createAdapter))
+  void startDaemon(userData, createPluginAdapterFactory(new RuntimePluginRegistry(userData)))
     .then((server) => {
       if (!server) return
       const stop = (): void => {

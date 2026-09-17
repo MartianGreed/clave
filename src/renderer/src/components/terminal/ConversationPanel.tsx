@@ -28,6 +28,7 @@ import { MarkdownRenderer } from '../files/MarkdownRenderer'
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
 import { TerminalHeader } from './TerminalHeader'
 import { useSessionStore } from '../../store/session-store'
+import { PluginEntryView } from './PluginEntryView'
 
 const PROVIDER_NAMES: Record<ConversationProvider, string> = {
   claude: 'Claude',
@@ -69,7 +70,7 @@ function SessionDetails({ snapshot }: { snapshot: ConversationSnapshot }): React
       </PopoverTrigger>
       <PopoverContent align="end" className="conversation-details" aria-label="Session details">
         <div data-testid="conversation-capabilities">
-          <h3>{PROVIDER_NAMES[session.provider]}</h3>
+          <h3>{PROVIDER_NAMES[session.provider] ?? session.provider}</h3>
           <p>Provider fixed for this session. Switching views does not interrupt the agent.</p>
           <dl>
             <dt>Folder</dt>
@@ -200,7 +201,7 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
   const input = useRef<HTMLTextAreaElement>(null)
   const following = useRef(true)
   const session = snapshot?.session
-  const provider = session ? PROVIDER_NAMES[session.provider] : 'agent'
+  const provider = session ? (PROVIDER_NAMES[session.provider] ?? session.provider) : 'agent'
   const running = !!session && ['starting', 'running', 'waiting'].includes(session.status)
   const canSend =
     !!session && session.status !== 'closed' && !running && !composer.sending && !actionBusy
@@ -402,8 +403,9 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
                 </span>
               </div>
             ) : (
-              snapshot.entries.map((entry) =>
-                entry.kind === 'message' ? (
+              snapshot.entries.map((entry) => {
+                switch (entry.kind) {
+                case 'message': return (
                   <article
                     key={entry.id}
                     aria-label={`${entry.role} message`}
@@ -416,7 +418,12 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
                       <MarkdownRenderer content={entry.text} />
                     )}
                   </article>
-                ) : (
+                )
+                case 'artifact': return (
+                  <PluginEntryView key={entry.id} sessionId={sessionId} entry={entry} />
+                )
+                case 'tool': return (
+                  <PluginEntryView key={entry.id} sessionId={sessionId} entry={entry}>
                   <details key={entry.id} className="conversation-tool" data-state={entry.status}>
                     <summary>
                       <ChevronRightIcon className="conversation-chevron w-4 h-4" />
@@ -446,8 +453,10 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
                       )}
                     </div>
                   </details>
+                  </PluginEntryView>
                 )
-              )
+                }
+              })
             )}
             {session?.status === 'running' && (
               <div className="conversation-progress" role="status">

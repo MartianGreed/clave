@@ -4152,3 +4152,13 @@ button.extension-card:hover {
 .conversation-compose-footer > span { flex: 1; color: var(--text-tertiary); font-size: var(--text-xs); }
 .conversation-send.panel-icon-btn { color: var(--color-switch-knob); background: var(--color-accent); }
 .conversation-send.panel-icon-btn:hover:not(:disabled) { background: var(--color-accent-hover); }
+
+/* Plugin content never owns the original/close controls around its frame. */
+.runtime-plugin-entry > h3 { font-size: var(--text-sm); margin-bottom: calc(var(--spacing) * 3); }
+.runtime-plugin-content { display: flex; flex-direction: column; min-height: 0; gap: calc(var(--spacing) * 3); }
+.runtime-plugin-body { min-height: 0; overflow: auto; overflow-wrap: anywhere; }
+.runtime-plugin-frame { display: block; width: 100%; height: calc(var(--control-h-lg) * 10); border: 0; }
+.runtime-plugin-dialog { width: 90vw; max-width: var(--container-6xl); height: 85vh; display: flex; flex-direction: column; overflow: hidden; }
+.runtime-plugin-dialog .runtime-plugin-content,
+.runtime-plugin-dialog .runtime-plugin-body { flex: 1; }
+.runtime-plugin-dialog .runtime-plugin-frame { height: 100%; min-height: 0; }

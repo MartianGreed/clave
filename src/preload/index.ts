@@ -4,6 +4,7 @@ import type { LaunchProfile, LauncherFamily } from '../shared/agent-launch'
 import type { GitBatchProgress } from '../shared/git-batch'
 import type { GitRangeDirection } from '../shared/git-range'
 import type { ConversationAPI } from '../shared/agent-session'
+import type { RuntimePluginsAPI } from '../shared/runtime-plugins'
 
 /** Creates a typed IPC event listener with cleanup function. */
 function createIpcListener<T extends unknown[]>(
@@ -18,12 +19,25 @@ function createIpcListener<T extends unknown[]>(
 }
 
 const electronAPI = {
+  runtimePlugins: {
+    list: () => ipcRenderer.invoke('runtime-plugins:list'),
+    install: () => ipcRenderer.invoke('runtime-plugins:install'),
+    update: (pluginId) => ipcRenderer.invoke('runtime-plugins:update', pluginId),
+    setEnabled: (pluginId, enabled) => ipcRenderer.invoke('runtime-plugins:set-enabled', pluginId, enabled),
+    providers: () => ipcRenderer.invoke('runtime-plugins:providers'),
+    views: (sessionId, entryId) => ipcRenderer.invoke('runtime-plugins:views', sessionId, entryId),
+    openView: (sessionId, entryId, view) => ipcRenderer.invoke('runtime-plugins:open-view', sessionId, entryId, view),
+    closeView: (leaseId) => ipcRenderer.invoke('runtime-plugins:close-view', leaseId),
+    request: (leaseId, request) => ipcRenderer.invoke('runtime-plugins:request', leaseId, request),
+    onChanged: (callback) => createIpcListener('runtime-plugins:changed', callback)
+  } satisfies RuntimePluginsAPI,
   onConversationsChanged: (callback: () => void) => createIpcListener('conversation:refresh', callback),
   conversations: {
     create: (options) => ipcRenderer.invoke('conversation:command', { type: 'create', options }),
     list: () => ipcRenderer.invoke('conversation:command', { type: 'list' }),
     snapshot: (sessionId) => ipcRenderer.invoke('conversation:command', { type: 'snapshot', sessionId }),
     send: (sessionId, text, commandId) => ipcRenderer.invoke('conversation:command', { type: 'send', sessionId, text, commandId }),
+    publishArtifact: (sessionId, artifact, commandId) => ipcRenderer.invoke('conversation:command', { type: 'publish-artifact', sessionId, artifact, commandId }),
     interrupt: (sessionId) => ipcRenderer.invoke('conversation:command', { type: 'interrupt', sessionId }),
     respond: (sessionId, response) => ipcRenderer.invoke('conversation:command', { type: 'respond', sessionId, response }),
     close: (sessionId) => ipcRenderer.invoke('conversation:command', { type: 'close', sessionId }),

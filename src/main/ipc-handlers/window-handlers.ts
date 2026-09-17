@@ -6,6 +6,7 @@ import { ptyManager } from '../pty-manager'
 import { sidebarLayoutManager, type SidebarLayout } from '../sidebar-layout-manager'
 import { rehomeAck } from '../rehome-ack'
 import { conversationClient, isConversationId } from '../conversations/runtime'
+import { revokePluginSessionViews } from '../runtime-plugins/host'
 
 /** What a renderer learns about itself, and only itself: its window id, its
  *  persisted key, the workspace it shows, whether it is the primary. Pushed
@@ -92,6 +93,7 @@ export async function moveSessionsToWindow(
         continue
       }
       await client.updateMetadata(id, { windowKey: windowRegistry.getKeyForWindow(target.id)! })
+      revokePluginSessionViews(id)
       if (oldHost) oldHost.webContents.send('session:removed-for-rehome', id)
       windowRegistry.bindSession(id, target.id)
       result.moved.push(id)
