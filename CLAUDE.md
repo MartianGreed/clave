@@ -11,7 +11,9 @@ Clave's companion agent plugin (`clave`, exposing `/clave:create-workspace` and 
 - `npm run build:mac` — build + package macOS universal dmg + zip (signed + notarized)
 - `npm run typecheck` — typecheck only
 - `npm run lint` — eslint
-- Releases ship via CI on push to `prod` (bump from a `[minor]`/`[major]` commit-message marker, else patch) — see `.claude/rules/release.md`. `npm run release -- --patch|--minor|--major` remains the local fallback.
+- Releases ship via CI on push to `prod`. The bump is the **highest marker in the commits being released** — the range from the last `v*` tag to the head, `[major]` over `[minor]` over patch — so put the marker on the commit (or PR title) that earns it and promote normally. `npm run release -- --patch|--minor|--major` remains the local fallback, and Actions → Release → Run workflow overrides the bump by hand.
+
+  ⚠️ **Never make that a head-only read again** (`git log -1`). CI bumps the version ON prod, so prod always drifts a commit ahead of dev; every promotion therefore needs a back-merge of prod into dev; and that merge commit then becomes the head. A head-only read sees the merge's own message, never the work's — so every feature promoted through the normal flow cut a *patch*, and did, silently, at least through v1.90.2 (PR #56 was marked `[minor]` and shipped as one). Reading the range makes the marker survive back-merges, squash-merges and the bump commit alike; the release tag lands after the bump commit, so each release consumes its own markers and none leaks into the next.
 
 ## Architecture
 
