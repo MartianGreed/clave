@@ -198,7 +198,7 @@ export async function run(t) {
     t.equal('Claude draft survives renderer remount', await composer.inputValue(), 'Claude draft: inspect the reducer')
     await callMcp(app, 'focus', { sessionId: PI })
     t.equal('Pi draft survives renderer remount', await piComposer.inputValue(), 'Pi draft: add the regression')
-    t.check('Pi limitation is visible without opening details', await piPanel.getByText(NOTICE, { exact: true }).isVisible())
+    t.check('Pi limitation is visible without opening details', await piPanel.getByText(/Permission review not supported|approval prompts/).isVisible())
     await callMcp(app, 'focus', { sessionId: CLAUDE })
 
     await app.evaluate(() => { globalThis.__conversationUX.holdNext = true })

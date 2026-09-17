@@ -230,8 +230,25 @@ export async function run(t) {
         event: { type: 'turn-end', outcome: 'failed', error: snapshot.session.error }
       })
     })
-    await panel.getByRole('button', { name: 'Retry turn', exact: true }).waitFor()
-    t.check('provider failure is visible and retryable', await panel.getByRole('alert').isVisible())
+    const editLast = panel.getByRole('button', { name: 'Edit last message', exact: true })
+    await editLast.waitFor()
+    t.check('provider failure is visible', await panel.getByRole('alert').isVisible())
+    const sendsBeforeEdit = await app.evaluate(() =>
+      globalThis.__conversations.calls.filter((call) => call.type === 'send').length
+    )
+    await editLast.click()
+    t.equal(
+      'failed turn can be edited before resending',
+      await panel.getByRole('textbox', { name: 'Message', exact: true }).inputValue(),
+      'Hello service'
+    )
+    t.equal(
+      'editing a failed message does not blindly resend',
+      await app.evaluate(() =>
+        globalThis.__conversations.calls.filter((call) => call.type === 'send').length
+      ),
+      sendsBeforeEdit
+    )
     const read = await callMcp(app, 'readSession', {
       sessionId: 'conversation-claude',
       callerSessionId: 'conversation-claude'
