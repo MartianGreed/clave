@@ -11,6 +11,8 @@ import { getPreference } from './clave-file-handlers'
 import { workspaceManager } from '../workspace-manager'
 import { windowRegistry } from '../window-registry'
 import { windowState } from '../window-state'
+import { conversationProviderForSpawn } from '../conversations/launch'
+import { closeConversation, conversationClient, isConversationId, spawnConversation } from '../conversations/runtime'
 import * as titleGenerator from '../title-generator'
 import {
   startWatching as startAgentStateWatching,
@@ -28,8 +30,9 @@ export function registerPtyHandlers(): void {
     }
   })
 
-  ipcMain.handle('pty:spawn', (_event, cwd: string, options?: PtySpawnOptions) => {
+  ipcMain.handle('pty:spawn', async (_event, cwd: string, options?: PtySpawnOptions) => {
     const win = BrowserWindow.fromWebContents(_event.sender)
+    if (win && conversationProviderForSpawn(options)) return spawnConversation(win, cwd, options)
     // tmux mode is a global app setting, ON by default. Honour it unless a
     // caller overrides per-spawn or the user explicitly turned it off. (When
     // tmux isn't installed the spawn transparently falls back to a plain shell.)
@@ -141,6 +144,7 @@ export function registerPtyHandlers(): void {
   })
 
   ipcMain.handle('pty:kill', async (_event, id: string) => {
+    if (isConversationId(id)) return closeConversation(id)
     const owner = windowRegistry.getWindowForSession(id)
     if (
       owner &&
@@ -164,7 +168,10 @@ export function registerPtyHandlers(): void {
   // restart, a crash, or a reboot instead of reverting to the folder name.
   ipcMain.handle(
     'session:set-display-name',
-    (_event, id: string, displayName: string | null, userRenamed: boolean) => {
+    async (_event, id: string, displayName: string | null, userRenamed: boolean) => {
+      if (isConversationId(id)) {
+        return (await conversationClient()).updateMetadata(id, { title: displayName?.trim() ?? '' })
+      }
       ptyManager.setSessionDisplayName(id, displayName, userRenamed === true)
     }
   )
@@ -219,7 +226,10 @@ export function registerPtyHandlers(): void {
 
   // Workspace reassignment (workspace removal, future "move to workspace") —
   // mirrored into the session record so the stamp survives restarts.
-  ipcMain.handle('session:set-workspace', (_event, id: string, workspaceId: string | null) => {
+  ipcMain.handle('session:set-workspace', async (_event, id: string, workspaceId: string | null) => {
+    if (isConversationId(id)) {
+      return (await conversationClient()).updateMetadata(id, { workspaceId })
+    }
     ptyManager.setSessionWorkspace(id, workspaceId)
   })
 

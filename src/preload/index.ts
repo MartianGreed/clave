@@ -3,6 +3,7 @@ import type { UpdaterState } from '../shared/updater-types'
 import type { LaunchProfile, LauncherFamily } from '../shared/agent-launch'
 import type { GitBatchProgress } from '../shared/git-batch'
 import type { GitRangeDirection } from '../shared/git-range'
+import type { ConversationAPI } from '../shared/agent-session'
 
 /** Creates a typed IPC event listener with cleanup function. */
 function createIpcListener<T extends unknown[]>(
@@ -17,6 +18,17 @@ function createIpcListener<T extends unknown[]>(
 }
 
 const electronAPI = {
+  onConversationsChanged: (callback: () => void) => createIpcListener('conversation:refresh', callback),
+  conversations: {
+    create: (options) => ipcRenderer.invoke('conversation:command', { type: 'create', options }),
+    list: () => ipcRenderer.invoke('conversation:command', { type: 'list' }),
+    snapshot: (sessionId) => ipcRenderer.invoke('conversation:command', { type: 'snapshot', sessionId }),
+    send: (sessionId, text, commandId) => ipcRenderer.invoke('conversation:command', { type: 'send', sessionId, text, commandId }),
+    interrupt: (sessionId) => ipcRenderer.invoke('conversation:command', { type: 'interrupt', sessionId }),
+    respond: (sessionId, response) => ipcRenderer.invoke('conversation:command', { type: 'respond', sessionId, response }),
+    close: (sessionId) => ipcRenderer.invoke('conversation:command', { type: 'close', sessionId }),
+    onEvent: (callback) => createIpcListener('conversation:event', callback)
+  } satisfies ConversationAPI,
   /** Which OS the window is on. The renderer needs it for exactly one class of
    *  decision: chrome that holds room for the platform's own window buttons.
    *  Only macOS puts them INSIDE our chrome (`titleBarStyle: 'hiddenInset'`,

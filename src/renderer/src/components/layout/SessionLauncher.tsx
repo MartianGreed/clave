@@ -45,6 +45,7 @@ import {
   DropdownMenuSubContent
 } from '../ui/dropdown-menu'
 import { useShortcutLabel } from '../../store/keymap-store'
+import { launchOpenCode, restoreConversations } from '../../lib/conversation-sessions'
 
 /** What the caret's remote entries hand back to the sidebar, which owns the
  *  remote directory picker (remote launches never touch the local cwd rules). */
@@ -121,6 +122,7 @@ export function SessionLauncher({ onRemoteLaunch }: SessionLauncherProps): React
   const [menuOpen, setMenuOpen] = useState(false)
   const [agentPickerOpen, setAgentPickerOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [launchError, setLaunchError] = useState<string>()
   const [menuAlignOffset, setMenuAlignOffset] = useState(0)
   const caretRef = useRef<HTMLButtonElement | null>(null)
   const agentButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -407,6 +409,18 @@ export function SessionLauncher({ onRemoteLaunch }: SessionLauncherProps): React
                   true
                 )}
                 {renderAgentEntry('pi', 'Pi', piShortcut ?? undefined)}
+                <DropdownMenuItem disabled={busy} onSelect={() => {
+                  setBusy(true)
+                  setLaunchError(undefined)
+                  void launchOpenCode().catch((error) => setLaunchError(String(error))).finally(() => setBusy(false))
+                }}>
+                  <CommandLineIcon className="w-3.5 h-3.5 text-text-tertiary" />
+                  <span>OpenCode</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => {
+                  setLaunchError(undefined)
+                  void restoreConversations().catch((error) => setLaunchError(String(error)))
+                }}>Reconnect conversations</DropdownMenuItem>
 
                 {connectedRemoteLocations.map((loc) => (
                   <div key={loc.id}>
@@ -520,6 +534,7 @@ export function SessionLauncher({ onRemoteLaunch }: SessionLauncherProps): React
       {agentPickerOpen && (
         <AgentPickerPopover anchorRef={caretRef} onClose={() => setAgentPickerOpen(false)} />
       )}
+      {launchError && <p role="alert" className="text-xs text-text-secondary">{launchError}</p>}
     </div>
   )
 }

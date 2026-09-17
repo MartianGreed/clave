@@ -5,6 +5,7 @@ import { windowState } from '../window-state'
 import { ptyManager } from '../pty-manager'
 import { sidebarLayoutManager, type SidebarLayout } from '../sidebar-layout-manager'
 import { rehomeAck } from '../rehome-ack'
+import { conversationClient, isConversationId } from '../conversations/runtime'
 
 /** What a renderer learns about itself, and only itself: its window id, its
  *  persisted key, the workspace it shows, whether it is the primary. Pushed
@@ -65,12 +66,12 @@ export function awaitRehomed(sessionIds: string[], timeoutMs = 10_000): Promise<
  * so MCP addressing and exchange capture survive). A plain-pty session is
  * refused: its process would die with the detach.
  */
-export function moveSessionsToWindow(
+export async function moveSessionsToWindow(
   sessionIds: string[],
   targetWindowId: number,
   layout: SidebarLayout | null = null,
   focus = true
-): MoveResult {
+): Promise<MoveResult> {
   const target = windowRegistry.getWindow(targetWindowId)
   const result: MoveResult = { moved: [], refused: [] }
   if (!target) {
@@ -78,6 +79,24 @@ export function moveSessionsToWindow(
     return result
   }
   for (const id of sessionIds) {
+    if (isConversationId(id)) {
+      const oldHost = windowRegistry.getWindowForSession(id)
+      if (oldHost?.id === target.id) {
+        result.refused.push({ sessionId: id, reason: 'same-window' })
+        continue
+      }
+      const client = await conversationClient()
+      const snapshot = await client.snapshot(id)
+      if (snapshot.session.status === 'closed') {
+        result.refused.push({ sessionId: id, reason: 'not-live' })
+        continue
+      }
+      await client.updateMetadata(id, { windowKey: windowRegistry.getKeyForWindow(target.id)! })
+      if (oldHost) oldHost.webContents.send('session:removed-for-rehome', id)
+      windowRegistry.bindSession(id, target.id)
+      result.moved.push(id)
+      continue
+    }
     const session = ptyManager.getSession(id)
     if (!session) {
       result.refused.push({ sessionId: id, reason: 'not-live' })
@@ -166,7 +185,7 @@ export function registerWindowHandlers(deps: WindowHandlerDeps): void {
 
   ipcMain.handle(
     'window:move-sessions',
-    (_event, sessionIds: unknown, targetWindowId: unknown): MoveResult => {
+    async (_event, sessionIds: unknown, targetWindowId: unknown): Promise<MoveResult> => {
       const ids = Array.isArray(sessionIds)
         ? sessionIds.filter((x): x is string => typeof x === 'string')
         : []
@@ -185,7 +204,7 @@ export function registerWindowHandlers(deps: WindowHandlerDeps): void {
   // all — `ok: false`, nothing changes anywhere.
   ipcMain.handle(
     'window:move-group',
-    (event, group: unknown, targetWindowId: unknown): MoveResult & { ok: boolean } => {
+    async (event, group: unknown, targetWindowId: unknown): Promise<MoveResult & { ok: boolean }> => {
       const g = group as
         | { id?: unknown; sessionIds?: unknown; terminals?: unknown }
         | null
@@ -211,7 +230,7 @@ export function registerWindowHandlers(deps: WindowHandlerDeps): void {
       const movable = linked.filter((id) => {
         const session = ptyManager.getSession(id)
         const host = windowRegistry.getWindowForSession(id)
-        return !!session && !!session.tmuxName && (!host || host.id !== target.id)
+        return (isConversationId(id) || (!!session && !!session.tmuxName)) && (!host || host.id !== target.id)
       })
       if (linked.length > 0 && movable.length === 0) {
         return {
@@ -233,7 +252,7 @@ export function registerWindowHandlers(deps: WindowHandlerDeps): void {
         }))
       }
       const layout: SidebarLayout = { groups: [handed], displayOrder: [g.id] }
-      const outcome = moveSessionsToWindow(movable, target.id, layout)
+      const outcome = await moveSessionsToWindow(movable, target.id, layout)
       // The source drops its copy of the group; members and terminals that
       // could not move stay behind as plain tabs (the renderer re-places them).
       if (sender && !sender.isDestroyed()) sender.webContents.send('group:removed-for-move', g.id)

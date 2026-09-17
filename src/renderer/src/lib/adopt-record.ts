@@ -193,8 +193,20 @@ export async function adoptRehomed(
 ): Promise<void> {
   if (ids.length === 0) return
   const already = new Set(useSessionStore.getState().sessions.map((s) => s.id))
-  const records =
-    (await window.electronAPI?.listSessionRecords?.({ ids }).catch(() => [])) ?? []
+  const conversationIds = ids.filter((id) => id.startsWith('conversation-'))
+  if (conversationIds.length) {
+    const { conversationToSession } = await import('./conversation-sessions')
+    for (const id of conversationIds) {
+      if (already.has(id)) continue
+      const { session } = await window.electronAPI.conversations.snapshot(id)
+      useSessionStore.getState().adoptSessionInPlace(conversationToSession(session), { focus })
+      focus = false
+    }
+  }
+  const terminalIdsToAdopt = ids.filter((id) => !id.startsWith('conversation-'))
+  const records = terminalIdsToAdopt.length
+    ? (await window.electronAPI?.listSessionRecords?.({ ids: terminalIdsToAdopt }).catch(() => [])) ?? []
+    : []
   // A deliberate move focuses ONE tab that lands: a group member or a
   // single moved tab, never a quick-launch terminal riding along (the
   // records come back in directory order, which would otherwise put the

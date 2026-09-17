@@ -477,6 +477,8 @@ export interface MagicPullResult {
 }
 
 export interface ElectronAPI {
+  onConversationsChanged: (callback: () => void) => () => void
+  conversations: import('../shared/agent-session').ConversationAPI
   /** `process.platform` of the main process. The renderer reads it only to
    *  decide whether to hold room for window buttons drawn inside our own
    *  chrome — macOS does, Windows and Linux do not. */

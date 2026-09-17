@@ -92,7 +92,7 @@ function readBody(req: http.IncomingMessage): Promise<unknown> {
 
 type ToolResult = { content: { type: 'text'; text: string }[]; isError?: boolean }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const UUID_RE = /^(?:conversation-)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** Commands whose SUBJECT is an existing session — they must run in the window
  *  hosting that session (its renderer holds the tab). §3.8 rule 1. */
@@ -346,7 +346,7 @@ async function runCommand(command: string, payload: unknown, caller?: string): P
           // The waiter is registered BEFORE the move: the ack can only ever
           // answer this wait, never a stale one (rehome-ack.ts).
           const adopted = awaitRehomed([subjectId])
-          const outcome = moveSessionsToWindow([subjectId], target.id)
+          const outcome = await moveSessionsToWindow([subjectId], target.id)
           const refused = outcome.refused.find((r) => r.sessionId === subjectId)
           if (refused) {
             throw new Error(

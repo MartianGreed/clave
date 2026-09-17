@@ -1093,7 +1093,7 @@ async function handleSendToSession(payload: {
   assertCanReach(payload.callerSessionId, target, 'message')
   if (!target.alive) throw new Error(`Session "${target.name}" has ended`)
   const mode = sessionMode(target)
-  if (mode === 'terminal') {
+  if (mode === 'terminal' && !target.id.startsWith('conversation-')) {
     throw new Error(
       'Refusing to send to a plain terminal — text typed there would run as a shell command. Target an agent tab (claude/antigravity/codex).'
     )
@@ -1120,6 +1120,12 @@ async function handleSendToSession(payload: {
   const text = `${cleanHeader}\n${cleanMessage}`
 
   const targetId = target.id
+
+  if (targetId.startsWith('conversation-')) {
+    await window.electronAPI.conversations.send(targetId, text, crypto.randomUUID())
+    useSessionStore.getState().setSessionInjectedFrom(targetId, sender?.name ?? 'another tab')
+    return { delivered: true, sessionId: targetId, name: target.name, mode, draftHandling: 'none' }
+  }
 
   // Set once the SUBMIT below has landed — the moment the message exists in
   // the target. The capture (see the chain wiring) keys off this and NOT off
@@ -1235,13 +1241,25 @@ async function handleSendToSession(payload: {
   }
 }
 
-function handleReadSession(payload: {
+async function handleReadSession(payload: {
   sessionId: string
   lines?: number
   callerSessionId?: string
-}): unknown {
+}): Promise<unknown> {
   const target = resolveTargetSession(payload.sessionId, payload.callerSessionId)
   assertCanReach(payload.callerSessionId, target, 'read')
+  if (target.id.startsWith('conversation-')) {
+    const snapshot = await window.electronAPI.conversations.snapshot(target.id)
+    const requested = Math.min(Math.max(payload.lines ?? 100, 1), 500)
+    const lines = snapshot.entries.flatMap((entry) =>
+      (entry.kind === 'message' ? `${entry.role}: ${entry.text}` : `${entry.name} (${entry.status})\n${entry.input ?? ''}\n${entry.output ?? ''}`).split('\n')
+    ).slice(-requested)
+    return {
+      sessionId: target.id, name: target.name, mode: snapshot.session.provider,
+      alive: snapshot.session.status !== 'closed', agentState: snapshot.session.status,
+      lines: lines.length, text: lines.join('\n')
+    }
+  }
   const terminal = getRegisteredTerminal(target.id)
   if (!terminal) {
     throw new Error(`Session "${target.name}" has no terminal buffer (tab not mounted yet)`)

@@ -46,6 +46,7 @@ import {
 import { promptRestore } from '../../store/restore-prompt-store'
 import { RestorePromptDialog } from '../ui/RestorePromptDialog'
 import { initMcpDispatcher } from '../../lib/mcp-dispatcher'
+import { restoreConversations } from '../../lib/conversation-sessions'
 import { adoptRecord, adoptRehomed, adoptHiddenRecord } from '../../lib/adopt-record'
 import { requestGroupDissolve, useDissolveStore } from '../../lib/group-dissolve'
 import { planBootAdoption, survivingIds } from '../../lib/boot-adoption'
@@ -231,9 +232,13 @@ export function AppShell() {
           null,
           ...useWorkspaceStore.getState().workspaces.map((w) => w.id)
         ]
+        const conversationIds = await restoreConversations().catch((error) => {
+          console.error('Failed to restore conversations:', error)
+          return new Set<string>()
+        })
         useSessionStore
           .getState()
-          .mergeLayoutForKeys(keys, persisted, survivingIds(plan, adoptedIds))
+          .mergeLayoutForKeys(keys, persisted, new Set([...survivingIds(plan, adoptedIds), ...conversationIds]))
 
         // Owners are in place now (groups from the merge, owning tabs from
         // the adoption above), so the hidden halves can hang themselves back
@@ -485,6 +490,9 @@ export function AppShell() {
   // The pull is the point — a push-only updater loses the "an update exists"
   // fact for 30 minutes if the renderer was not listening when it fired.
   useEffect(() => connectUpdaterStore(), [])
+  useEffect(() => window.electronAPI.onConversationsChanged(() => {
+    void restoreConversations().catch((error) => console.error('Failed to discover conversations:', error))
+  }), [])
   useEffect(() => connectKeymapStore(), [])
 
   // Open Settings → Updates when asked from the native menu.
