@@ -1,8 +1,8 @@
 name: Release
 
-# Every push to prod cuts a release. The bump level is the HIGHEST marker found
-# in the commits being released — the range from the last v* tag to the head,
-# "[major]" beating "[minor]" beating patch — or the explicit input when
+# Every push to prod cuts a release. The bump level is the HIGHEST marker
+# OPENING a commit SUBJECT in the range being released — the last v* tag to the
+# head, "[major]" beating "[minor]" beating patch — or the explicit input when
 # triggered manually (Actions → Release → Run workflow). The version-bump commit
 # CI pushes back carries [skip ci], and GITHUB_TOKEN pushes never retrigger
 # workflows, so there is no recursion.
@@ -91,15 +91,23 @@ jobs:
             else
               range="HEAD"
             fi
-            msgs=$(git log --pretty=%B "$range")
-            case "$msgs" in
-              *"[major]"*) bump=major ;;
-              *"[minor]"*) bump=minor ;;
-              *)           bump=patch ;;
-            esac
+            # SUBJECTS only (%s), and the marker must OPEN the subject. A body
+            # scan matches prose about markers — the commit that introduced
+            # this very step says "[major] over [minor]" while explaining the
+            # precedence, and a substring read of it computed `major`. The
+            # marker is a subject-line convention ("[minor] A group view
+            # starts…"), so read it exactly where it is written.
+            subjects=$(git log --pretty=%s "$range")
+            if printf '%s\n' "$subjects" | grep -qE '^\[major\]'; then
+              bump=major
+            elif printf '%s\n' "$subjects" | grep -qE '^\[minor\]'; then
+              bump=minor
+            else
+              bump=patch
+            fi
             echo "Bump level: $bump (highest marker in ${last_tag:-the full history}..HEAD)"
             echo "Commits considered:"
-            git log --oneline "$range"
+            git log --pretty='  %h %s' "$range"
           fi
           echo "bump=$bump" >> "$GITHUB_OUTPUT"
 
