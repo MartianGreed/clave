@@ -7,6 +7,7 @@ Clave's companion agent plugin (`clave`, exposing `/clave:create-workspace` and 
 ## Commands
 
 - `npm run dev` — start dev (Electron window + hot reload)
+- `npm run dev:ui` — hot reload with a separate `.clave-ui-dev/` app profile, without restoring the installed app's tabs
 - `npm run build` — typecheck + build
 - `npm run build:mac` — build + package macOS universal dmg + zip (signed + notarized)
 - `npm run typecheck` — typecheck only

@@ -18,6 +18,7 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "start": "electron-vite preview",
     "dev": "npm run native:build && electron-vite dev",
+    "dev:ui": "npm run native:build && electron-vite dev -- --user-data-dir=.clave-ui-dev",
     "native:build": "bash scripts/build-native.sh",
     "build": "npm run native:build && npm run typecheck && electron-vite build",
     "postinstall": "node scripts/postinstall.cjs",

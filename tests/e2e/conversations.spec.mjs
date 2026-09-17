@@ -143,6 +143,7 @@ export async function run(t) {
         )
       )
       await win.keyboard.press('Escape')
+      await win.getByTestId('conversation-capabilities').waitFor({ state: 'detached' })
     }
     await callMcp(app, 'focus', { sessionId: 'conversation-pi' })
     t.check(
@@ -233,8 +234,8 @@ export async function run(t) {
     const editLast = panel.getByRole('button', { name: 'Edit last message', exact: true })
     await editLast.waitFor()
     t.check('provider failure is visible', await panel.getByRole('alert').isVisible())
-    const sendsBeforeEdit = await app.evaluate(() =>
-      globalThis.__conversations.calls.filter((call) => call.type === 'send').length
+    const sendsBeforeEdit = await app.evaluate(
+      () => globalThis.__conversations.calls.filter((call) => call.type === 'send').length
     )
     await editLast.click()
     t.equal(
@@ -244,8 +245,8 @@ export async function run(t) {
     )
     t.equal(
       'editing a failed message does not blindly resend',
-      await app.evaluate(() =>
-        globalThis.__conversations.calls.filter((call) => call.type === 'send').length
+      await app.evaluate(
+        () => globalThis.__conversations.calls.filter((call) => call.type === 'send').length
       ),
       sendsBeforeEdit
     )

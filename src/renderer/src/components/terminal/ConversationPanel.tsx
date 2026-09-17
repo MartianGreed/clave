@@ -1,14 +1,104 @@
-import { useEffect, useRef, useState } from 'react'
-import { ArrowUpIcon, StopIcon } from '@heroicons/react/24/outline'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import {
+  ArrowDownIcon,
+  ArrowPathIcon,
+  ArrowUpIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  ExclamationTriangleIcon,
+  InformationCircleIcon,
+  ShieldCheckIcon,
+  StopIcon
+} from '@heroicons/react/24/outline'
 import type {
   AgentRequest,
   AgentResponse,
-  ConversationSnapshot
+  ConversationProvider,
+  ConversationSnapshot,
+  ConversationStatus
 } from '../../../../shared/agent-session'
 import { subscribeConversation } from '../../lib/conversation-subscription'
+import {
+  conversationComposer,
+  isNearLatest,
+  MAX_PROMPT_BYTES,
+  shouldSendOnEnter
+} from '../../lib/conversation-composer'
 import { MarkdownRenderer } from '../files/MarkdownRenderer'
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
 import { TerminalHeader } from './TerminalHeader'
 import { useSessionStore } from '../../store/session-store'
+
+const PROVIDER_NAMES: Record<ConversationProvider, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  opencode: 'OpenCode',
+  pi: 'Pi'
+}
+const STATUS_LABELS: Record<ConversationStatus, string> = {
+  starting: 'Connecting',
+  idle: 'Ready',
+  running: 'Working',
+  waiting: 'Needs your input',
+  stopped: 'Stopped',
+  error: 'Needs attention',
+  closed: 'Closed'
+}
+
+function SessionDetails({ snapshot }: { snapshot: ConversationSnapshot }): React.JSX.Element {
+  const { session } = snapshot
+  const [open, setOpen] = useState(false)
+  useEffect(
+    () =>
+      useSessionStore.subscribe((state, previous) => {
+        if (
+          state.focusedSessionId !== previous.focusedSessionId &&
+          state.focusedSessionId !== session.id
+        ) {
+          setOpen(false)
+        }
+      }),
+    [session.id]
+  )
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className="panel-icon-btn" aria-label="Session details" title="Session details">
+          <InformationCircleIcon className="w-4 h-4" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="conversation-details" aria-label="Session details">
+        <div data-testid="conversation-capabilities">
+          <h3>{PROVIDER_NAMES[session.provider]}</h3>
+          <p>Provider fixed for this session. Switching views does not interrupt the agent.</p>
+          <dl>
+            <dt>Folder</dt>
+            <dd>{session.cwd}</dd>
+            {session.model && (
+              <>
+                <dt>Model</dt>
+                <dd>{session.model}</dd>
+              </>
+            )}
+            <dt>Permissions</dt>
+            <dd>
+              {session.capabilities.permissions
+                ? 'Permission review available'
+                : 'Permission review not supported'}
+            </dd>
+            <dt>Questions</dt>
+            <dd>
+              {session.capabilities.questions ? 'Questions supported' : 'Questions not supported'}
+            </dd>
+            <dt>History</dt>
+            <dd>{session.capabilities.resume ? 'Resume supported' : 'Resume not supported'}</dd>
+          </dl>
+          {session.capabilities.notice && <p>{session.capabilities.notice}</p>}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
 
 function RequestControl({
   request,
@@ -21,18 +111,19 @@ function RequestControl({
 }): React.JSX.Element {
   const [answer, setAnswer] = useState('')
   return (
-    <section className="settings-card p-3" aria-label={request.kind}>
-      <p>{request.title}</p>
-      {request.description && <p className="text-text-secondary">{request.description}</p>}
+    <section className="conversation-request" aria-label={request.kind}>
+      <div className="conversation-request-heading">
+        <ShieldCheckIcon className="w-4 h-4" />
+        <span>
+          {request.kind === 'permission' ? 'Your approval is needed' : 'A question for you'}
+        </span>
+      </div>
+      <p className="conversation-request-title">{request.title}</p>
+      {request.description && (
+        <pre className="conversation-request-description">{request.description}</pre>
+      )}
       {request.kind === 'permission' ? (
-        <div className="flex gap-2">
-          <button
-            className="btn-primary"
-            disabled={busy}
-            onClick={() => respond({ requestId: request.id, decision: 'allow' })}
-          >
-            Allow
-          </button>
+        <div className="conversation-actions">
           <button
             className="btn-secondary"
             disabled={busy}
@@ -40,15 +131,22 @@ function RequestControl({
           >
             Deny
           </button>
+          <button
+            className="btn-primary"
+            disabled={busy}
+            onClick={() => respond({ requestId: request.id, decision: 'allow' })}
+          >
+            Allow
+          </button>
         </div>
       ) : (
         <form
           onSubmit={(event) => {
             event.preventDefault()
-            if (answer.trim()) respond({ requestId: request.id, answer })
+            if (!busy && answer.trim()) respond({ requestId: request.id, answer })
           }}
         >
-          <div className="flex flex-wrap gap-2">
+          <div className="conversation-actions">
             {request.choices?.map((choice) => (
               <button
                 key={choice}
@@ -61,30 +159,53 @@ function RequestControl({
               </button>
             ))}
           </div>
-          <input
-            className="input-field w-full"
-            aria-label="Answer"
-            value={answer}
-            onChange={(event) => setAnswer(event.target.value)}
-          />
-          <button className="btn-primary" disabled={busy || !answer.trim()}>
-            Answer
-          </button>
+          <div className="conversation-answer">
+            <input
+              className="input-field"
+              aria-label="Answer"
+              placeholder="Write your answer"
+              disabled={busy}
+              value={answer}
+              onChange={(event) => setAnswer(event.target.value)}
+            />
+            <button className="btn-primary" disabled={busy || !answer.trim()}>
+              Answer
+            </button>
+          </div>
         </form>
       )}
     </section>
   )
 }
 
+/** Local view state resets between sessions; drafts deliberately outlive the view. */
 export function ConversationPanel({ sessionId }: { sessionId: string }): React.JSX.Element {
+  return <ConversationView key={sessionId} sessionId={sessionId} />
+}
+
+function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<ConversationSnapshot>()
-  const [error, setError] = useState<string>()
-  const [draft, setDraft] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [connectionError, setConnectionError] = useState<string>()
+  const [actionError, setActionError] = useState<string>()
+  const [actionBusy, setActionBusy] = useState(false)
   const [requestBusy, setRequestBusy] = useState(false)
   const [retry, setRetry] = useState(0)
-  const lastSend = useRef<{ text: string; commandId: string } | null>(null)
-  const bottom = useRef<HTMLDivElement>(null)
+  const [atLatest, setAtLatest] = useState(true)
+  const composer = useSyncExternalStore(conversationComposer.subscribe, () =>
+    conversationComposer.read(sessionId)
+  )
+  const focused = useSessionStore((state) => state.focusedSessionId === sessionId)
+  const viewport = useRef<HTMLDivElement>(null)
+  const transcript = useRef<HTMLDivElement>(null)
+  const input = useRef<HTMLTextAreaElement>(null)
+  const following = useRef(true)
+  const session = snapshot?.session
+  const provider = session ? PROVIDER_NAMES[session.provider] : 'agent'
+  const running = !!session && ['starting', 'running', 'waiting'].includes(session.status)
+  const canSend =
+    !!session && session.status !== 'closed' && !running && !composer.sending && !actionBusy
+  const error = actionError || connectionError || session?.error
+
   useEffect(
     () =>
       subscribeConversation(
@@ -92,11 +213,13 @@ export function ConversationPanel({ sessionId }: { sessionId: string }): React.J
         sessionId,
         (next) => {
           setSnapshot(next)
+          setConnectionError(undefined)
+          if (next.session.status === 'closed') conversationComposer.clear(sessionId)
           useSessionStore.setState((state) => ({
-            sessions: state.sessions.map((session) =>
-              session.id === sessionId
+            sessions: state.sessions.map((item) =>
+              item.id === sessionId
                 ? {
-                    ...session,
+                    ...item,
                     agentState:
                       next.session.status === 'running'
                         ? 'working'
@@ -112,195 +235,368 @@ export function ConversationPanel({ sessionId }: { sessionId: string }): React.J
                     claudeSessionId:
                       next.session.provider === 'claude'
                         ? (next.session.providerSessionId ?? null)
-                        : session.claudeSessionId,
+                        : item.claudeSessionId,
                     piSessionId:
                       next.session.provider === 'pi'
                         ? next.session.providerSessionId
-                        : session.piSessionId,
+                        : item.piSessionId,
                     alive: next.session.status !== 'closed'
                   }
-                : session
+                : item
             )
           }))
         },
-        (failure) => setError(failure.message)
+        (failure) => setConnectionError(failure.message)
       ),
     [sessionId, retry]
   )
-  useEffect(() => {
-    bottom.current?.scrollIntoView({ block: 'nearest' })
+
+  const scrollToLatest = (): void => {
+    following.current = true
+    setAtLatest(true)
+    if (viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight
+  }
+  useLayoutEffect(() => {
+    if (following.current && viewport.current)
+      viewport.current.scrollTop = viewport.current.scrollHeight
   }, [snapshot?.sequence])
+  useEffect(() => {
+    if (!transcript.current) return
+    const observer = new ResizeObserver(() => {
+      if (following.current && viewport.current)
+        viewport.current.scrollTop = viewport.current.scrollHeight
+    })
+    observer.observe(transcript.current)
+    return () => observer.disconnect()
+  }, [])
+  useLayoutEffect(() => {
+    if (!input.current) return
+    input.current.style.height = 'auto'
+    input.current.style.height = `${input.current.scrollHeight}px`
+  }, [composer.text])
+  useEffect(() => {
+    if (focused) input.current?.focus({ preventScroll: true })
+  }, [focused])
+
   const run = async (action: () => Promise<void>): Promise<void> => {
-    setBusy(true)
-    setError(undefined)
+    if (actionBusy) return
+    setActionBusy(true)
+    setActionError(undefined)
     try {
       await action()
     } catch (failure) {
-      setError(String(failure))
+      setActionError(String(failure))
     } finally {
-      setBusy(false)
+      setActionBusy(false)
     }
   }
   const send = (): void => {
-    const text = draft.trim()
-    if (!text) return
-    const command =
-      lastSend.current?.text === text ? lastSend.current : { text, commandId: crypto.randomUUID() }
-    lastSend.current = command
-    void run(async () => {
-      await window.electronAPI.conversations.send(sessionId, command.text, command.commandId)
-      lastSend.current = null
-      setDraft('')
-    })
+    if (!canSend) return
+    if (new TextEncoder().encode(composer.text).length > MAX_PROMPT_BYTES) {
+      setActionError(
+        'This message is too large. Keep it under 128 KiB or refer to a file in your project.'
+      )
+      return
+    }
+    const command = conversationComposer.begin(sessionId)
+    if (!command) return
+    setActionError(undefined)
+    scrollToLatest()
+    void window.electronAPI.conversations
+      .send(sessionId, command.text, command.commandId)
+      .then(() => {
+        conversationComposer.accept(sessionId, command.commandId)
+      })
+      .catch((failure) => {
+        conversationComposer.fail(sessionId, command.commandId)
+        setActionError(String(failure))
+      })
   }
-  const running = snapshot && ['starting', 'running', 'waiting'].includes(snapshot.session.status)
+  const prefill = (text: string): void => {
+    conversationComposer.edit(sessionId, text)
+    input.current?.focus()
+  }
+
   return (
     <div
-      className="flex flex-col h-full bg-surface-0"
+      className="conversation-panel"
       data-testid="conversation-panel"
       data-conversation-id={sessionId}
       onMouseDown={() => useSessionStore.getState().setFocusedSession(sessionId)}
     >
       <TerminalHeader sessionId={sessionId} />
-      <div className="flex-1 min-h-0 overflow-auto p-3">
-        {snapshot ? (
-          <>
-            <div className="text-xs text-text-secondary" data-testid="conversation-capabilities">
-              {snapshot.session.provider} · {snapshot.session.status} · Provider fixed for this
-              session
-              <p>
-                {snapshot.session.capabilities.permissions
-                  ? 'Permission review available'
-                  : 'Permission review not supported'}{' '}
-                ·{' '}
-                {snapshot.session.capabilities.questions
-                  ? 'Questions supported'
-                  : 'Questions not supported'}{' '}
-                ·{' '}
-                {snapshot.session.capabilities.resume ? 'Resume supported' : 'Resume not supported'}
-              </p>
-              {snapshot.session.capabilities.notice && (
-                <p>{snapshot.session.capabilities.notice}</p>
-              )}
-            </div>
-            {snapshot.entries.map((entry) =>
-              entry.kind === 'message' ? (
-                <article key={entry.id} aria-label={`${entry.role} message`} className="my-3">
-                  <p className="text-xs text-text-secondary">
-                    {entry.role === 'user' ? 'You' : snapshot.session.provider}
-                  </p>
-                  <MarkdownRenderer content={entry.text} />
-                </article>
-              ) : (
-                <details key={entry.id} className="settings-card my-2 p-3">
-                  <summary>
-                    {entry.name} · {entry.status}
-                  </summary>
-                  {entry.input && (
-                    <pre className="whitespace-pre-wrap break-words">{entry.input}</pre>
-                  )}
-                  {entry.output && (
-                    <pre className="whitespace-pre-wrap break-words">{entry.output}</pre>
-                  )}
-                </details>
+      <div className="conversation-toolbar">
+        <div className="conversation-identity">
+          <span>{session ? provider : 'Conversation'}</span>
+          {session?.model && (
+            <span className="conversation-model" title={session.model}>
+              {session.model}
+            </span>
+          )}
+        </div>
+        <span
+          className="conversation-status"
+          data-state={error ? 'error' : session?.status}
+          role="status"
+        >
+          {connectionError
+            ? 'Connection lost'
+            : session
+              ? STATUS_LABELS[session.status]
+              : 'Connecting'}
+        </span>
+        {snapshot && <SessionDetails snapshot={snapshot} />}
+      </div>
+      {session?.provider === 'pi' && !session.capabilities.permissions && (
+        <div className="conversation-notice" role="note">
+          <InformationCircleIcon className="w-4 h-4" />
+          <p>Permission review not supported by Pi. Tools can run without approval prompts.</p>
+        </div>
+      )}
+      <div className="conversation-reading">
+        <div
+          ref={viewport}
+          className="conversation-scroll"
+          data-testid="conversation-scroll"
+          aria-label="Conversation messages"
+          tabIndex={0}
+          onScroll={(event) => {
+            const near = isNearLatest(event.currentTarget)
+            following.current = near
+            setAtLatest(near)
+          }}
+        >
+          <div ref={transcript} className="conversation-transcript">
+            {!snapshot ? (
+              <div className="conversation-empty">
+                <p>Connecting to your conversation…</p>
+              </div>
+            ) : snapshot.entries.length === 0 ? (
+              <div className="conversation-empty">
+                <h2>What would you like to work on?</h2>
+                <p>Ask {provider} to explore this project, plan a change, or help with a bug.</p>
+                <div className="conversation-actions">
+                  <button
+                    className="btn-secondary"
+                    onClick={() =>
+                      prefill(
+                        'Explain how this project is organized and where its main entry points are.'
+                      )
+                    }
+                  >
+                    Explore this project
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    onClick={() =>
+                      prefill(
+                        'Help me plan a change to this project. Start by asking what I want to achieve.'
+                      )
+                    }
+                  >
+                    Plan a change
+                  </button>
+                </div>
+                <span className="conversation-folder" title={session?.cwd}>
+                  {session?.cwd}
+                </span>
+              </div>
+            ) : (
+              snapshot.entries.map((entry) =>
+                entry.kind === 'message' ? (
+                  <article
+                    key={entry.id}
+                    aria-label={`${entry.role} message`}
+                    className="conversation-message"
+                    data-role={entry.role}
+                  >
+                    <div className="conversation-author">
+                      {entry.role === 'user' ? 'You' : provider}
+                    </div>
+                    {entry.role === 'user' ? (
+                      <p className="conversation-user-text">{entry.text}</p>
+                    ) : (
+                      <MarkdownRenderer content={entry.text} />
+                    )}
+                  </article>
+                ) : (
+                  <details key={entry.id} className="conversation-tool" data-state={entry.status}>
+                    <summary>
+                      <ChevronRightIcon className="conversation-chevron w-4 h-4" />
+                      <span>
+                        {entry.name} · {entry.status}
+                      </span>
+                      {entry.status === 'completed' ? (
+                        <CheckIcon className="w-4 h-4" />
+                      ) : entry.status === 'failed' ? (
+                        <ExclamationTriangleIcon className="w-4 h-4" />
+                      ) : (
+                        <ArrowPathIcon className="conversation-working w-4 h-4" />
+                      )}
+                    </summary>
+                    <div className="conversation-tool-body">
+                      {entry.input && (
+                        <>
+                          <h4>Input</h4>
+                          <pre>{entry.input}</pre>
+                        </>
+                      )}
+                      {entry.output && (
+                        <>
+                          <h4>Output</h4>
+                          <pre>{entry.output}</pre>
+                        </>
+                      )}
+                    </div>
+                  </details>
+                )
               )
             )}
-            {snapshot.requests.map((request) => (
-              <RequestControl
-                key={request.id}
-                request={request}
-                busy={requestBusy}
-                respond={(response) => {
-                  setRequestBusy(true)
-                  setError(undefined)
-                  void window.electronAPI.conversations
-                    .respond(sessionId, response)
-                    .catch((failure) => setError(String(failure)))
-                    .finally(() => setRequestBusy(false))
-                }}
-              />
-            ))}
-          </>
-        ) : (
-          <p>Connecting to conversation…</p>
+            {session?.status === 'running' && (
+              <div className="conversation-progress" role="status">
+                <ArrowPathIcon className="conversation-working w-4 h-4" />
+                {provider} is working…
+              </div>
+            )}
+          </div>
+        </div>
+        {!atLatest && (
+          <button className="btn-secondary conversation-jump" onClick={scrollToLatest}>
+            <ArrowDownIcon className="w-4 h-4" />
+            Jump to latest
+          </button>
         )}
-        {(error || snapshot?.session.error) && (
-          <div role="alert" className="settings-card p-3">
-            <p>{error || snapshot?.session.error}</p>
+      </div>
+      {!!snapshot?.requests.length && (
+        <div className="conversation-requests">
+          {snapshot.requests.map((request) => (
+            <RequestControl
+              key={request.id}
+              request={request}
+              busy={requestBusy}
+              respond={(response) => {
+                setRequestBusy(true)
+                setActionError(undefined)
+                void window.electronAPI.conversations
+                  .respond(sessionId, response)
+                  .catch((failure) => setActionError(String(failure)))
+                  .finally(() => setRequestBusy(false))
+              }}
+            />
+          ))}
+        </div>
+      )}
+      {error && (
+        <div role="alert" className="conversation-error">
+          <div className="conversation-request-heading">
+            <ExclamationTriangleIcon className="w-4 h-4" />
+            Something needs attention
+          </div>
+          <p>{error}</p>
+          <div className="conversation-actions">
             <button
               className="btn-secondary"
               onClick={() => {
-                setError(undefined)
+                setActionError(undefined)
+                setConnectionError(undefined)
                 setRetry((value) => value + 1)
               }}
             >
               Reconnect
             </button>
-            {draft && (
-              <button className="btn-primary" disabled={busy} onClick={send}>
+            {composer.text && (
+              <button className="btn-primary" disabled={!canSend} onClick={send}>
                 Retry send
               </button>
             )}
-            {!draft && snapshot?.session.status === 'error' && (
+            {!composer.text && session?.status === 'error' && (
               <button
-                className="btn-primary"
-                disabled={busy}
+                className="btn-secondary"
+                disabled={!canSend}
                 onClick={() => {
-                  const previous = snapshot.entries.findLast(
+                  const previous = snapshot?.entries.findLast(
                     (entry) => entry.kind === 'message' && entry.role === 'user'
                   )
-                  if (previous?.kind === 'message') {
-                    void run(() =>
-                      window.electronAPI.conversations.send(
-                        sessionId,
-                        previous.text,
-                        crypto.randomUUID()
-                      )
-                    )
-                  }
+                  if (previous?.kind === 'message') prefill(previous.text)
                 }}
               >
-                Retry turn
+                Edit last message
               </button>
             )}
           </div>
-        )}
-        <div ref={bottom} />
-      </div>
+        </div>
+      )}
       <form
-        className="flex gap-2 p-3"
+        className="conversation-compose"
         onSubmit={(event) => {
           event.preventDefault()
           send()
         }}
       >
-        <textarea
-          className="textarea-field flex-1"
-          aria-label="Message"
-          placeholder="Message this agent"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-        />
-        {running ? (
-          <button
-            className="panel-icon-btn"
-            type="button"
-            aria-label="Stop"
-            onClick={() => {
-              void run(() => window.electronAPI.conversations.interrupt(sessionId))
+        <div className="conversation-compose-box">
+          <textarea
+            ref={input}
+            className="textarea-field conversation-input"
+            rows={2}
+            aria-label="Message"
+            aria-describedby={`composer-hint-${sessionId}`}
+            placeholder={running ? 'Draft your next message…' : `Message ${provider}…`}
+            disabled={session?.status === 'closed'}
+            maxLength={MAX_PROMPT_BYTES}
+            value={composer.text}
+            onChange={(event) => conversationComposer.edit(sessionId, event.target.value)}
+            onKeyDown={(event) => {
+              if (
+                shouldSendOnEnter({
+                  key: event.key,
+                  shiftKey: event.shiftKey,
+                  altKey: event.altKey,
+                  isComposing: event.nativeEvent.isComposing
+                })
+              ) {
+                event.preventDefault()
+                event.stopPropagation()
+                send()
+              }
             }}
-          >
-            <StopIcon className="w-4 h-4" />
-          </button>
-        ) : (
-          <button
-            className="panel-icon-btn"
-            aria-label="Send"
-            disabled={busy || !draft.trim() || !snapshot || snapshot.session.status === 'closed'}
-          >
-            <ArrowUpIcon className="w-4 h-4" />
-          </button>
-        )}
+          />
+          <div className="conversation-compose-footer">
+            <span id={`composer-hint-${sessionId}`}>
+              {composer.localOnly
+                ? 'Draft is only kept in this window'
+                : composer.sending
+                  ? 'Sending…'
+                  : actionBusy
+                    ? 'Stopping…'
+                    : running
+                      ? 'You can draft while the agent works'
+                      : 'Enter to send · Shift+Enter for a new line'}
+            </span>
+            {running ? (
+              <button
+                className="panel-icon-btn"
+                type="button"
+                aria-label="Stop"
+                title="Stop this response"
+                disabled={actionBusy}
+                onClick={() => {
+                  void run(() => window.electronAPI.conversations.interrupt(sessionId))
+                }}
+              >
+                <StopIcon className="w-4 h-4" />
+              </button>
+            ) : (
+              <button
+                className="panel-icon-btn conversation-send"
+                aria-label="Send"
+                title="Send message"
+                disabled={!canSend || !composer.text.trim()}
+              >
+                <ArrowUpIcon className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
       </form>
     </div>
   )

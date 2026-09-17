@@ -5,6 +5,32 @@ view. Each session has a fixed provider. Terminal tabs, Antigravity,
 `claude agents`, and previously recorded terminal sessions keep their PTY
 implementation.
 
+## Working with the view
+
+The conversation uses a bounded reading column, collapsed tool details, and
+a separate composer. Session capabilities live behind **Session details**;
+permission requests, provider failures, and Pi's missing approval gate stay
+visible.
+
+Enter sends a message, Shift+Enter adds a line, and IME composition does not
+submit. Drafts belong to the session rather than the mounted view. They survive
+switching and renderer reload through local browser storage. A send acknowledgment
+clears only the submitted draft revision, never text typed while it was pending.
+An uncertain retry keeps its command ID to avoid duplicate execution.
+
+Streaming follows the latest message while the reader is at the bottom. Scrolling
+up stops that behavior; **Jump to latest** resumes it. Permission and question
+controls remain usable even while a prompt is waiting for acknowledgment.
+
+For UI iteration, use `npm run dev:ui`. It keeps app state in the gitignored
+`.clave-ui-dev/` directory in this checkout. The normal `npm run dev` still uses
+the default app profile and can restore installed-app sessions.
+
+This is app-profile isolation, not an agent sandbox. Provider logins still come
+from the machine, and terminal tmux mode still uses the machine's `clave` socket.
+Turn off tmux mode in the separate profile before experimenting with plain
+terminal tabs. The Electron UX checks use fake providers instead of live agents.
+
 ## Ownership
 
 The renderer is a subscriber, not the owner of the provider process.
