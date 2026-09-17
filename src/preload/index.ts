@@ -5,6 +5,7 @@ import type { GitBatchProgress } from '../shared/git-batch'
 import type { GitRangeDirection } from '../shared/git-range'
 import type { ConversationAPI } from '../shared/agent-session'
 import type { RuntimePluginsAPI } from '../shared/runtime-plugins'
+import { createSharedSubscription } from './shared-subscription'
 
 /** Creates a typed IPC event listener with cleanup function. */
 function createIpcListener<T extends unknown[]>(
@@ -18,6 +19,10 @@ function createIpcListener<T extends unknown[]>(
   }
 }
 
+const onRuntimePluginsChanged = createSharedSubscription<[]>((callback) =>
+  createIpcListener('runtime-plugins:changed', callback)
+)
+
 const electronAPI = {
   runtimePlugins: {
     list: () => ipcRenderer.invoke('runtime-plugins:list'),
@@ -29,7 +34,7 @@ const electronAPI = {
     openView: (sessionId, entryId, view) => ipcRenderer.invoke('runtime-plugins:open-view', sessionId, entryId, view),
     closeView: (leaseId) => ipcRenderer.invoke('runtime-plugins:close-view', leaseId),
     request: (leaseId, request) => ipcRenderer.invoke('runtime-plugins:request', leaseId, request),
-    onChanged: (callback) => createIpcListener('runtime-plugins:changed', callback)
+    onChanged: onRuntimePluginsChanged
   } satisfies RuntimePluginsAPI,
   onConversationsChanged: (callback: () => void) => createIpcListener('conversation:refresh', callback),
   conversations: {

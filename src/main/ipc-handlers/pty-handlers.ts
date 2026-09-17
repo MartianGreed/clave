@@ -63,9 +63,11 @@ export function registerPtyHandlers(): void {
       !options?.piMode &&
       !options?.claudeAgentsMode
     const isResumed = !!options?.resumeSessionId
+    const isRestored = !!options?.adoptSessionId || !!options?.adoptTmuxName
 
-    // Schedule title generation for new Claude-mode sessions
-    if (isClaudeMode && !isResumed && session.claudeSessionId && win) {
+    // A restored tab already has history and a persisted name. Reattaching it
+    // must not rerun paid title generation against its old first message.
+    if (isClaudeMode && !isResumed && !isRestored && session.claudeSessionId && win) {
       titleGenerator.scheduleTitleGeneration(session.id, session.cwd, session.claudeSessionId, win)
     }
 
@@ -91,7 +93,7 @@ export function registerPtyHandlers(): void {
 
     if (session.claudeSessionId) {
       console.log(
-        `[claude-session] PTY ${session.id} → claude session ${session.claudeSessionId}${options?.resumeSessionId ? ' (resumed)' : ' (new)'}`
+        `[claude-session] PTY ${session.id} → claude session ${session.claudeSessionId} (${isRestored ? 'restored' : isResumed ? 'resumed' : 'new'})`
       )
     }
 
