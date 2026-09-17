@@ -1,5 +1,6 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import { parseConversationCommand } from '../conversations/launch'
+import { requireMigrationHost, requireSessionHome } from './session-migration-handlers'
 import {
   closeConversation,
   conversationClient,
@@ -21,6 +22,7 @@ export function registerConversationHandlers(): void {
       case 'send':
         return sendConversation(command.sessionId, command.text, command.commandId)
       case 'close':
+        await requireSessionHome(requireMigrationHost(event), command.sessionId)
         return closeConversation(command.sessionId)
       case 'snapshot':
         return (await conversationClient()).snapshot(command.sessionId)
@@ -29,7 +31,11 @@ export function registerConversationHandlers(): void {
       case 'respond':
         return (await conversationClient()).respond(command.sessionId, command.response)
       case 'publish-artifact':
-        return (await conversationClient()).publishArtifact(command.sessionId, command.artifact, command.commandId)
+        return (await conversationClient()).publishArtifact(
+          command.sessionId,
+          command.artifact,
+          command.commandId
+        )
     }
   })
 }

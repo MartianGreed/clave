@@ -4,14 +4,30 @@ import type { Socket } from 'node:net'
 import type { ConversationCommand, ConversationEnvelope } from '../../shared/agent-session'
 import type { AdapterLaunch } from './adapter'
 import type { PluginBindings, PluginPin } from '../../shared/runtime-plugins'
+import type { ConversationOptions } from '../../shared/agent-session'
+import type { AttachedSessionView, LegacyImportState } from '../../shared/session-migration'
 
 export const MAX_FRAME = 8 * 1024 * 1024
 export type ServiceCommand =
   | ConversationCommand
+  | { type: 'shutdown' }
+  | { type: 'legacy-import-mappings' }
+  | {
+      type: 'prepare-legacy-import'
+      options: ConversationOptions
+      legacyImport: LegacyImportState
+      view?: AttachedSessionView
+    }
+  | { type: 'complete-legacy-import'; sessionId: string }
   | {
       type: 'update-metadata'
       sessionId: string
-      metadata: { title?: string; workspaceId?: string | null; windowKey?: string }
+      metadata: {
+        title?: string
+        workspaceId?: string | null
+        windowKey?: string
+        view?: AttachedSessionView | null
+      }
     }
   | { type: 'bind-plugins'; sessionId: string; bindings: PluginBindings }
   | { type: 'pin-view'; sessionId: string; pin: PluginPin }
@@ -32,7 +48,7 @@ export interface WireRequest {
 }
 export type WireMessage =
   | { hello: number; token: string }
-  | { ready: number }
+  | { ready: number; pid?: number; capabilities?: string[]; builtinRevision?: string }
   | WireRequest
   | { id: number; result?: unknown; error?: string }
   | { event: ConversationEnvelope }

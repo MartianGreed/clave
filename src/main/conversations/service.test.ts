@@ -335,6 +335,39 @@ function fixture() {
   }
 }
 
+test('persists the concrete resolved launch profile on creation and first restart launch', async () => {
+  const f = fixture()
+  const service = new ConversationService(f.directory, f.factory)
+  const launch = {
+    ...f.launch,
+    options: { ...f.options, launchProfileId: 'resolved-default' }
+  }
+  const created = await service.create(f.options, launch)
+  expect(created.session.launchProfileId).toBe('resolved-default')
+  const legacy = await service.create(f.options, f.launch)
+  const restored = new ConversationService(f.directory, f.factory)
+  expect(restored.snapshot(created.session.id).session.launchProfileId).toBe('resolved-default')
+  await restored.send(legacy.session.id, 'hello', 'first', launch)
+  const restarted = new ConversationService(f.directory, f.factory)
+  expect(restarted.snapshot(legacy.session.id).session.launchProfileId).toBe('resolved-default')
+})
+
+test('does not complete a closed legacy import through a transient archived record', async () => {
+  const f = fixture()
+  const service = new ConversationService(f.directory, f.factory)
+  const sourceId = '11111111-1111-1111-1111-111111111111'
+  const { session } = await service.prepareLegacyImport(f.options, f.launch, {
+    sourceId,
+    recordKey: sourceId,
+    complete: false
+  })
+  await service.close(session.id)
+  expect(() => service.completeLegacyImport(session.id)).toThrow('closed')
+  const restored = new ConversationService(f.directory, f.factory)
+  expect(() => restored.completeLegacyImport(session.id)).toThrow('closed')
+  expect(restored.snapshot(session.id).session.legacyImport?.complete).toBe(false)
+})
+
 test('durable idempotency, concurrent send rejection and restart without command replay', async () => {
   const f = fixture()
   const service = new ConversationService(f.directory, f.factory)

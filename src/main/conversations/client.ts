@@ -19,6 +19,7 @@ import type {
   PluginPin
 } from '../../shared/runtime-plugins'
 import { servicePaths, receive, transmit, type ServiceCommand } from './wire'
+import type { AttachedSessionView, LegacyImportState } from '../../shared/session-migration'
 
 interface ClientOptions {
   userData: string
@@ -28,6 +29,15 @@ interface ClientOptions {
 
 export class ConversationClient {
   private nextId = 0
+  private serverInfo: {
+    protocolVersion: number
+    pid?: number
+    capabilities: string[]
+    builtinRevision?: string
+  } = {
+    protocolVersion: SESSION_PROTOCOL_VERSION,
+    capabilities: []
+  }
   private pending = new Map<
     number,
     { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }
@@ -65,7 +75,7 @@ export class ConversationClient {
           if (old) {
             old.disconnect()
             throw new Error(
-              'This profile has a conversation service from an older build. Its sessions were left running. Use a separate dev:ui profile or restart that service before using runtime plugins.'
+              'This profile has a conversation service from an older build. Its sessions were left running. Use Settings → Agents → Restart background service, or use a separate dev:ui profile.'
             )
           }
         }
@@ -120,6 +130,12 @@ export class ConversationClient {
             return
           }
           ready = true
+          client.serverInfo = {
+            protocolVersion: message.ready,
+            pid: message.pid,
+            capabilities: message.capabilities ?? [],
+            builtinRevision: message.builtinRevision
+          }
           clearTimeout(timer)
           resolve(client)
         } else if ('event' in message) {
@@ -144,6 +160,18 @@ export class ConversationClient {
 
   private request<T>(command: ServiceCommand, launch?: AdapterLaunch): Promise<T> {
     if (this.socket.destroyed) return Promise.reject(new Error('Conversation service disconnected'))
+    if (
+      ['legacy-import-mappings', 'prepare-legacy-import', 'complete-legacy-import'].includes(
+        command.type
+      ) &&
+      !this.serverInfo.capabilities.includes('legacy-import')
+    ) {
+      return Promise.reject(
+        new Error(
+          'This background service does not support session migration. Use Settings → Agents → Restart background service. Its sessions have been left running.'
+        )
+      )
+    }
     if (this.pending.size >= 64) return Promise.reject(new Error('Too many conversation requests'))
     const id = ++this.nextId
     return new Promise<T>((resolve, reject) => {
@@ -159,6 +187,31 @@ export class ConversationClient {
   }
   create(options: ConversationOptions, launch: AdapterLaunch): Promise<ConversationSnapshot> {
     return this.request({ type: 'create', options }, launch)
+  }
+  getServerInfo(): {
+    protocolVersion: number
+    pid?: number
+    capabilities: string[]
+    builtinRevision?: string
+  } {
+    return structuredClone(this.serverInfo)
+  }
+  shutdown(): Promise<void> {
+    return this.request({ type: 'shutdown' })
+  }
+  legacyImportMappings(): Promise<Record<string, string>> {
+    return this.request({ type: 'legacy-import-mappings' })
+  }
+  prepareLegacyImport(
+    options: ConversationOptions,
+    launch: AdapterLaunch,
+    legacyImport: LegacyImportState,
+    view?: AttachedSessionView
+  ): Promise<ConversationSnapshot> {
+    return this.request({ type: 'prepare-legacy-import', options, legacyImport, view }, launch)
+  }
+  completeLegacyImport(sessionId: string): Promise<ConversationSnapshot> {
+    return this.request({ type: 'complete-legacy-import', sessionId })
   }
   list(): Promise<ConversationSession[]> {
     return this.request({ type: 'list' })
@@ -208,7 +261,12 @@ export class ConversationClient {
   }
   updateMetadata(
     sessionId: string,
-    metadata: { title?: string; workspaceId?: string | null; windowKey?: string }
+    metadata: {
+      title?: string
+      workspaceId?: string | null
+      windowKey?: string
+      view?: AttachedSessionView | null
+    }
   ): Promise<void> {
     return this.request({ type: 'update-metadata', sessionId, metadata })
   }

@@ -1085,9 +1085,11 @@ async function handleSendToSession(payload: {
   // checkpoint path — resolved BEFORE the reach gate, which has nothing to
   // gate on a message that never leaves the session.
   if (payload.callerSessionId && payload.sessionId === 'mine') {
+    assertMigrationComplete(resolveTargetSession(payload.callerSessionId, payload.callerSessionId))
     return handleSelfCheckpoint(payload.callerSessionId, payload.message)
   }
   const target = resolveTargetSession(payload.sessionId, payload.callerSessionId)
+  assertMigrationComplete(target)
   if (payload.callerSessionId && target.id === payload.callerSessionId) {
     return handleSelfCheckpoint(payload.callerSessionId, payload.message)
   }
@@ -1242,6 +1244,12 @@ async function handleSendToSession(payload: {
   }
 }
 
+function assertMigrationComplete(session: Session): void {
+  if (session.legacyAgentId) {
+    throw new Error('Session migration required. Open this tab in Clave and move it to a conversation before reading or sending messages.')
+  }
+}
+
 async function handleReadSession(payload: {
   sessionId: string
   lines?: number
@@ -1249,6 +1257,7 @@ async function handleReadSession(payload: {
 }): Promise<unknown> {
   const target = resolveTargetSession(payload.sessionId, payload.callerSessionId)
   assertCanReach(payload.callerSessionId, target, 'read')
+  assertMigrationComplete(target)
   if (target.id.startsWith('conversation-')) {
     const snapshot = await window.electronAPI.conversations.snapshot(target.id)
     const requested = Math.min(Math.max(payload.lines ?? 100, 1), 500)

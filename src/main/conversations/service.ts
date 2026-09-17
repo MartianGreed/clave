@@ -20,6 +20,7 @@ import {
 } from '../../shared/agent-session'
 import type { AdapterFactory, AdapterLaunch, ConversationAdapter } from './adapter'
 import { MAX_FRAME } from './wire'
+import type { AttachedSessionView, LegacyImportState } from '../../shared/session-migration'
 import type {
   ArtifactInput,
   ConversationArtifact,
@@ -73,6 +74,23 @@ const OPTION_KEYS = [
   'dangerousMode',
   'resumeSessionId'
 ] as const
+
+export function validateAttachedView(value: AttachedSessionView): AttachedSessionView {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Invalid attached view')
+  const result = {} as AttachedSessionView
+  for (const key of Object.keys(value)) {
+    if (!['url', 'title', 'command', 'cwd'].includes(key))
+      throw new Error('Invalid attached view field')
+    const text = value[key as keyof AttachedSessionView]
+    if (typeof text !== 'string' || text.length > 8192 || text.includes('\0'))
+      throw new Error('Invalid attached view field')
+    Object.assign(result, { [key]: text })
+  }
+  if (!result.url || !['http:', 'https:'].includes(new URL(result.url).protocol))
+    throw new Error('Invalid attached view URL')
+  return result
+}
 
 /** Allowlist prevents accidental persistence of a launch environment supplied by a caller. */
 function safeOptions(options: ConversationOptions): ConversationOptions {
@@ -292,12 +310,30 @@ export class ConversationService {
     return { ...structuredClone(live.record.snapshot), providerConnected: !!live.adapter }
   }
 
+  legacyImportMappings(): Record<string, string> {
+    const result: Record<string, string> = {}
+    for (const id of [...this.sessions.keys(), ...this.archived]) {
+      const session = this.get(id).record.snapshot.session
+      if (session.legacyImport) result[session.legacyImport.sourceId] = id
+    }
+    return result
+  }
+
   updateMetadata(
     id: string,
-    metadata: { title?: string; workspaceId?: string | null; windowKey?: string }
+    metadata: {
+      title?: string
+      workspaceId?: string | null
+      windowKey?: string
+      view?: AttachedSessionView | null
+    }
   ): void {
     const live = this.get(id)
     this.flush(live)
+    const view =
+      metadata.view === undefined || metadata.view === null
+        ? metadata.view
+        : validateAttachedView(metadata.view)
     for (const key of ['title', 'workspaceId', 'windowKey'] as const) {
       if (key === 'workspaceId' && metadata[key] === null) {
         delete live.record.snapshot.session.workspaceId
@@ -309,6 +345,8 @@ export class ConversationService {
         live.record.snapshot.session[key] = metadata[key] as string
       }
     }
+    if (view === null) delete live.record.snapshot.session.view
+    else if (view !== undefined) live.record.snapshot.session.view = view
     this.emit(live, {
       type: 'status',
       status: live.record.snapshot.session.status,
@@ -376,9 +414,17 @@ export class ConversationService {
   }
 
   private async start(live: Live, launch: AdapterLaunch): Promise<void> {
-    const options = safeOptions(live.record.snapshot.session)
+    const options = safeOptions({
+      ...live.record.snapshot.session,
+      launchProfileId:
+        launch.options.launchProfileId ?? live.record.snapshot.session.launchProfileId
+    })
     if (launch.options.provider !== options.provider)
       throw new Error('A conversation cannot change provider')
+    if (options.launchProfileId !== live.record.snapshot.session.launchProfileId) {
+      live.record.snapshot.session.launchProfileId = options.launchProfileId
+      this.save(live)
+    }
     const generation = ++live.generation
     const adapter = this.factory(
       {
@@ -412,7 +458,62 @@ export class ConversationService {
     this.emit(live, { type: 'status', status: 'idle' })
   }
 
+  async prepareLegacyImport(
+    options: ConversationOptions,
+    launch: AdapterLaunch,
+    legacyImport: LegacyImportState,
+    view?: AttachedSessionView
+  ): Promise<ConversationSnapshot> {
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+        legacyImport.sourceId
+      ) ||
+      legacyImport.recordKey !== (legacyImport.tmuxName ?? legacyImport.sourceId) ||
+      (legacyImport.tmuxName !== undefined && !/^clave-[A-Za-z0-9_-]+$/.test(legacyImport.tmuxName))
+    )
+      throw new Error('Invalid legacy import')
+    const id = `conversation-${legacyImport.sourceId}`
+    if (this.sessions.has(id) || this.archived.has(id)) {
+      const existing = this.snapshot(id)
+      if (existing.session.legacyImport?.sourceId !== legacyImport.sourceId)
+        throw new Error('Legacy import ID collision')
+      return existing
+    }
+    return this.createRecord(
+      options,
+      launch,
+      id,
+      {
+        sourceId: legacyImport.sourceId,
+        recordKey: legacyImport.recordKey,
+        tmuxName: legacyImport.tmuxName,
+        complete: false
+      },
+      view
+    )
+  }
+
+  completeLegacyImport(id: string): ConversationSnapshot {
+    const live = this.get(id)
+    if (live.record.snapshot.session.status === 'closed')
+      throw new Error('Legacy conversation is closed')
+    if (!live.record.snapshot.session.legacyImport) throw new Error('Not a legacy import')
+    live.record.snapshot.session.legacyImport.complete = true
+    this.updateMetadata(id, {})
+    return this.snapshot(id)
+  }
+
   async create(options: ConversationOptions, launch: AdapterLaunch): Promise<ConversationSnapshot> {
+    return this.createRecord(options, launch, `conversation-${randomUUID()}`)
+  }
+
+  private createRecord(
+    options: ConversationOptions,
+    launch: AdapterLaunch,
+    id: string,
+    legacyImport?: LegacyImportState,
+    view?: AttachedSessionView
+  ): ConversationSnapshot {
     if (
       [...this.sessions.values()].filter((live) => live.record.snapshot.session.status !== 'closed')
         .length >= 1000
@@ -421,8 +522,13 @@ export class ConversationService {
     const now = new Date().toISOString()
     const snapshot: ConversationSnapshot = {
       session: {
-        ...safeOptions(options),
-        id: `conversation-${randomUUID()}`,
+        ...safeOptions({
+          ...options,
+          launchProfileId: launch.options.launchProfileId ?? options.launchProfileId
+        }),
+        id,
+        ...(legacyImport ? { legacyImport } : {}),
+        ...(view ? { view: validateAttachedView(view) } : {}),
         createdAt: now,
         updatedAt: now,
         status: 'starting',
@@ -457,6 +563,8 @@ export class ConversationService {
   async send(id: string, text: string, commandId: string, launch?: AdapterLaunch): Promise<void> {
     const live = this.get(id)
     this.flush(live)
+    if (live.record.snapshot.session.legacyImport?.complete === false)
+      throw new Error('Legacy migration is not complete')
     if (
       typeof commandId !== 'string' ||
       !commandId ||

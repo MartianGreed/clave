@@ -5,15 +5,29 @@ import { TerminalHeader } from './TerminalHeader'
 import { MessageTrail } from './MessageTrail'
 import { cn } from '../../lib/utils'
 import { ConversationPanel } from './ConversationPanel'
+import { LegacyAgentMigrationPanel } from './LegacyAgentMigrationPanel'
 
 interface TerminalPanelProps {
   sessionId: string
 }
 
 export function TerminalPanel({ sessionId }: TerminalPanelProps): React.JSX.Element {
-  return sessionId.startsWith('conversation-')
-    ? <ConversationPanel key={sessionId} sessionId={sessionId} />
-    : <LegacyTerminalPanel sessionId={sessionId} />
+  const legacyAgentId = useSessionStore(
+    (s) => s.sessions.find((item) => item.id === sessionId)?.legacyAgentId
+  )
+  if (legacyAgentId)
+    return (
+      <LegacyAgentMigrationPanel
+        key={legacyAgentId}
+        sessionId={sessionId}
+        legacyId={legacyAgentId}
+      />
+    )
+  return sessionId.startsWith('conversation-') ? (
+    <ConversationPanel key={sessionId} sessionId={sessionId} />
+  ) : (
+    <LegacyTerminalPanel sessionId={sessionId} />
+  )
 }
 
 function LegacyTerminalPanel({ sessionId }: TerminalPanelProps): React.JSX.Element {

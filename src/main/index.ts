@@ -103,8 +103,10 @@ function onWindowClosed(windowId: number, windowKey: string): void {
       tmuxBacked.push(id)
       continue
     }
-    if (ptyManager.getSession(id)?.tmuxName) tmuxBacked.push(id)
-    else {
+    const tracked = ptyManager.getSession(id)
+    if (tracked?.tmuxName || (!tracked && ptyManager.readLegacyMigrationRecord(id))) {
+      tmuxBacked.push(id)
+    } else {
       if (primaryKey) ptyManager.setSessionWindowKey(id, primaryKey)
       ptyManager.kill(id, false)
     }

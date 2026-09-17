@@ -34,6 +34,7 @@ vi.mock('../workspace-manager', () => ({
   workspaceManager: { getLastActiveWorkspaceId: () => 'workspace' }
 }))
 vi.mock('../window-state', () => ({ windowState: {} }))
+vi.mock('../sidebar-layout-manager', () => ({ sidebarLayoutManager: {} }))
 vi.mock('../window-registry', () => ({
   windowRegistry: {
     getWorkspaceForWindow: () => 'workspace',

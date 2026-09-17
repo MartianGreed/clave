@@ -1,4 +1,5 @@
 import type { ConversationSession } from '../../../shared/agent-session'
+import { isPiThinkingLevel } from '../../../shared/agent-launch'
 import type { Session } from '../store/session-types'
 import { useSessionStore } from '../store/session-store'
 import { getActiveWorkspaceId, getWorkspaceById } from '../store/workspace-store'
@@ -7,6 +8,11 @@ export function conversationToSession(session: ConversationSession): Session {
   const folderName = session.cwd.split(/[\\/]/).filter(Boolean).pop() || session.cwd
   return {
     id: session.id,
+    legacyAgentId:
+      session.legacyImport && !session.legacyImport.complete
+        ? session.legacyImport.sourceId
+        : undefined,
+    view: session.view ? { ...session.view } : undefined,
     cwd: session.cwd,
     folderName,
     name: session.title || `${session.provider} · ${folderName}`,
@@ -26,6 +32,8 @@ export function conversationToSession(session: ConversationSession): Session {
     claudeConfigDir: session.configDir,
     launchProfileId: session.launchProfileId,
     model: session.model,
+    piProvider: session.piProvider,
+    piThinking: isPiThinkingLevel(session.piThinking) ? session.piThinking : undefined,
     workspaceId: session.workspaceId,
     sessionType: 'local',
     detectedUrl: null,
@@ -54,7 +62,11 @@ export async function launchOpenCode(groupId?: string): Promise<void> {
   return launchRuntimeProvider('opencode', groupId)
 }
 
-export async function launchRuntimeProvider(provider: string, groupId?: string): Promise<void> {
+export async function launchRuntimeProvider(
+  provider: string,
+  groupId?: string,
+  launchProfileId?: string
+): Promise<void> {
   const workspaceId = getActiveWorkspaceId()
   const cwd =
     getWorkspaceById(workspaceId)?.rootDir ?? (await window.electronAPI.openFolderDialog())
@@ -62,6 +74,7 @@ export async function launchRuntimeProvider(provider: string, groupId?: string):
   const { session } = await window.electronAPI.conversations.create({
     provider,
     cwd,
+    launchProfileId,
     workspaceId: workspaceId ?? undefined
   })
   useSessionStore.getState().addSessionInGroup(conversationToSession(session), groupId ?? null)
@@ -75,6 +88,7 @@ export async function duplicateConversation(sessionId: string): Promise<string> 
     workspaceId: source.workspaceId,
     launchProfileId: source.launchProfileId,
     claudeProfileId: source.claudeProfileId,
+    configDir: source.configDir,
     model: source.model,
     piProvider: source.piProvider,
     piThinking: source.piThinking,

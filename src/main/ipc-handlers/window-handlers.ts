@@ -93,6 +93,12 @@ export async function moveSessionsToWindow(
         continue
       }
       await client.updateMetadata(id, { windowKey: windowRegistry.getKeyForWindow(target.id)! })
+      if (snapshot.session.legacyImport && !snapshot.session.legacyImport.complete) {
+        ptyManager.setSessionWindowKey(
+          snapshot.session.legacyImport.sourceId,
+          windowRegistry.getKeyForWindow(target.id)!
+        )
+      }
       revokePluginSessionViews(id)
       if (oldHost) oldHost.webContents.send('session:removed-for-rehome', id)
       windowRegistry.bindSession(id, target.id)
@@ -101,6 +107,19 @@ export async function moveSessionsToWindow(
     }
     const session = ptyManager.getSession(id)
     if (!session) {
+      // A migration placeholder can move without attaching or stopping its agent.
+      if (ptyManager.readLegacyMigrationRecord(id)) {
+        const oldHost = windowRegistry.getWindowForSession(id)
+        if (oldHost?.id === target.id) {
+          result.refused.push({ sessionId: id, reason: 'same-window' })
+          continue
+        }
+        ptyManager.setSessionWindowKey(id, windowRegistry.getKeyForWindow(target.id)!)
+        if (oldHost) oldHost.webContents.send('session:removed-for-rehome', id)
+        windowRegistry.bindSession(id, target.id)
+        result.moved.push(id)
+        continue
+      }
       result.refused.push({ sessionId: id, reason: 'not-live' })
       continue
     }
@@ -116,8 +135,9 @@ export async function moveSessionsToWindow(
     // Tell the old host to drop the tab FIRST, so its terminal unmounts before
     // the detach's pty:exit could paint "[Session ended]" on a moving tab.
     if (oldHost) oldHost.webContents.send('session:removed-for-rehome', id)
+    ptyManager.setSessionWindowKey(id, windowRegistry.getKeyForWindow(target.id)!)
     ptyManager.kill(id, false) // detach: tmux session and record survive
-    windowRegistry.unbindSession(id)
+    windowRegistry.bindSession(id, target.id)
     result.moved.push(id)
   }
   if (result.moved.length > 0 || (layout && layout.groups.length > 0)) {
@@ -232,7 +252,12 @@ export function registerWindowHandlers(deps: WindowHandlerDeps): void {
       const movable = linked.filter((id) => {
         const session = ptyManager.getSession(id)
         const host = windowRegistry.getWindowForSession(id)
-        return (isConversationId(id) || (!!session && !!session.tmuxName)) && (!host || host.id !== target.id)
+        return (
+          (isConversationId(id) ||
+            (!!session && !!session.tmuxName) ||
+            (!session && !!ptyManager.readLegacyMigrationRecord(id))) &&
+          (!host || host.id !== target.id)
+        )
       })
       if (linked.length > 0 && movable.length === 0) {
         return {

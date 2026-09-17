@@ -43,7 +43,9 @@ describe('job process ownership', () => {
   it.skipIf(process.platform === 'win32')(
     'cleans redirected background children on successful leader exit',
     async () => {
-      const { dir, jobs } = await setup(100)
+      // This checks leader-exit cleanup, not the deadline. A 100 ms deadline
+      // could interrupt the shell before exit under full-suite CPU contention.
+      const { dir, jobs } = await setup(5000)
       const input = {
         ...scope,
         cwd: dir,

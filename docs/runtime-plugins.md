@@ -60,6 +60,12 @@ and `capabilities`. Their CommonJS entry exports
 not during inspection, installation, or listing. Plugins must bundle code into
 their built entries; they do not import Clave's stores or internal modules.
 
+Every provider has a default launch profile in Settings → Agents. Its command
+comes from the provider manifest. Custom profiles can replace that command and
+add arguments; global and workspace defaults use the same selection rules as
+built-in agents. A conversation using the provider default keeps the command
+from its pinned revision, even after an update or disablement.
+
 The host validates emitted events and prefixes external provider entry IDs to
 keep them separate from core-authored user messages. Provider modules must emit
 assistant messages, tools, requests, artifacts, and lifecycle events through the

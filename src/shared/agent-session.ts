@@ -3,6 +3,7 @@
  * A session owns its history and provider identity; a window is only a subscriber.
  */
 import type { ArtifactInput, ConversationArtifact, PluginBindings } from './runtime-plugins'
+import type { AttachedSessionView, LegacyImportState } from './session-migration'
 
 export const CONVERSATION_PROVIDERS = ['claude', 'codex', 'opencode', 'pi'] as const
 export type BuiltinConversationProvider = (typeof CONVERSATION_PROVIDERS)[number]
@@ -52,6 +53,9 @@ export interface ConversationSession extends ConversationOptions {
   capabilities: AgentCapabilities
   providerSessionId?: string
   error?: string
+  /** Host migration transaction; callers cannot supply this in create options. */
+  legacyImport?: LegacyImportState
+  view?: AttachedSessionView
 }
 
 export interface ConversationMessage {

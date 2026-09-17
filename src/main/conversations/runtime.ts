@@ -14,6 +14,7 @@ import {
   accountTokenForSpawn,
   buildSpawnEnv,
   getLoginShellEnv,
+  ptyManager,
   type PtySpawnOptions
 } from '../pty-manager'
 import { writeSessionMcpConfig, deleteSessionMcpConfig } from '../mcp/mcp-runtime'
@@ -94,10 +95,12 @@ function launchFor(options: ConversationOptions, sessionId?: string): AdapterLau
     options.provider,
     options.pluginBindings?.provider
   )
-  const profile =
-    options.provider === 'claude' || options.provider === 'codex' || options.provider === 'pi'
-      ? launchProfileManager.resolve(options.provider, options.workspaceId, options.launchProfileId)
-      : { command: registered.command, additionalArgs: [] }
+  const profile = launchProfileManager.resolve(
+    options.provider,
+    options.workspaceId,
+    options.launchProfileId,
+    { name: registered.descriptor.name, command: registered.command }
+  )
   const env = buildSpawnEnv(
     getLoginShellEnv(),
     options.provider === 'claude'
@@ -124,7 +127,7 @@ function launchFor(options: ConversationOptions, sessionId?: string): AdapterLau
       'providers',
       sessionId ?? 'pending'
     ),
-    options,
+    options: { ...options, launchProfileId: profile.id },
     mcpConfigPath:
       options.provider === 'claude' && sessionId
         ? (writeSessionMcpConfig(sessionId) ?? undefined)
@@ -132,17 +135,15 @@ function launchFor(options: ConversationOptions, sessionId?: string): AdapterLau
   }
 }
 
-export async function createConversation(
+/** Resolve and validate the concrete launch before creating or stopping anything. */
+export async function prepareConversation(
   win: BrowserWindow,
   input: ConversationOptions
-): Promise<ConversationSnapshot> {
+): Promise<{ options: ConversationOptions; launch: AdapterLaunch }> {
   validateDirectory(input.cwd)
   await requireWorkspaceTrust(win, input.cwd)
   const workspaceId = input.workspaceId ?? windowRegistry.getWorkspaceForWindow(win.id) ?? undefined
-  const profile =
-    input.provider === 'claude' || input.provider === 'codex' || input.provider === 'pi'
-      ? launchProfileManager.resolve(input.provider, workspaceId, input.launchProfileId)
-      : undefined
+  const profile = launchProfileManager.resolve(input.provider, workspaceId, input.launchProfileId)
   const options: ConversationOptions = {
     ...input,
     pluginBindings: runtimePluginRegistry().bindingsFor(input.provider),
@@ -154,8 +155,16 @@ export async function createConversation(
     piProvider: input.piProvider ?? (input.provider === 'pi' ? profile?.pi?.provider : undefined),
     piThinking: input.piThinking ?? (input.provider === 'pi' ? profile?.pi?.thinking : undefined)
   }
+  return { options, launch: launchFor(options) }
+}
+
+export async function createConversation(
+  win: BrowserWindow,
+  input: ConversationOptions
+): Promise<ConversationSnapshot> {
+  const { options, launch } = await prepareConversation(win, input)
   const client = await conversationClient()
-  const snapshot = await client.create(options, launchFor(options))
+  const snapshot = await client.create(options, launch)
   windowRegistry.bindSession(snapshot.session.id, win.id)
   return snapshot
 }
@@ -178,8 +187,14 @@ export async function sendConversation(id: string, text: string, commandId: stri
 }
 
 export async function closeConversation(id: string): Promise<void> {
+  const client = await conversationClient()
+  const { session } = await client.snapshot(id)
+  if (session.legacyImport?.complete === false) {
+    await ptyManager.stopAndForgetLegacyRecord(session.legacyImport)
+    windowRegistry.unbindSession(session.legacyImport.sourceId)
+  }
   revokePluginSessionViews(id)
-  await (await conversationClient()).close(id)
+  await client.close(id)
   deleteSessionMcpConfig(id)
   windowRegistry.unbindSession(id)
 }

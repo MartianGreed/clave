@@ -17,6 +17,7 @@ import { receive, transmit, servicePaths, type WireRequest } from './wire'
 import { RuntimePluginJobs } from '../runtime-plugins/jobs'
 import { RuntimePluginRegistry } from '../runtime-plugins/registry'
 import { createPluginAdapterFactory } from '../runtime-plugins/providers'
+import { builtinPlugins } from '../runtime-plugins/builtins'
 
 function isAlive(socket: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -133,7 +134,12 @@ export async function startDaemon(
           authenticated = true
           clearTimeout(timer)
           off = service.onEvent((event) => transmit(socket, { event }))
-          transmit(socket, { ready: SESSION_PROTOCOL_VERSION })
+          transmit(socket, {
+            ready: SESSION_PROTOCOL_VERSION,
+            pid: process.pid,
+            capabilities: ['legacy-import', 'shutdown'],
+            builtinRevision: builtinPlugins()[0].revision
+          })
           return
         }
         if (!('command' in message) || !Number.isSafeInteger(message.id) || ++inFlight > 64) {
@@ -141,6 +147,12 @@ export async function startDaemon(
           return
         }
         const request = message as WireRequest
+        if (request.command.type === 'shutdown') {
+          transmit(socket, { id: request.id, result: undefined })
+          // Flush the acknowledgement before close destroys subscribed sockets.
+          socket.end(() => server.close())
+          return
+        }
         void dispatch(service, jobs, request)
           .then(
             (result) => transmit(socket, { id: request.id, result }),
@@ -193,6 +205,18 @@ async function dispatch(
   { command, launch }: WireRequest
 ): Promise<unknown> {
   switch (command.type) {
+    case 'legacy-import-mappings':
+      return service.legacyImportMappings()
+    case 'prepare-legacy-import':
+      if (!launch) throw new Error('Trusted launch required')
+      return service.prepareLegacyImport(
+        command.options,
+        launch,
+        command.legacyImport,
+        command.view
+      )
+    case 'complete-legacy-import':
+      return service.completeLegacyImport(command.sessionId)
     case 'create':
       if (!launch) throw new Error('Trusted launch required')
       return service.create(command.options, launch)
@@ -254,6 +278,7 @@ if (process.argv.includes('--conversation-daemon')) {
   void startDaemon(userData, createPluginAdapterFactory(new RuntimePluginRegistry(userData)))
     .then((server) => {
       if (!server) return
+      server.once('close', () => process.exit(0))
       const stop = (): void => {
         server.close(() => process.exit(0))
       }

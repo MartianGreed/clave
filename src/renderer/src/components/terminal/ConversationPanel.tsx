@@ -375,6 +375,11 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
             ) : snapshot.entries.length === 0 ? (
               <div className="conversation-empty">
                 <h2>What would you like to work on?</h2>
+                {session?.legacyImport?.complete && (
+                  <p>
+                    Provider context may resume. Earlier native transcript is not re-imported here.
+                  </p>
+                )}
                 <p>Ask {provider} to explore this project, plan a change, or help with a bug.</p>
                 <div className="conversation-actions">
                   <button
@@ -405,56 +410,61 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
             ) : (
               snapshot.entries.map((entry) => {
                 switch (entry.kind) {
-                case 'message': return (
-                  <article
-                    key={entry.id}
-                    aria-label={`${entry.role} message`}
-                    className="conversation-message"
-                    data-role={entry.role}
-                  >
-                    {entry.role === 'user' ? (
-                      <p className="conversation-user-text">{entry.text}</p>
-                    ) : (
-                      <MarkdownRenderer content={entry.text} />
-                    )}
-                  </article>
-                )
-                case 'artifact': return (
-                  <PluginEntryView key={entry.id} sessionId={sessionId} entry={entry} />
-                )
-                case 'tool': return (
-                  <PluginEntryView key={entry.id} sessionId={sessionId} entry={entry}>
-                  <details key={entry.id} className="conversation-tool" data-state={entry.status}>
-                    <summary>
-                      <ChevronRightIcon className="conversation-chevron w-4 h-4" />
-                      <span>
-                        {entry.name} · {entry.status}
-                      </span>
-                      {entry.status === 'completed' ? (
-                        <CheckIcon className="w-4 h-4" />
-                      ) : entry.status === 'failed' ? (
-                        <ExclamationTriangleIcon className="w-4 h-4" />
-                      ) : (
-                        <ArrowPathIcon className="conversation-working w-4 h-4" />
-                      )}
-                    </summary>
-                    <div className="conversation-tool-body">
-                      {entry.input && (
-                        <>
-                          <h4>Input</h4>
-                          <pre>{entry.input}</pre>
-                        </>
-                      )}
-                      {entry.output && (
-                        <>
-                          <h4>Output</h4>
-                          <pre>{entry.output}</pre>
-                        </>
-                      )}
-                    </div>
-                  </details>
-                  </PluginEntryView>
-                )
+                  case 'message':
+                    return (
+                      <article
+                        key={entry.id}
+                        aria-label={`${entry.role} message`}
+                        className="conversation-message"
+                        data-role={entry.role}
+                      >
+                        {entry.role === 'user' ? (
+                          <p className="conversation-user-text">{entry.text}</p>
+                        ) : (
+                          <MarkdownRenderer content={entry.text} />
+                        )}
+                      </article>
+                    )
+                  case 'artifact':
+                    return <PluginEntryView key={entry.id} sessionId={sessionId} entry={entry} />
+                  case 'tool':
+                    return (
+                      <PluginEntryView key={entry.id} sessionId={sessionId} entry={entry}>
+                        <details
+                          key={entry.id}
+                          className="conversation-tool"
+                          data-state={entry.status}
+                        >
+                          <summary>
+                            <ChevronRightIcon className="conversation-chevron w-4 h-4" />
+                            <span>
+                              {entry.name} · {entry.status}
+                            </span>
+                            {entry.status === 'completed' ? (
+                              <CheckIcon className="w-4 h-4" />
+                            ) : entry.status === 'failed' ? (
+                              <ExclamationTriangleIcon className="w-4 h-4" />
+                            ) : (
+                              <ArrowPathIcon className="conversation-working w-4 h-4" />
+                            )}
+                          </summary>
+                          <div className="conversation-tool-body">
+                            {entry.input && (
+                              <>
+                                <h4>Input</h4>
+                                <pre>{entry.input}</pre>
+                              </>
+                            )}
+                            {entry.output && (
+                              <>
+                                <h4>Output</h4>
+                                <pre>{entry.output}</pre>
+                              </>
+                            )}
+                          </div>
+                        </details>
+                      </PluginEntryView>
+                    )
                 }
               })
             )}

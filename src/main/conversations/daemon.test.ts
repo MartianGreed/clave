@@ -7,7 +7,7 @@ import { createConnection, createServer } from 'node:net'
 import { createHash } from 'node:crypto'
 import { startDaemon } from './daemon'
 import { ConversationClient } from './client'
-import { servicePaths, transmit } from './wire'
+import { servicePaths, transmit, receive } from './wire'
 import type { AdapterFactory, EmitConversationEvent } from './adapter'
 
 let server: Server | undefined
@@ -66,6 +66,49 @@ test('socket authenticates, survives disconnect, and rejects a second owner', as
   expect(dispose).not.toHaveBeenCalled()
   await second.close(created.session.id)
   expect(dispose).toHaveBeenCalledTimes(1)
+})
+
+test('additive handshake advertises imports and shutdown acknowledges before disconnect', async () => {
+  directory = mkdtempSync(join(tmpdir(), 'cv-'))
+  const factory = vi.fn() as AdapterFactory
+  server = await startDaemon(directory, factory)
+  const paths = servicePaths(directory)
+  const client = await ConversationClient.attach(paths.socket, readFileSync(paths.token, 'utf8'))
+  clients.push(client)
+  expect(client.getServerInfo()).toEqual({
+    protocolVersion: 2,
+    pid: process.pid,
+    capabilities: ['legacy-import', 'shutdown'],
+    builtinRevision: 'test-builtins-v1'
+  })
+  const closed = new Promise<void>((resolve) => server!.once('close', resolve))
+  await client.shutdown()
+  await closed
+  server = undefined
+  expect(factory).not.toHaveBeenCalled()
+})
+
+test('a pre-migration v2 service returns an actionable error without receiving new commands', async () => {
+  directory = mkdtempSync(join(tmpdir(), 'cv-'))
+  const paths = servicePaths(directory)
+  mkdirSync(paths.socketDirectory, { recursive: true })
+  const commands: string[] = []
+  server = createServer((socket) =>
+    receive(socket, (message) => {
+      if ('hello' in message) transmit(socket, { ready: 2 })
+      else if ('command' in message) {
+        commands.push(message.command.type)
+        transmit(socket, { id: message.id, result: [] })
+      }
+    })
+  )
+  await new Promise<void>((resolve) => server!.listen(paths.socket, resolve))
+  const client = await ConversationClient.attach(paths.socket, 'test-only')
+  clients.push(client)
+  await expect(client.legacyImportMappings()).rejects.toThrow('Restart background service')
+  expect(await client.list()).toEqual([])
+  expect(commands).toEqual(['list'])
+  expect(client.isConnected()).toBe(true)
 })
 
 test('invalid protocol and oversized frame are disconnected before commands execute', async () => {

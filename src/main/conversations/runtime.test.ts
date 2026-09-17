@@ -63,7 +63,10 @@ vi.mock('../ipc-handlers/clave-file-handlers', () => ({
 vi.mock('../runtime-plugins/host', () => ({ revokePluginSessionViews: vi.fn() }))
 vi.mock('../runtime-plugins/registry-runtime', () => ({
   runtimePluginRegistry: () => ({
-    resolveProvider: (provider: string) => ({ command: [provider] }),
+    resolveProvider: (provider: string) => ({
+      descriptor: { name: provider },
+      command: [provider]
+    }),
     bindingsFor: (provider: string) => ({
       provider: { pluginId: `clave.${provider}`, revision: 'builtin', version: '1.0.0' },
       views: []

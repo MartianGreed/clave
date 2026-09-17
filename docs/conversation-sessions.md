@@ -1,9 +1,9 @@
 # Conversation sessions
 
 New Claude, Codex, Pi, and OpenCode sessions use a Clave-owned conversation
-view. Each session has a fixed provider. Terminal tabs, Antigravity,
-`claude agents`, and previously recorded terminal sessions keep their PTY
-implementation.
+view. Each session has a fixed provider. Terminal tabs, Antigravity, and
+`claude agents` keep their PTY implementation. Saved Claude, Codex, and Pi
+terminal tabs open a migration view rather than attaching a terminal.
 
 ## Working with the view
 
@@ -30,6 +30,50 @@ This is app-profile isolation, not an agent sandbox. Provider logins still come
 from the machine, and terminal tmux mode still uses the machine's `clave` socket.
 Turn off tmux mode in the separate profile before experimenting with plain
 terminal tabs. The Electron UX checks use fake providers instead of live agents.
+
+## Launch profiles and migration
+
+Settings → Agents owns the executable and additional arguments for every
+conversation provider, including OpenCode and installed runtime providers.
+Selection follows explicit profile → workspace default → global default →
+provider default. A new conversation saves the resolved profile ID. A missing
+explicit profile fails instead of silently choosing another command. Editing
+a profile does not change an already-connected process; the next process
+start resolves the saved profile again.
+
+Saved legacy Claude, Codex, and Pi tabs retain their sidebar position and
+attached preview while waiting for migration. Opening the tab does not start,
+attach, or stop its agent. Choose a launch profile and select **Move to
+conversation**. A native confirmation explains that migration will stop the
+old process. Cancelling leaves it and its record untouched.
+
+Migration saves a prepared conversation before stopping the exact owned
+process. It then remaps the layout and attached-view owner and marks the import
+complete. An interrupted migration can be retried without creating another
+conversation. Prepared imports cannot send prompts.
+
+The first explicit message starts the selected profile with the recorded
+native resume ID, when one exists. Without an ID, the view warns that context
+will start fresh. Native terminal history is not imported into the Clave
+transcript, and old prompts are never replayed. Hidden serving terminals and
+unsupported agent types retain their existing PTY behavior.
+
+## Restarting an older background service
+
+Quitting the app leaves its conversation service running. Rebuilding the app
+therefore does not upgrade that service. An incompatible service is left alone,
+and new conversation operations fail with a recovery message.
+
+Use **Restart background service** in Settings → Agents or the migration
+error view. The native confirmation applies to the selected app profile and
+warns that its running conversation work will stop. History and profiles remain
+on disk. Restart does not replay prompts or start providers automatically.
+
+Modern services expose an authenticated shutdown operation. For older services,
+macOS/Linux recovery verifies the exact executable, daemon path, profile, UID,
+and process start identity before signalling that one PID. An unverified owner
+or a service launched from a different build path is refused. Windows requires
+the shutdown operation. There is no broad process kill or forced escalation.
 
 ## Ownership
 
@@ -124,8 +168,9 @@ dependency or new Claude login flow is introduced.
 
 ## Compatibility boundaries
 
-- Existing tmux sessions are not converted into protocol sessions. Restore
-  continues to attach to their terminal processes.
+- Migration does not convert a running tmux process into a protocol process.
+  It stops that process after confirmation and resumes its recorded native
+  context in a new process on the next explicit message.
 - OpenCode is a direct launcher option. The current `.clave` format has no
   OpenCode agent field. Pinning or exporting an OpenCode session is explicitly
   rejected instead of silently writing a plain terminal.
@@ -152,3 +197,9 @@ The change is checked at three levels:
 Provider upgrades need adapter contract tests and a handshake smoke test against
 the new version. Fixtures reduce maintenance scope; they do not make upstream
 protocol changes automatically compatible.
+
+Migration checks include `npm test -- migration restart`,
+`npm run test:e2e -- session-migration`, and
+`npm run test:e2e -- provider-launch-profiles`. The service
+migration fixture uses a local fake CLI and inspects its actual argv and resume
+ID. It never calls a live model or stops a user's daemon.
