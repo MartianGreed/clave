@@ -132,29 +132,25 @@ export async function run(t) {
     )
     for (const provider of ['claude', 'codex', 'pi', 'opencode']) {
       await callMcp(app, 'focus', { sessionId: `conversation-${provider}` })
+      const panel = win.locator(`[data-conversation-id="conversation-${provider}"]`)
+      await panel.getByRole('button', { name: 'Session details', exact: true }).click()
       t.check(
         `${provider} uses the shared view`,
         await until(async () =>
-          (
-            await win
-              .locator(
-                `[data-conversation-id="conversation-${provider}"] [data-testid="conversation-capabilities"]`
-              )
-              .innerText()
-          ).includes(provider)
+          (await win.getByTestId('conversation-capabilities').innerText())
+            .toLowerCase()
+            .includes(provider)
         )
       )
+      await win.keyboard.press('Escape')
     }
     await callMcp(app, 'focus', { sessionId: 'conversation-pi' })
     t.check(
       'Pi visibly lacks approval support',
-      (
-        await win
-          .locator(
-            '[data-conversation-id="conversation-pi"] [data-testid="conversation-capabilities"]'
-          )
-          .innerText()
-      ).includes('Permission review not supported')
+      await win
+        .locator('[data-conversation-id="conversation-pi"]')
+        .getByText(/Permission review not supported/)
+        .isVisible()
     )
     await callMcp(app, 'focus', { sessionId: 'conversation-claude' })
     const panel = win.locator('[data-conversation-id="conversation-claude"]')
