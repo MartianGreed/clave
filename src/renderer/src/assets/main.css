@@ -4051,20 +4051,20 @@ button.extension-card:hover {
   color: var(--text-secondary);
   overflow: hidden;
 }
-.conversation-tool summary {
+.conversation-tool > summary {
   display: flex;
   align-items: center;
   gap: calc(var(--spacing) * 2);
   min-height: var(--control-h-md);
-  padding: calc(var(--spacing) * 2);
+  padding: 0 calc(var(--spacing) * 2);
   cursor: pointer;
   list-style: none;
 }
-.conversation-tool summary::-webkit-details-marker { display: none; }
-.conversation-tool summary:hover { background: var(--surface-100); }
-.conversation-tool summary span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.conversation-tool summary svg { flex-shrink: 0; }
-.conversation-tool[open] .conversation-chevron { transform: rotate(90deg); }
+.conversation-tool > summary::-webkit-details-marker { display: none; }
+.conversation-tool > summary:hover { background: var(--surface-100); }
+.conversation-tool > summary span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-tool > summary svg { flex-shrink: 0; }
+.conversation-tool[open] > summary .conversation-chevron { transform: rotate(90deg); }
 .conversation-tool[data-state="failed"] { border-color: var(--color-destructive); }
 .conversation-tool-body { border-top: 1px solid var(--border-subtle-color); padding: calc(var(--spacing) * 3); }
 .conversation-tool-body h4 { margin-bottom: var(--spacing); color: var(--text-tertiary); }
@@ -4162,3 +4162,24 @@ button.extension-card:hover {
 .runtime-plugin-dialog .runtime-plugin-content,
 .runtime-plugin-dialog .runtime-plugin-body { flex: 1; }
 .runtime-plugin-dialog .runtime-plugin-frame { height: 100%; min-height: 0; }
+
+/* Conversation tool runs share one compact disclosure. Raw records are secondary. */
+.conversation-tool > summary:focus-visible,
+.conversation-tool-raw > summary:focus-visible { outline: 1px solid var(--color-accent); outline-offset: -1px; }
+.conversation-tool-item + .conversation-tool-item,
+.conversation-tool-body > .runtime-plugin-entry + .conversation-tool-item,
+.conversation-tool-body > .conversation-tool-item + .runtime-plugin-entry {
+  border-top: 1px solid var(--border-subtle-color);
+  margin-top: calc(var(--spacing) * 3);
+  padding-top: calc(var(--spacing) * 3);
+}
+.conversation-tool-heading { display: flex; align-items: baseline; gap: calc(var(--spacing) * 2); color: var(--text-primary); }
+.conversation-tool-heading svg { flex-shrink: 0; align-self: flex-start; }
+.conversation-tool-heading span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conversation-tool-item[data-state="failed"] > .conversation-tool-heading { color: var(--color-destructive); }
+.conversation-tool-meta { color: var(--text-tertiary); margin-block: var(--spacing); }
+.conversation-tool-preview { margin-block: calc(var(--spacing) * 3); }
+.conversation-tool-raw { margin-top: calc(var(--spacing) * 2); }
+.conversation-tool-raw > summary { cursor: pointer; color: var(--text-tertiary); }
+.conversation-tool-raw h4 { margin-top: calc(var(--spacing) * 2); }
+.conversation-caret-measure { position: fixed; visibility: hidden; pointer-events: none; top: 0; left: 0; box-sizing: border-box; white-space: pre-wrap; }

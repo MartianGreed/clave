@@ -7,8 +7,18 @@ terminal tabs open a migration view rather than attaching a terminal.
 
 ## Working with the view
 
-The conversation uses a bounded reading column, collapsed tool details, and
-a separate composer. Session capabilities live behind **Session details**;
+The conversation uses a bounded reading column and a separate composer. Tool
+activity between messages shares one collapsed row, including mixed calls such
+as reads, searches, and commands. Expanding it shows targets, available line
+ranges and changes, and eight-line content previews with **Show more**. **Raw
+details** retains the original input/output. Unknown tools keep their names and
+readable output. Artifact entries remain outside the tool dropdown.
+
+Opening tool details pauses auto-follow so expansion keeps your place. Use
+**Jump to latest** to follow new output again. Groups update while tools run
+and keep the reader's open/closed choice. Each
+new failed call opens its group once; collapsing it afterward keeps it closed
+until another call fails. Session capabilities live behind **Session details**;
 permission requests, provider failures, and Pi's missing approval gate stay
 visible.
 
@@ -17,6 +27,13 @@ submit. Drafts belong to the session rather than the mounted view. They survive
 switching and renderer reload through local browser storage. A send acknowledgment
 clears only the submitted draft revision, never text typed while it was pending.
 An uncertain retry keeps its command ID to avoid duplicate execution.
+
+With an empty composer, Up recalls the current session's sent messages from the
+saved transcript. Up/Down move through multiline text first, including wrapped
+lines, and browse older/newer messages at the first/last visual line. Down past
+the newest message restores the empty composer. Editing recalled text exits
+history browsing; sending it creates a new message. Drafts, pending sends, and
+uncertain retries are not replaced by history navigation.
 
 Streaming follows the latest message while the reader is at the bottom. Scrolling
 up stops that behavior; **Jump to latest** resumes it. Permission and question

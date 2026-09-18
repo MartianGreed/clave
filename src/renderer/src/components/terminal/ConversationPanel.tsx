@@ -3,8 +3,6 @@ import {
   ArrowDownIcon,
   ArrowPathIcon,
   ArrowUpIcon,
-  CheckIcon,
-  ChevronRightIcon,
   ExclamationTriangleIcon,
   InformationCircleIcon,
   ShieldCheckIcon,
@@ -29,6 +27,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
 import { TerminalHeader } from './TerminalHeader'
 import { useSessionStore } from '../../store/session-store'
 import { PluginEntryView } from './PluginEntryView'
+import { ConversationToolGroup } from './ConversationToolGroup'
+import { groupConversationEntries } from '../../lib/conversation-tools'
+import { isHistoryBoundary } from '../../lib/conversation-history'
 
 const PROVIDER_NAMES: Record<ConversationProvider, string> = {
   claude: 'Claude',
@@ -199,6 +200,7 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
   const viewport = useRef<HTMLDivElement>(null)
   const transcript = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
+  const historyCaret = useRef<'older' | 'newer' | undefined>(undefined)
   const following = useRef(true)
   const session = snapshot?.session
   const provider = session ? (PROVIDER_NAMES[session.provider] ?? session.provider) : 'agent'
@@ -274,7 +276,12 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
     if (!input.current) return
     input.current.style.height = 'auto'
     input.current.style.height = `${input.current.scrollHeight}px`
-  }, [composer.text])
+    if (historyCaret.current) {
+      const position = historyCaret.current === 'older' ? input.current.value.length : 0
+      input.current.setSelectionRange(position, position)
+      historyCaret.current = undefined
+    }
+  }, [composer.text, composer.revision])
   useEffect(() => {
     if (focused) input.current?.focus({ preventScroll: true })
   }, [focused])
@@ -408,7 +415,7 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
                 </span>
               </div>
             ) : (
-              snapshot.entries.map((entry) => {
+              groupConversationEntries(snapshot.entries).map((entry) => {
                 switch (entry.kind) {
                   case 'message':
                     return (
@@ -427,43 +434,17 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
                     )
                   case 'artifact':
                     return <PluginEntryView key={entry.id} sessionId={sessionId} entry={entry} />
-                  case 'tool':
+                  case 'tool-group':
                     return (
-                      <PluginEntryView key={entry.id} sessionId={sessionId} entry={entry}>
-                        <details
-                          key={entry.id}
-                          className="conversation-tool"
-                          data-state={entry.status}
-                        >
-                          <summary>
-                            <ChevronRightIcon className="conversation-chevron w-4 h-4" />
-                            <span>
-                              {entry.name} · {entry.status}
-                            </span>
-                            {entry.status === 'completed' ? (
-                              <CheckIcon className="w-4 h-4" />
-                            ) : entry.status === 'failed' ? (
-                              <ExclamationTriangleIcon className="w-4 h-4" />
-                            ) : (
-                              <ArrowPathIcon className="conversation-working w-4 h-4" />
-                            )}
-                          </summary>
-                          <div className="conversation-tool-body">
-                            {entry.input && (
-                              <>
-                                <h4>Input</h4>
-                                <pre>{entry.input}</pre>
-                              </>
-                            )}
-                            {entry.output && (
-                              <>
-                                <h4>Output</h4>
-                                <pre>{entry.output}</pre>
-                              </>
-                            )}
-                          </div>
-                        </details>
-                      </PluginEntryView>
+                      <ConversationToolGroup
+                        key={entry.id}
+                        sessionId={sessionId}
+                        tools={entry.tools}
+                        onInspect={() => {
+                          following.current = false
+                          setAtLatest(false)
+                        }}
+                      />
                     )
                 }
               })
@@ -563,6 +544,32 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
             onChange={(event) => conversationComposer.edit(sessionId, event.target.value)}
             onKeyDown={(event) => {
               if (
+                (event.key === 'ArrowUp' || event.key === 'ArrowDown') &&
+                !event.shiftKey &&
+                !event.altKey &&
+                !event.ctrlKey &&
+                !event.metaKey &&
+                !event.nativeEvent.isComposing &&
+                event.nativeEvent.keyCode !== 229
+              ) {
+                const direction = event.key === 'ArrowUp' ? 'older' : 'newer'
+                if (
+                  isHistoryBoundary(event.currentTarget, direction) &&
+                  conversationComposer.recall(
+                    sessionId,
+                    direction,
+                    snapshot?.entries.flatMap((entry) =>
+                      entry.kind === 'message' && entry.role === 'user' ? [entry.text] : []
+                    ) ?? []
+                  )
+                ) {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  historyCaret.current = direction
+                  return
+                }
+              }
+              if (
                 shouldSendOnEnter({
                   key: event.key,
                   shiftKey: event.shiftKey,
@@ -586,7 +593,12 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
                     ? 'Stopping…'
                     : running
                       ? 'You can draft while the agent works'
-                      : 'Enter to send · Shift+Enter for a new line'}
+                      : !composer.text &&
+                          snapshot?.entries.some(
+                            (entry) => entry.kind === 'message' && entry.role === 'user'
+                          )
+                        ? 'Enter to send · ↑ for message history'
+                        : 'Enter to send · Shift+Enter for a new line'}
             </span>
             {running ? (
               <button

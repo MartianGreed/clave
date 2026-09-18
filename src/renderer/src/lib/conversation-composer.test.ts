@@ -128,3 +128,51 @@ describe('conversation composer', () => {
     expect(isNearLatest({ scrollHeight: 1200, scrollTop: 100, clientHeight: 500 })).toBe(false)
   })
 })
+
+describe('sent message recall', () => {
+  it('walks session history in both directions, clamps oldest, and returns to empty', () => {
+    const store = fixture()
+    const messages = ['first', 'second\nline', 'second\nline']
+    expect(store.recall('one', 'newer', messages)).toBe(false)
+    expect(store.recall('one', 'older', messages)).toBe(true)
+    expect(store.read('one').text).toBe('second\nline')
+    store.recall('one', 'older', messages)
+    store.recall('one', 'older', messages)
+    store.recall('one', 'older', messages)
+    expect(store.read('one').text).toBe('first')
+    const revision = store.read('one').revision
+    expect(store.recall('one', 'older', messages)).toBe(false)
+    expect(store.read('one').revision).toBe(revision)
+    for (let i = 0; i < 3; i++) store.recall('one', 'newer', messages)
+    expect(store.read('one').text).toBe('')
+    expect(store.recall('two', 'older', [])).toBe(false)
+    expect(store.read('two').text).toBe('')
+  })
+  it('preserves drafts, including whitespace, and exits browsing on any edit', () => {
+    const store = fixture()
+    store.edit('one', ' ')
+    expect(store.recall('one', 'older', ['sent'])).toBe(false)
+    store.edit('one', '')
+    store.recall('one', 'older', ['older', 'newest'])
+    store.edit('one', 'newest edited')
+    expect(store.recall('one', 'older', ['older', 'newest'])).toBe(false)
+    expect(store.read('one').text).toBe('newest edited')
+  })
+  it('never replaces a pending send or uncertain retry, and recalled sends get new IDs', () => {
+    const store = fixture()
+    store.edit('one', 'sent')
+    const command = store.begin('one')!
+    expect(store.recall('one', 'older', ['older'])).toBe(false)
+    store.fail('one', command.commandId)
+    expect(store.recall('one', 'older', ['older'])).toBe(false)
+    store.accept('one', command.commandId)
+    store.recall('one', 'older', ['sent'])
+    expect(store.begin('one')!.commandId).not.toBe(command.commandId)
+  })
+  it('does not shift a browsing position when the transcript gains a message', () => {
+    const store = fixture()
+    store.recall('one', 'older', ['first', 'last'])
+    store.recall('one', 'older', ['first', 'last', 'arrived'])
+    expect(store.read('one').text).toBe('first')
+  })
+})
