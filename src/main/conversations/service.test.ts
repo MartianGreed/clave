@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { afterEach, expect, test, vi } from 'vitest'
 import { ConversationService } from './service'
 import type { AdapterFactory, AdapterLaunch, EmitConversationEvent } from './adapter'
+import { createPluginAdapterFactory } from '../runtime-plugins/providers'
+import { RuntimePluginRegistry } from '../runtime-plugins/registry'
 
 const directories: string[] = []
 afterEach(() =>
@@ -50,6 +52,28 @@ test('provider and first-use view bindings survive restart and cannot be replace
   ).toThrow()
   const restored = new ConversationService(f.directory, f.factory)
   expect(restored.snapshot(session.id).session.pluginBindings).toEqual({ provider, views: [view] })
+})
+
+test('an unavailable builtin factory reports safe revision recovery rather than an executable error', async () => {
+  const f = fixture()
+  const service = new ConversationService(
+    f.directory,
+    createPluginAdapterFactory(new RuntimePluginRegistry())
+  )
+  const options = {
+    ...f.options,
+    pluginBindings: {
+      provider: { pluginId: 'builtin.claude', revision: 'unavailable', version: '1.0.0' },
+      views: []
+    }
+  }
+  const { session } = await service.create(options, { ...f.launch, options })
+  await expect(service.send(session.id, 'not sent to a provider', 'one')).rejects.toThrow(
+    'Built-in plugin revision unavailable'
+  )
+  const error = service.snapshot(session.id).session.error
+  expect(error).toContain('Restart background service')
+  expect(error).not.toContain('Check the executable')
 })
 
 test('interrupting a running turn preserves the provider for the next turn', async () => {

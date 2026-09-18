@@ -20,6 +20,7 @@ import type {
 } from '../../shared/runtime-plugins'
 import { servicePaths, receive, transmit, type ServiceCommand } from './wire'
 import type { AttachedSessionView, LegacyImportState } from '../../shared/session-migration'
+import { builtinPlugins } from '../runtime-plugins/builtins'
 
 interface ClientOptions {
   userData: string
@@ -160,6 +161,26 @@ export class ConversationClient {
 
   private request<T>(command: ServiceCommand, launch?: AdapterLaunch): Promise<T> {
     if (this.socket.destroyed) return Promise.reject(new Error('Conversation service disconnected'))
+    const providerPin =
+      command.type === 'create' || command.type === 'prepare-legacy-import'
+        ? command.options.pluginBindings?.provider
+        : command.type === 'bind-plugins'
+          ? command.bindings.provider
+          : launch?.options.pluginBindings?.provider
+    // Protocol compatibility does not mean the detached process loaded the same
+    // provider code. Reject before it records a prompt or consumes its command ID.
+    // Existing connected adapters send without a launch and remain usable.
+    if (
+      providerPin &&
+      builtinPlugins().some((plugin) => plugin.manifest.id === providerPin.pluginId) &&
+      providerPin.revision !== this.serverInfo.builtinRevision
+    ) {
+      return Promise.reject(
+        new Error(
+          'The background service is running a different Clave build. No message was submitted. Use Settings → Agents → Restart background service before starting this provider. Existing agents were left running.'
+        )
+      )
+    }
     if (
       ['legacy-import-mappings', 'prepare-legacy-import', 'complete-legacy-import'].includes(
         command.type

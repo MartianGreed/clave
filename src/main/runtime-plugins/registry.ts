@@ -28,6 +28,7 @@ import type {
 } from '../../shared/runtime-plugins'
 import type { AgentCapabilities } from '../../shared/agent-session'
 import type { AdapterFactory } from '../conversations/adapter'
+import { AdapterError } from '../conversations/adapters/transport'
 import { builtinPlugins } from './builtins'
 import { isSafeRelativePath, validateManifest } from './manifest'
 
@@ -346,8 +347,8 @@ export class RuntimePluginRegistry {
     const builtin = builtinPlugins().find((plugin) => plugin.manifest.id === binding.pluginId)
     if (builtin) {
       if (builtin.revision !== binding.revision || builtin.manifest.version !== binding.version)
-        throw new Error(
-          `Built-in plugin revision unavailable: ${binding.pluginId}@${binding.revision}`
+        throw new AdapterError(
+          'Built-in plugin revision unavailable in this runtime. If you just updated Clave, use Settings → Agents → Restart background service. If this persists, start a new conversation with the current provider. Saved history has not been changed.'
         )
       return builtin.manifest
     }

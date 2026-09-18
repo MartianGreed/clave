@@ -70,6 +70,13 @@ Quitting the app leaves its conversation service running. Rebuilding the app
 therefore does not upgrade that service. An incompatible service is left alone,
 and new conversation operations fail with a recovery message.
 
+Matching protocol versions are not enough: the built-in provider revision in a
+new launch must match the running service's advertised revision. Clave checks
+this before creating a conversation, preparing a migration, or submitting a
+message that would start a provider. A mismatch leaves the draft and command ID
+unsubmitted. Reading history, closing sessions, and sending to already-connected
+providers remain available.
+
 Use **Restart background service** in Settings → Agents or the migration
 error view. The native confirmation applies to the selected app profile and
 warns that its running conversation work will stop. History and profiles remain
@@ -80,6 +87,11 @@ macOS/Linux recovery verifies the exact executable, daemon path, profile, UID,
 and process start identity before signalling that one PID. An unverified owner
 or a service launched from a different build path is refused. Windows requires
 the shutdown operation. There is no broad process kill or forced escalation.
+
+Restart loads the current build; it does not silently replace old sessions'
+pinned provider revisions. If a conversation's built-in revision is no longer
+available after a core update, its history stays readable, but continuing work
+requires a new conversation with the current provider.
 
 ## Ownership
 
