@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import {
   ArrowPathIcon,
   CheckIcon,
@@ -85,24 +85,12 @@ export function ConversationToolGroup({
   sessionId: string
   onInspect: () => void
 }): React.JSX.Element {
-  const details = useRef<HTMLDetailsElement>(null)
-  const seenFailures = useRef(new Set<string>())
-  // Uncontrolled details preserve the reader's choice while streaming. Each newly
-  // failed call opens the group once; later updates cannot undo a manual collapse.
-  useEffect(() => {
-    const failures = tools.filter(
-      (tool) => tool.status === 'failed' && !seenFailures.current.has(tool.id)
-    )
-    for (const tool of failures) seenFailures.current.add(tool.id)
-    if (failures.length && details.current) details.current.open = true
-  }, [tools])
   const running = tools.some((tool) => tool.status === 'running')
   const failed = tools.some((tool) => tool.status === 'failed')
   const status = running ? 'running' : failed ? 'failed' : 'completed'
   const summary = toolGroupSummary(tools)
   return (
     <details
-      ref={details}
       className="conversation-tool conversation-tool-group"
       data-state={failed ? 'failed' : status}
     >

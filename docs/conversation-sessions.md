@@ -16,11 +16,10 @@ readable output. Artifact entries remain outside the tool dropdown.
 
 Opening tool details pauses auto-follow so expansion keeps your place. Use
 **Jump to latest** to follow new output again. Groups update while tools run
-and keep the reader's open/closed choice. Each
-new failed call opens its group once; collapsing it afterward keeps it closed
-until another call fails. Session capabilities live behind **Session details**;
-permission requests, provider failures, and Pi's missing approval gate stay
-visible.
+and keep the reader's open/closed choice, including when a call fails. Failures
+show an indicator in the summary but never expand a group automatically.
+Session capabilities live behind **Session details**; permission requests,
+provider failures, and Pi's missing approval gate stay visible.
 
 Enter sends a message, Shift+Enter adds a line, and IME composition does not
 submit. Drafts belong to the session rather than the mounted view. They survive

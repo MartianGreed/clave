@@ -215,12 +215,11 @@ export async function run(t) {
           output: 'Search failed'
         }
       })
+      await active.locator(':scope > summary [aria-label="failed"]').waitFor()
+      t.equal('failure keeps its group collapsed', await active.evaluate((el) => el.open), false)
+      await active.locator(':scope > summary').click()
       t.check(
-        'failure opens its group automatically',
-        await until(() => active.evaluate((el) => el.open))
-      )
-      t.check(
-        'failure details are visible',
+        'failure details are visible after opening the group',
         await active.getByText('Search failed', { exact: true }).first().isVisible()
       )
       await active.locator(':scope > summary').click()
@@ -234,6 +233,50 @@ export async function run(t) {
           async () =>
             !(await active.evaluate((el) => el.open)) && (await active.innerText()).includes('Read')
         )
+      )
+      await emit({
+        type: 'tool',
+        tool: {
+          kind: 'tool',
+          id: 'more',
+          name: 'Read',
+          status: 'failed',
+          input: 'src/more.ts',
+          output: 'Read failed'
+        }
+      })
+      await active.getByText('Read failed', { exact: true }).first().waitFor({ state: 'attached' })
+      t.equal(
+        'another failure does not reopen the group',
+        await active.evaluate((el) => el.open),
+        false
+      )
+      await active.locator(':scope > summary').click()
+      await emit({
+        type: 'tool',
+        tool: {
+          kind: 'tool',
+          id: 'last-failure',
+          name: 'Bash',
+          status: 'failed',
+          input: 'npm test',
+          output: 'Command failed'
+        }
+      })
+      await active.getByText('Command failed', { exact: true }).first().waitFor()
+      t.equal(
+        'an explicitly opened group stays open on failure',
+        await active.evaluate((el) => el.open),
+        true
+      )
+      await win.reload()
+      await win.waitForLoadState('domcontentloaded')
+      await active.waitFor()
+      await active.locator(':scope > summary [aria-label="failed"]').waitFor()
+      t.equal(
+        'saved failures start collapsed after reload',
+        await active.evaluate((el) => el.open),
+        false
       )
       await emit({
         type: 'request',
