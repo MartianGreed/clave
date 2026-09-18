@@ -43,6 +43,47 @@ async function ended(events: ConversationEvent[], count = 1): Promise<void> {
   await expect.poll(() => events.filter((e) => e.type === 'turn-end').length).toBe(count)
 }
 
+describe('Claude profile permissions', () => {
+  it.each([
+    { name: 'native settings', additionalArgs: [], modes: [] },
+    { name: 'split auto flag', additionalArgs: ['--permission-mode', 'auto'], modes: ['auto'] },
+    { name: 'inline auto flag', additionalArgs: ['--permission-mode=auto'], modes: ['auto'] }
+  ])('preserves $name without appending a mode override', async ({ additionalArgs, modes }) => {
+    const { adapter } = setup('claude', {
+      additionalArgs,
+      env: { ...process.env, EXPECT_PERMISSION_MODES: JSON.stringify(modes) } as Record<
+        string,
+        string
+      >
+    })
+    await adapter.start()
+  })
+  it('preserves auto mode in the command prefix', async () => {
+    const { adapter } = setup('claude', {
+      command: [
+        process.execPath,
+        resolve('src/main/conversations/adapters/fixtures/provider.mjs'),
+        'claude',
+        '--permission-mode',
+        'auto'
+      ],
+      env: { ...process.env, EXPECT_PERMISSION_MODES: '["auto"]' } as Record<string, string>
+    })
+    await adapter.start()
+  })
+  it('still passes bypass only when the explicit dangerous option is selected', async () => {
+    const { adapter } = setup('claude', {
+      options: { provider: 'claude', cwd: process.cwd(), dangerousMode: true },
+      env: {
+        ...process.env,
+        EXPECT_PERMISSION_MODES: '[]',
+        EXPECT_PERMISSION_BYPASS: '1'
+      } as Record<string, string>
+    })
+    await adapter.start()
+  })
+})
+
 describe('Pi session lifecycle', () => {
   it('resumes external native history without redirecting its UUID lookup', async () => {
     const { adapter } = setup('pi', {

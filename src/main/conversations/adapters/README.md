@@ -60,8 +60,12 @@ a model.
 * Partial text and final snapshots share IDs. Full assistant snapshots replace,
   rather than append to, already streamed text.
 * Tool permission responses require an explicit allow. Denials use each native
-  protocol. Unknown controls never grant approval. `dangerousMode` alone selects
+  protocol. Unknown controls never grant approval. `dangerousMode` selects
   Claude permission bypass, Codex unrestricted sandbox, or OpenCode allow rules.
+  Claude otherwise follows its native settings and trusted profile's
+  `--permission-mode`, including `auto`. Clave does not append a mode override.
+  Native policy can approve tools without sending a request to Clave; a working
+  permission-review interface does not mean every tool requires a host prompt.
 * Pi has **no tool permission API**. Its capability notice says tools run according
   to Pi configuration. The question UI is only for its extension UI requests, not
   a pretend tool approval gate.
@@ -71,7 +75,8 @@ a model.
   It never discovers/reuses a user's running server. Session rules use `ask`
   unless dangerous mode is explicit, including when resuming a session.
 * Every command-prefix and additional argument is preserved as an argv entry.
-  Managed transport, persistence and permission-mode override flags are rejected.
+  Managed transport and persistence overrides are rejected. Claude's
+  `--permission-mode` is a profile option, not a transport override.
   No shell interprets those arguments. Other trusted profile flags still follow
   the installed CLI's own semantics and can be rejected by that CLI.
 * Native provider storage follows the supplied environment. New Pi sessions use

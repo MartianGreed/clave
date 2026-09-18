@@ -19,6 +19,8 @@ const state = {
   turns: 0,
   sessionId,
   claveId: process.env.CLAVE_SESSION_ID,
+  configDir: process.env.CLAUDE_CONFIG_DIR,
+  hasApiKey: Boolean(process.env.ANTHROPIC_API_KEY),
   args: process.argv.slice(2)
 }
 const save = () => writeFileSync(join(process.cwd(), 'fixture-state.json'), JSON.stringify(state))

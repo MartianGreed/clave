@@ -8,6 +8,21 @@ if (process.env.EXPECT_RESUME && provider !== 'codex') {
   const flag = provider === 'claude' ? '--resume' : '--session'
   if (process.argv[process.argv.indexOf(flag) + 1] !== process.env.EXPECT_RESUME) process.exit(20)
 }
+if (provider === 'claude' && process.env.EXPECT_PERMISSION_MODES) {
+  const modes = process.argv.flatMap((arg, index) =>
+    arg === '--permission-mode'
+      ? [process.argv[index + 1]]
+      : arg.startsWith('--permission-mode=')
+        ? [arg.slice('--permission-mode='.length)]
+        : []
+  )
+  if (JSON.stringify(modes) !== process.env.EXPECT_PERMISSION_MODES) process.exit(22)
+  if (
+    process.argv.includes('--dangerously-skip-permissions') !==
+    (process.env.EXPECT_PERMISSION_BYPASS === '1')
+  )
+    process.exit(23)
+}
 let turn = 0
 let pending
 let piActive = false

@@ -29,7 +29,6 @@ export class ClaudeAdapter extends BaseAdapter {
       '--continue',
       '-c',
       '--session-id',
-      '--permission-mode',
       '--dangerously-skip-permissions',
       '--allow-dangerously-skip-permissions',
       '--no-session-persistence',
@@ -59,9 +58,9 @@ export class ClaudeAdapter extends BaseAdapter {
       ...mcpConfig,
       ...(resume ? ['--resume', id] : ['--session-id', id]),
       ...(options.model ? ['--model', options.model] : []),
-      ...(options.dangerousMode
-        ? ['--dangerously-skip-permissions']
-        : ['--permission-mode', 'default'])
+      // The trusted profile and native Claude settings own permission mode.
+      // Supplying "default" here overrides permissions.defaultMode, including auto.
+      ...(options.dangerousMode ? ['--dangerously-skip-permissions'] : [])
     ]
     const parser = new JsonLines((frame) => this.receive(frame))
     this.process.start(

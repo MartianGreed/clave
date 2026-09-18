@@ -41,6 +41,12 @@ explicit profile fails instead of silently choosing another command. Editing
 a profile does not change an already-connected process; the next process
 start resolves the saved profile again.
 
+Claude inherits `permissions.defaultMode` from its native settings, such as
+`auto`, unless the trusted launch profile explicitly supplies `--permission-mode`.
+Clave does not force manual/default mode. The separate dangerous option still
+requests permission bypass. Profile command wrappers such as
+`env -u ANTHROPIC_API_KEY claude` are preserved.
+
 Saved legacy Claude, Codex, and Pi tabs retain their sidebar position and
 attached preview while waiting for migration. Opening the tab does not start,
 attach, or stop its agent. Choose a launch profile and select **Move to
