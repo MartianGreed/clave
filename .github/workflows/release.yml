@@ -1,10 +1,21 @@
 name: Release
 
-# Every push to prod cuts a release. The bump level comes from the head commit
-# message — "[major]" or "[minor]" anywhere in it, defaulting to patch — or
-# from the explicit input when triggered manually (Actions → Release →
-# Run workflow). The version-bump commit CI pushes back carries [skip ci], and
-# GITHUB_TOKEN pushes never retrigger workflows, so there is no recursion.
+# Every push to prod cuts a release. The bump level is the HIGHEST marker
+# OPENING a commit SUBJECT in the range being released — the last v* tag to the
+# head, "[major]" beating "[minor]" beating patch — or the explicit input when
+# triggered manually (Actions → Release → Run workflow). The version-bump commit
+# CI pushes back carries [skip ci], and GITHUB_TOKEN pushes never retrigger
+# workflows, so there is no recursion.
+#
+# It reads the RANGE, never just the head, and that is load-bearing. CI bumps
+# the version on prod, so prod always drifts one commit ahead of dev; every
+# promotion therefore needs a back-merge of prod into dev; and that merge commit
+# then becomes the head. A head-only read (`git log -1`) saw the merge's own
+# message, never the work's, so a feature promoted through the normal flow
+# always cut a patch — the marker was destroyed by the very step the design
+# forces you to take. Reading the range makes the marker survive back-merges,
+# squash-merges and the bump commit alike, and it needs no discipline from
+# whoever is promoting.
 #
 # The macOS job owns the version, the tag and the GitHub Release; the Windows
 # job (build-win.yml) then attaches its installer to that same release.
@@ -69,16 +80,36 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             bump="${{ inputs.bump }}"
+            echo "Bump level: $bump (manual input)"
           else
-            msg=$(git log -1 --pretty=%B)
-            case "$msg" in
-              *"[major]"*) bump=major ;;
-              *"[minor]"*) bump=minor ;;
-              *)           bump=patch ;;
-            esac
+            # The commits being released: everything since the last release tag.
+            # No tag yet (a first release) = the whole history, which is the
+            # honest reading of "what is being released" at that point.
+            last_tag=$(git describe --tags --abbrev=0 --match 'v*' HEAD 2>/dev/null || true)
+            if [ -n "$last_tag" ]; then
+              range="${last_tag}..HEAD"
+            else
+              range="HEAD"
+            fi
+            # SUBJECTS only (%s), and the marker must OPEN the subject. A body
+            # scan matches prose about markers — the commit that introduced
+            # this very step says "[major] over [minor]" while explaining the
+            # precedence, and a substring read of it computed `major`. The
+            # marker is a subject-line convention ("[minor] A group view
+            # starts…"), so read it exactly where it is written.
+            subjects=$(git log --pretty=%s "$range")
+            if printf '%s\n' "$subjects" | grep -qE '^\[major\]'; then
+              bump=major
+            elif printf '%s\n' "$subjects" | grep -qE '^\[minor\]'; then
+              bump=minor
+            else
+              bump=patch
+            fi
+            echo "Bump level: $bump (highest marker in ${last_tag:-the full history}..HEAD)"
+            echo "Commits considered:"
+            git log --pretty='  %h %s' "$range"
           fi
           echo "bump=$bump" >> "$GITHUB_OUTPUT"
-          echo "Bump level: $bump"
 
       - name: Build, sign, notarize, and publish
         run: bash scripts/release.sh --${{ steps.bump.outputs.bump }}
