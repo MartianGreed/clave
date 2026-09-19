@@ -13,7 +13,7 @@ import { useMultiRepoStatus } from '../../hooks/use-multi-repo-status'
 import { useGitStatus } from '../../hooks/use-git-status'
 import { shortenPath } from '../../lib/utils'
 import { HelpPanel } from '../help/HelpPanel'
-import { Tooltip, TooltipTrigger, TooltipContent, IconButton } from '../ui/tooltip'
+import { Tooltip, TooltipTrigger, TooltipContent, IconButton } from '@clave/ui/components'
 import {
   InformationCircleIcon,
   ChevronLeftIcon,
