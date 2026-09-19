@@ -469,6 +469,7 @@ export async function run(t) {
       t.check(
         `${theme} tool details remain usable`,
         await panel
+          .locator('.conversation-tool-preview')
           .getByText('Pass 1: inspected the scroll effect and composer state.\nNo files changed.', {
             exact: true
           })

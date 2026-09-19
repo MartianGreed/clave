@@ -22,6 +22,7 @@ export class ConversationComposer {
   private states = new Map<string, ComposerState>()
   private listeners = new Set<() => void>()
   private unsaved = new Set<string>()
+  private history = new Map<string, { messages: string[]; index: number; revision: number }>()
   constructor(private storage?: DraftStorage) {}
 
   read(id: string): ComposerState {
@@ -84,6 +85,7 @@ export class ConversationComposer {
   }
 
   edit(id: string, text: string): void {
+    this.history.delete(id)
     const state = this.read(id)
     this.publish(id, {
       ...state,
@@ -93,9 +95,31 @@ export class ConversationComposer {
     })
   }
 
+  /** Recall only accepted transcript messages, never pending submissions or another session. */
+  recall(id: string, direction: 'older' | 'newer', messages: string[]): boolean {
+    const state = this.read(id)
+    if (state.sending || state.submission) return false
+    let history = this.history.get(id)
+    if (history?.revision !== state.revision) history = undefined
+    if (!history) {
+      if (state.text !== '' || direction !== 'older' || !messages.length) return false
+      history = { messages: [...messages], index: messages.length, revision: state.revision }
+    }
+    const index = Math.max(
+      0,
+      Math.min(history.messages.length, history.index + (direction === 'older' ? -1 : 1))
+    )
+    if (index === history.index) return false
+    this.edit(id, history.messages[index] ?? '')
+    if (index < history.messages.length)
+      this.history.set(id, { ...history, index, revision: this.read(id).revision })
+    return true
+  }
+
   begin(id: string): Submission | null {
     const state = this.read(id)
     if (state.sending || !state.text.trim()) return null
+    this.history.delete(id)
     const submission: Submission = {
       text: state.text,
       commandId:
@@ -140,6 +164,7 @@ export class ConversationComposer {
   }
 
   clear(id: string): void {
+    this.history.delete(id)
     this.publish(id, EMPTY)
   }
 
@@ -148,6 +173,7 @@ export class ConversationComposer {
     if (!key?.startsWith(PREFIX)) return
     const id = key.slice(PREFIX.length)
     if (this.states.get(id)?.sending || this.unsaved.has(id)) return
+    this.history.delete(id)
     this.states.delete(id)
     for (const listener of this.listeners) listener()
   }

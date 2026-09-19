@@ -167,10 +167,13 @@ export async function run(t) {
       await win.evaluate(() => Boolean(window.__unsafe)),
       false
     )
-    await win.locator('summary').filter({ hasText: 'Read file' }).click()
+    await win.locator('summary').filter({ hasText: 'Read · README.md' }).click()
     t.check(
       'tool output expands',
-      await win.getByText('fixture output', { exact: true }).isVisible()
+      await win
+        .locator('.conversation-tool-preview')
+        .getByText('fixture output', { exact: true })
+        .isVisible()
     )
     await win.getByRole('button', { name: 'Allow', exact: true }).click()
     t.check(
