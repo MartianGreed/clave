@@ -197,7 +197,7 @@ body,
                               are chrome, not list, and a sidebar dragged narrow
                               squeezes this row first */
   border-radius: var(--radius-control);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: var(--font-weight-medium);
   white-space: nowrap;
   color: var(--sidebar-item-text);
@@ -378,7 +378,7 @@ body,
   background: transparent;
   border: none;
   outline: none;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: var(--font-weight-medium);
   color: var(--text-primary);
 }
@@ -416,7 +416,7 @@ body,
   height: var(--control-h-md);
   padding: 0 0.5rem;       /* px-2 — see .launcher-btn */
   border-radius: var(--radius-control);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: var(--font-weight-medium);
   white-space: nowrap;
   color: var(--text-tertiary);

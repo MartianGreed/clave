@@ -37,9 +37,12 @@ class next to its family; never inline the styling at the call site.
   cushion them.
 - Segments inside a bar are divided by `.launcher-sep` / `.panel-sep` (1px × 16px
   hairline), never by a full-height border.
-- Radius nesting is arithmetic, not taste: a control inside a radius-xl panel uses
-  `--radius-control` (7px = 10 − 3). Controls with no panel corner to answer to
-  (dialog buttons, settings inputs, menu rows) use `--radius-lg`.
+- One corner for every 28px control: `--radius-control` (panel controls) and
+  `--radius-lg` (dialog buttons, settings inputs, menu rows) are both 6px. The
+  panel token survives as a name only, so the two families can still be told
+  apart in the stylesheet; the 7px concentric-corner arithmetic it once carried
+  is gone, because that pixel made the launcher, chips and toolbar buttons read
+  heavier than the popover rows beside them.
 
 ## Buttons
 
@@ -62,7 +65,7 @@ class next to its family; never inline the styling at the call site.
 
 **Text buttons:** `.btn-primary` (accent fill), `.btn-secondary`, `.btn-dialog`
 (the Cancel/Confirm footer pair), `.launcher-btn` / `.panel-tab` /
-`.group-switcher-chip` (28px chip: px-2, 12px text, hover surface-100, selected
+`.group-switcher-chip` (28px chip: px-2, 13px text like a menu row, hover surface-100, selected
 surface-200). Disabled is always `opacity: 0.4` + `cursor: not-allowed`.
 
 ## Inputs and search
@@ -80,7 +83,7 @@ surface-200). Disabled is always `opacity: 0.4` + `cursor: not-allowed`.
 - Menu/popover rows: `.menu-item` (28px min, radius-lg, hover surface-100,
   `data-selected="true"` surface-200). Color variants are modifier classes on it,
   not text utilities.
-- Sidebar rows: `.sidebar-item` (height `--sidebar-row-h` 32px, padding
+- Sidebar rows: `.sidebar-item` (height `--sidebar-row-h`, 28px like every other row, padding
   `--sidebar-row-px`, its own resting colors). Align any sidebar chrome to
   `--sidebar-gutter`, never to hand-picked padding.
 - Side-panel tree rows: `--panel-row-h` (28px); git tree section rows
