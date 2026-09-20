@@ -72,15 +72,15 @@
 
   /* The radius of a control sitting INSIDE a --radius-xl panel — every button,
      chip, tab and field in the toolbar, the sidebar's launcher and switcher, and
-     the side panel's bars. It is not a taste value, it is the nesting arithmetic:
-     concentric corners only look concentric when the inner radius is the outer
-     one minus the gap between them, and that gap is 3px everywhere here (the
-     panel's own 1px border plus the 2px it insets its contents by). 10 − 3 = 7.
-     At --radius-lg the inner corner was a pixel too tight and the control read
-     as squarer than the box around it — visible on every hover fill in the app.
-     Controls that do NOT sit in such a panel (dialog buttons, settings inputs,
-     menu rows) stay on --radius-lg: they have no outer corner to answer to. */
-  --radius-control: 0.4375rem; /* 7px — a control inside a --radius-xl panel */
+     the side panel's bars. It is --radius-lg, the same corner as a menu row, a
+     dialog button or a sidebar tab: one 28px control, one corner, wherever it
+     sits. It used to be 7px (10 − 3, the concentric-corner arithmetic for a
+     control 3px inside its panel), and the extra pixel is exactly what made the
+     launcher, the switcher chips and the toolbar buttons read rounder and
+     heavier than the popover rows beside them (2026-09-20). The token stays so
+     a panel control can still be told apart from a free-standing one in the
+     stylesheet; the value is the same. */
+  --radius-control: var(--radius-lg); /* 6px — the same corner as every other 28px control */
 
   /* Control height scale — single source of truth for row/button/input heights.
      Components reference these via var(--control-h-*) so a change here propagates everywhere. */
@@ -120,11 +120,13 @@
   --panel-row-h: 1.75rem; /* 28px */
 
   /* Height of a tab row in the sidebar list — a session, a file tab, a group
-     header, a group's `+`. Deliberately its own token rather than
-     --control-h-md: the list is what you read all day and wants more air than a
-     button, and the launcher and rail panels must NOT grow with it (they are
-     pinned to the toolbar's height). */
-  --sidebar-row-h: 2rem; /* 32px (was 30px; before that --control-h-md, 28px) */
+     header, a group's `+`. Its own token rather than --control-h-md so the list
+     can move without the launcher and rail panels (they are pinned to the
+     toolbar's height), but the value is the control height: a sidebar tab is
+     the same 28px row as a menu item, and the taller list (30px, then 32px, on
+     the "reading wants more air" argument) was the one row family that did not
+     match the rest of the app (2026-09-20). */
+  --sidebar-row-h: var(--control-h-md); /* 28px (was 32px; before that 30px) */
 
   /* Sidebar tab icon size — single source of truth for the leading icon on
      session/file/group tabs in the sidebar. Change here to resize all of them. */
