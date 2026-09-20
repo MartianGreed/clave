@@ -2,7 +2,8 @@ import { EventEmitter } from 'node:events'
 import {
   SessionInputSchema,
   type SessionInput,
-  type SessionEvent
+  type SessionEvent,
+  type ModelOption
 } from '../../../shared/session-model'
 import type {
   SessionAdapter,
@@ -225,6 +226,8 @@ export class CodexTranslator {
 
 interface HandleState {
   spec: SpawnSpec
+  /** A model chosen after launch; every later turn/start carries it. */
+  model?: string | null
   emitter: EventEmitter
   translator: CodexTranslator
   connection?: CodexConnection
@@ -280,6 +283,20 @@ export class CodexAdapter implements SessionAdapter {
       void this.interrupt(state).catch((error) => this.error(state, error, false))
       return
     }
+    if (value.type === 'set_model') {
+      // Codex takes the model per turn, so the switch is recorded here and
+      // announced now; the next turn/start is what actually carries it.
+      state.model = value.model
+      state.emitter.emit('stream', {
+        kind: 'event',
+        event: {
+          type: 'session_meta',
+          model: value.model ?? state.translator.model,
+          providerSessionId: state.translator.threadId || null
+        }
+      })
+      return
+    }
     if (state.sending || state.translator.turnId)
       throw new Error('Codex already has an active turn')
     state.sending = true
@@ -290,12 +307,43 @@ export class CodexAdapter implements SessionAdapter {
         state.sending = false
       })
   }
+  /** Bring the thread up as soon as the view is looking, so thread/start's
+   *  reply names the model before the first message rather than after it. */
+  ready(handle: SessionHandle): void {
+    const state = this.require(handle)
+    if (state.ended || state.closing || state.ready) return
+    this.start(state).catch(() => {
+      // start() has already reported the failure on the stream.
+    })
+  }
+  /** The app-server's model/list, once the connection is up; a stub that never
+   *  answers must not hang the picker, hence the deadline. */
+  async models(handle: SessionHandle): Promise<ModelOption[]> {
+    const state = this.require(handle)
+    if (state.ended || state.closing) throw new Error('Codex session has ended')
+    await this.start(state)
+    if (!state.connection) throw new Error('Codex is not connected')
+    const listing = state.connection.request('model/list', {})
+    const deadline = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Codex did not list its models in time')), 5000)
+    )
+    const result = object(await Promise.race([listing, deadline]))
+    const rows = Array.isArray(result.data) ? result.data : []
+    return rows.flatMap((row) => {
+      const r = object(row)
+      const id = text(r.model) || text(r.id)
+      if (!id || r.hidden === true) return []
+      const hint = text(r.description)
+      return [{ id, label: text(r.displayName) || id, ...(hint ? { hint } : {}) }]
+    })
+  }
   private async sendTurn(state: HandleState, message: string): Promise<void> {
     await this.start(state)
     if (state.ended) return
     const result = await state.connection!.request('turn/start', {
       threadId: state.translator.threadId,
-      input: [{ type: 'text', text: message, text_elements: [] }]
+      input: [{ type: 'text', text: message, text_elements: [] }],
+      ...(state.model ? { model: state.model } : {})
     })
     const turn = object(object(result).turn)
     if (

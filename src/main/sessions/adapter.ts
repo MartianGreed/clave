@@ -3,7 +3,8 @@ import type {
   Session,
   SessionStream,
   Transport,
-  SessionInput
+  SessionInput,
+  ModelOption
 } from '../../shared/session-model'
 
 export type SpawnSpec = Session & { options?: unknown }
@@ -27,6 +28,8 @@ export interface SessionAdapter {
   /** Called after consumer listeners are bound; completed once, retried if it throws. */
   ready?(handle: SessionHandle): void
   write(handle: SessionHandle, input: Uint8Array | SessionInput): void
+  /** The models this session may switch to; absent when the provider has none to offer. */
+  models?(handle: SessionHandle): Promise<ModelOption[]>
   resize?(handle: SessionHandle, cols: number, rows: number): void
   kill(handle: SessionHandle): void | Promise<void>
   on<K extends keyof SessionAdapterEvents>(

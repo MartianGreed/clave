@@ -15,7 +15,6 @@ export type Entry =
     }
   | { kind: 'permission'; request: Permission; answer?: string; at: number }
   | { kind: 'error'; message: string; at: number }
-  | { kind: 'raw'; event: unknown; at: number }
 export interface Conversation {
   entries: Entry[]
   state: AgentState
@@ -82,7 +81,8 @@ export function reduceConversation(state: Conversation, action: Action): Convers
       entries.push({ kind: 'error', message: event.message, at })
       return { ...state, entries, state: event.fatal ? 'ended' : state.state }
     case 'provider_event':
-      entries.push({ kind: 'raw', event, at })
+      // The provider's own wire format is the adapter's business, not the
+      // reader's: nothing of it reaches the transcript.
       break
   }
   return { ...state, entries }

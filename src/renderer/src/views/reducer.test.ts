@@ -47,13 +47,8 @@ describe('conversation stream', () => {
     state = reduceConversation(state, { answer: 'p', optionId: 'yes' })
     expect(state.entries[2]).toMatchObject({ answer: 'yes' })
     expect(state.state).toBe('working')
-    expect(state.entries.map((e) => e.kind)).toEqual([
-      'assistant',
-      'tool',
-      'permission',
-      'raw',
-      'error'
-    ])
+    // A provider's own wire event never becomes a transcript entry.
+    expect(state.entries.map((e) => e.kind)).toEqual(['assistant', 'tool', 'permission', 'error'])
     expect(reduceConversation(state, { exit: 7 })).toMatchObject({ state: 'ended', exitCode: 7 })
     expect(run([{ type: 'error', message: 'fatal', fatal: true }]).state).toBe('ended')
   })

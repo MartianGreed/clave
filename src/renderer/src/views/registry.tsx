@@ -10,6 +10,13 @@ import { emitTabClosed } from '../lib/exchange-capture'
 import { ConfirmDialog } from '@clave/ui/components'
 
 const nativeViews: Record<string, ComponentType<ChatViewProps>> = { 'clave.chat-view': ChatView }
+type DotStatus = 'working' | 'waiting' | 'ready' | 'inactive'
+function dotStatus(state: string): DotStatus {
+  if (state === 'working') return 'working'
+  if (state === 'blocked') return 'waiting'
+  if (state === 'ended') return 'inactive'
+  return 'ready'
+}
 function resolveView(session: Session | undefined, plugins: PluginRecord[]): string | undefined {
   if (!session || session.transport !== 'events') return undefined
   const plugin = plugins.find(
@@ -53,7 +60,6 @@ export function RegisteredSessionView({
   const session = registry.sessions.find((s) => s.id === sessionId)
   const viewId = resolveView(session, registry.plugins)
   const View = viewId ? nativeViews[viewId] : undefined
-  const focused = useViewSessionStore((s) => s.focusedSessionId === sessionId)
   const [showConfirm, setShowConfirm] = useState(false)
   const [meta, setMeta] = useState<{ state: string; model: string | null }>({
     state: 'idle',
@@ -115,59 +121,66 @@ export function RegisteredSessionView({
   // v1 describes exactly one transport. A future dual-transport record can pass
   // its PTY session id here without changing the view plugin's bridge.
   const terminal = registry.terminal.has(sessionId)
+  const name = useViewSessionStore((s) => s.sessions.find((r) => r.id === sessionId)?.name)
   if (!session || session.transport === 'pty' || !View)
     return <TerminalPanel sessionId={sessionId} />
   return (
     <section
       className="chat-host"
-      data-focused={focused}
       onPointerDown={() => useViewSessionStore.getState().setFocusedSession(sessionId)}
     >
-      <header className="chat-header">
-        <span className="chat-header-title">
-          {session.provider}
-          {meta.model ? ` · ${meta.model}` : ''}
-        </span>
-        <span className="chat-cwd" title={session.cwd}>
-          {session.cwd.replace(/^\/Users\/[^/]+/, '~')}
-        </span>
-        <span className="chat-state" data-state={meta.state}>
-          {meta.state}
-        </span>
-        <span
-          title={
-            terminalSessionId
-              ? terminal
-                ? 'Show chat'
-                : 'Show terminal'
-              : 'This events session has no PTY terminal'
-          }
-        >
-          <button
-            className="panel-icon-btn"
-            aria-label={terminal ? 'Show chat' : 'Show terminal'}
-            disabled={!terminalSessionId}
-            data-active={terminal}
-            onClick={() =>
-              useRegistry.setState({
-                terminal: new Set(
-                  terminal
-                    ? [...registry.terminal].filter((id) => id !== sessionId)
-                    : [...registry.terminal, sessionId]
-                )
-              })
+      <header className="pane-header chat-header">
+        <div className="pane-header-lead">
+          <span className="pane-status-dot" data-status={dotStatus(meta.state)} />
+          <span className="pane-header-title" title={session.cwd}>
+            {name ?? session.title}
+          </span>
+          {meta.model && (
+            <span className="pane-header-meta" title="Model">
+              {meta.model}
+            </span>
+          )}
+        </div>
+        <div className="pane-header-actions">
+          <span className="chat-state" data-state={meta.state}>
+            {meta.state}
+          </span>
+          <span
+            title={
+              terminalSessionId
+                ? terminal
+                  ? 'Show chat'
+                  : 'Show terminal'
+                : 'This events session has no PTY terminal'
             }
           >
-            <CommandLineIcon />
+            <button
+              className="panel-icon-btn"
+              aria-label={terminal ? 'Show chat' : 'Show terminal'}
+              disabled={!terminalSessionId}
+              data-active={terminal}
+              onClick={() =>
+                useRegistry.setState({
+                  terminal: new Set(
+                    terminal
+                      ? [...registry.terminal].filter((id) => id !== sessionId)
+                      : [...registry.terminal, sessionId]
+                  )
+                })
+              }
+            >
+              <CommandLineIcon className="w-4 h-4" />
+            </button>
+          </span>
+          <button
+            className="panel-icon-btn"
+            aria-label="Close session"
+            title="Close session"
+            onClick={() => setShowConfirm(true)}
+          >
+            <XMarkIcon className="w-4 h-4" />
           </button>
-        </span>
-        <button
-          className="panel-icon-btn"
-          aria-label="Close session"
-          onClick={() => setShowConfirm(true)}
-        >
-          <XMarkIcon />
-        </button>
+        </div>
       </header>
       <div className="chat-content-slot" hidden={terminal && !!terminalSessionId}>
         <View session={session} onState={onState} />

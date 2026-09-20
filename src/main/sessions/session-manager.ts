@@ -3,7 +3,8 @@ import {
   type AgentState,
   type Session,
   type SessionStream,
-  type SessionInput
+  type SessionInput,
+  type ModelOption
 } from '../../shared/session-model'
 import type { SessionAdapter, SessionHandle, SpawnSpec, Unsubscribe } from './adapter'
 
@@ -141,6 +142,10 @@ export class SessionManager {
   write(id: string, input: Uint8Array | SessionInput): void {
     const entry = this.require(id)
     entry.adapter.write(entry.handle, input)
+  }
+  async models(id: string): Promise<ModelOption[]> {
+    const entry = this.require(id)
+    return entry.adapter.models ? entry.adapter.models(entry.handle) : []
   }
 
   resize(id: string, cols: number, rows: number): void {

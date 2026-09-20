@@ -85,6 +85,11 @@ surface-200). Disabled is always `opacity: 0.4` + `cursor: not-allowed`.
   `--sidebar-gutter`, never to hand-picked padding.
 - Side-panel tree rows: `--panel-row-h` (28px); git tree section rows
   `--git-tree-row-h` (30px); hairlines between blocks use `--rule-color` only.
+- **Filled rows never touch.** The row family owns the air between two of its
+  rows (`--row-gap`, 2px) through the "Row rhythm" selector in `system.css`; a
+  list of `.menu-item` or `.sidebar-item` is spaced by construction and needs no
+  `space-y-*` from the call site. A new full-width row class with a hover fill
+  joins that selector, or `src/renderer/src/lib/row-rhythm.test.ts` fails.
 
 ## Settings pages
 

@@ -85,9 +85,9 @@ export async function run(t) {
     assert.equal(await input.inputValue(), '/help\n')
     await input.press('Enter')
     await win.locator('.chat-turn[data-role="assistant"]').waitFor()
-    assert.equal(await win.locator('.chat-turn[data-role="user"]').innerText(), 'You\n\n/help')
+    assert.equal(await win.locator('.chat-turn[data-role="user"]').innerText(), '/help')
     assert.match(await win.locator('.chat-turn[data-role="assistant"]').innerText(), /\/help/)
-    assert.match(await win.locator('.chat-tool-card').innerText(), /Complete/)
+    await win.locator('.chat-tool-card[data-complete="true"]').waitFor()
     await win.locator('.chat-tool-card summary').click()
     assert.equal(await win.locator('.chat-tool-card pre').last().innerText(), '/help\n')
     await inject(app, record.id, [
@@ -95,7 +95,8 @@ export async function run(t) {
       { type: 'tool_result', id: 'distinct-result', output: TOOL_RESULT }
     ])
     const resultCard = win.locator('.chat-tool-card').filter({ hasText: 'Read fixture' })
-    await resultCard.locator('summary').filter({ hasText: 'Complete' }).click()
+    await resultCard.locator('summary').locator('[aria-label="Complete"]').waitFor()
+    await resultCard.locator('summary').click()
     assert.equal(await resultCard.locator('pre').last().innerText(), TOOL_RESULT)
     t.check('Enter sends slash text through echo; Shift+Enter only inserts a newline', true)
     await app.evaluate(({ ipcMain }) => {
@@ -172,8 +173,21 @@ export async function run(t) {
       id: 'permit',
       optionId: 'allow'
     })
-    assert.ok(await win.getByRole('button', { name: 'Deny', exact: true }).isDisabled())
+    // An answered card shows the choice it recorded and no longer offers the others.
+    await win.locator('.chat-permission-answer').filter({ hasText: 'Allow once' }).waitFor()
+    assert.equal(await win.getByRole('button', { name: 'Deny', exact: true }).count(), 0)
     t.check('permission choice crosses the real write IPC with correlated id and option', true)
+    await win.getByRole('button', { name: 'Model', exact: true }).click()
+    await win.getByRole('menuitem', { name: /Echo 2/ }).click()
+    assert.ok(
+      await until(() =>
+        app.evaluate(() =>
+          globalThis.__chatWrites.some((x) => x.type === 'set_model' && x.model === 'echo-2')
+        )
+      )
+    )
+    await win.locator('.chat-model-trigger').filter({ hasText: 'Echo 2' }).waitFor()
+    t.check('model picker lists the adapter models and switches through the write IPC', true)
     await win.locator('.chat-state[data-state="working"]').waitFor()
     assert.equal(await win.locator('.chat-state').innerText(), 'working')
     assert.equal(await waitingDot.count(), 1, 'view-only answers cannot clear kernel blocked state')

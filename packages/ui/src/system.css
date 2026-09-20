@@ -1069,6 +1069,20 @@ body,
   color: var(--text-tertiary);
 }
 
+/* ── Row rhythm ── filled rows never touch.
+   A hovered row beside a selected one used to fuse into one blob because the
+   gap between rows was decided by each consumer (a space-y-0.5 here, nothing
+   there). The row owns its rhythm instead: any fill-row family declares the
+   air to its predecessor here, so a stack of them is spaced by construction
+   and a call site cannot forget. Rows wrapped one level deep (the sidebar's
+   drop-gap and badge wrappers) count through :has(). Adding a fill-row family
+   means adding it to this selector — src/renderer/src/lib/row-rhythm.test.ts
+   finds every full-width class with a hover fill and fails on one left out. */
+:is(.menu-item, :has(> .menu-item)) + :is(.menu-item, :has(> .menu-item)),
+:is(.sidebar-item, :has(> .sidebar-item)) + :is(.sidebar-item, :has(> .sidebar-item)) {
+  margin-top: var(--row-gap);
+}
+
 /* Hairline between menu sections, inset so it reads as a break in the list
    rather than a border cutting the surface. */
 .menu-sep {
@@ -1836,38 +1850,463 @@ button.extension-card:hover {
 }
 
 
-/* ── Conversation views ──────────────────────────────────────────────── */
-.chat-host, .chat-view { display: flex; flex-direction: column; height: 100%; min-height: 0; font-family: var(--font-sans); color: var(--text-primary); }
-.chat-header { display: flex; align-items: center; gap: calc(var(--spacing) * 2); padding: var(--spacing); border-bottom: thin solid var(--border-subtle-color); }
-.chat-header-title { flex-shrink: 0; }
-.chat-cwd { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
-.chat-state, .chat-turn-label, .chat-composer-footer { font-size: var(--text-xs); color: var(--text-tertiary); }
-.chat-state { padding: var(--spacing) calc(var(--spacing) * 2); border-radius: var(--radius-control); background: var(--surface-100); }
-.chat-header .panel-icon-btn svg, .chat-composer .panel-icon-btn svg { width: calc(var(--spacing) * 4); height: calc(var(--spacing) * 4); }
-.chat-turn-list { flex: 1; min-height: 0; overflow: auto; padding: calc(var(--spacing) * 4); display: flex; flex-direction: column; gap: calc(var(--spacing) * 4); }
-.chat-turn { padding: calc(var(--spacing) * 3); border-radius: var(--radius-control); overflow-wrap: anywhere; }
-.chat-turn[data-role="user"] { background: var(--surface-100); }
-.chat-turn-label { margin-bottom: calc(var(--spacing) * 2); }
-.chat-turn p + p { margin-top: calc(var(--spacing) * 3); }
-.chat-turn pre, .chat-card-body pre, .chat-permission-card pre { overflow: auto; padding: calc(var(--spacing) * 3); background: var(--surface-50); border-radius: var(--radius-control); white-space: pre-wrap; }
-.chat-view pre, .chat-view code { font-family: var(--font-sans); font-size: var(--text-sm); }
+/* ── Pane header ────────────────────────────────────────────────────────
+   The one row at the top of every pane, terminal and chat alike: a status
+   dot, the session's name, a quiet meta line, the pane's icon buttons on the
+   right. The two headers share these classes so they cannot drift apart. The
+   row is one control tall plus the 2px inset a box gives its contents. */
+.pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--spacing) * 2);
+  flex-shrink: 0;
+  min-height: calc(var(--control-h-md) + var(--spacing));
+  padding: calc(var(--spacing) / 2) calc(var(--spacing) / 2) calc(var(--spacing) / 2) calc(var(--spacing) * 3);
+  background-color: var(--surface-0);
+  border-bottom: thin solid var(--border-subtle-color);
+}
+.pane-header-lead {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  flex: 1;
+  min-width: 0;
+}
+.pane-header-title {
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pane-header-meta {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex-shrink: 1;
+}
+.pane-header-actions {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) / 2);
+  flex-shrink: 0;
+}
+.pane-status-dot {
+  width: calc(var(--spacing) * 1.5);
+  height: calc(var(--spacing) * 1.5);
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+  background-color: var(--color-status-inactive);
+}
+.pane-status-dot[data-status="working"] {
+  background-color: var(--color-status-working);
+  animation: pulse-dot 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+.pane-status-dot[data-status="ready"] { background-color: var(--color-status-ready); }
+.pane-status-dot[data-status="waiting"] { background-color: var(--color-status-waiting); }
+
+/* ── Conversation views ──────────────────────────────────────────────────
+   The chat view: the host frames it (.chat-host, the pane header above), the
+   plugin fills .chat-view. The transcript is a reading column, never wider
+   than --chat-column, centred in the pane; the composer sits in the same
+   column below it. User turns are the one boxed thing in the transcript,
+   right-aligned on --surface-100; the assistant writes straight on the
+   ground; tools fold into one-line rows so they never crowd the prose.
+   tests/visual/chat-view.mjs holds this block to tokens: no literal colour,
+   size or duration, so every skin restates it whole. */
+.chat-host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background-color: var(--surface-0);
+  --chat-column: var(--container-3xl);
+  --chat-code-size: calc(var(--text-sm) - var(--spacing) / 4);
+  --chat-glyph: calc(var(--spacing) * 3.5);
+}
+.chat-content-slot { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.chat-content-slot[hidden] { display: none; }
+.chat-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+.chat-state {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  padding: 0 calc(var(--spacing) * 1.5);
+  white-space: nowrap;
+}
+.chat-state[data-state="idle"], .chat-state[data-state="done"] { display: none; }
+
+/* The transcript */
+.chat-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.chat-column {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: calc(var(--spacing) * 4);
+  width: 100%;
+  max-width: var(--chat-column);
+  min-height: 100%;
+  margin: 0 auto;
+  padding: calc(var(--spacing) * 6) calc(var(--spacing) * 6) calc(var(--spacing) * 3);
+}
+.chat-turn { overflow-wrap: anywhere; }
+.chat-turn[data-role="user"] {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3.5);
+  border-radius: var(--radius-2xl);
+  background-color: var(--surface-100);
+  white-space: pre-wrap;
+}
+.chat-turn[data-role="assistant"] { align-self: stretch; padding: 0 var(--spacing); }
+.chat-turn[data-role="assistant"][data-final="false"]::after {
+  content: "";
+  display: inline-block;
+  width: calc(var(--spacing) * 2);
+  height: calc(var(--spacing) * 2);
+  margin-left: var(--spacing);
+  border-radius: var(--radius-full);
+  background-color: var(--text-tertiary);
+  vertical-align: baseline;
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+
+/* Markdown, as the assistant writes it */
+.chat-prose > * + * { margin-top: calc(var(--spacing) * 3); }
+.chat-prose h1, .chat-prose h2, .chat-prose h3, .chat-prose h4 {
+  font-weight: 600;
+  line-height: 1.35;
+  margin-top: calc(var(--spacing) * 5);
+}
+.chat-prose h1 { font-size: var(--text-lg); }
+.chat-prose h2 { font-size: var(--text-base); }
+.chat-prose h3, .chat-prose h4 { font-size: var(--text-sm); }
+.chat-prose > :first-child { margin-top: 0; }
+.chat-prose strong { font-weight: 600; }
+.chat-prose ul, .chat-prose ol { padding-left: calc(var(--spacing) * 5.5); }
+.chat-prose ul { list-style: disc; }
+.chat-prose ol { list-style: decimal; }
+.chat-prose li + li { margin-top: var(--spacing); }
+.chat-prose li > ul, .chat-prose li > ol { margin-top: var(--spacing); }
+.chat-prose a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 0.15em; }
+.chat-prose a:hover { color: var(--color-accent-hover); }
+.chat-prose blockquote {
+  padding-left: calc(var(--spacing) * 3);
+  border-left: calc(var(--spacing) / 2) solid var(--color-border);
+  color: var(--text-secondary);
+}
+.chat-prose hr { border: 0; border-top: thin solid var(--rule-color); }
+.chat-prose code {
+  font-family: var(--font-mono);
+  font-size: var(--chat-code-size);
+  padding: 0.1em 0.35em;
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-100);
+}
+.chat-prose pre {
+  padding: calc(var(--spacing) * 3) calc(var(--spacing) * 3.5);
+  border-radius: var(--radius-lg);
+  border: thin solid var(--border-subtle-color);
+  background-color: var(--surface-50);
+  overflow-x: auto;
+  white-space: pre;
+  line-height: 1.5;
+}
+.chat-prose pre code { padding: 0; background: none; font-size: var(--chat-code-size); }
 .chat-code-emphasis { font-style: italic; }
-.chat-tool-card, .chat-permission-card { border: thin solid var(--border-subtle-color); border-radius: var(--radius-control); background: var(--surface-50); }
-.chat-tool-card summary, .chat-permission-card { padding: calc(var(--spacing) * 3); }
-.chat-tool-card summary { cursor: pointer; }
-.chat-tool-card summary span { color: var(--text-secondary); margin-left: calc(var(--spacing) * 2); }
-.chat-card-body { padding: calc(var(--spacing) * 3); border-top: thin solid var(--border-subtle-color); }
-.chat-actions { display: flex; flex-wrap: wrap; gap: calc(var(--spacing) * 2); margin-top: calc(var(--spacing) * 3); }
-.chat-notice { padding: calc(var(--spacing) * 3); border-left: thin solid var(--color-accent); color: var(--text-secondary); }
-.chat-empty { margin: auto; padding: calc(var(--spacing) * 4); text-align: center; color: var(--text-secondary); }
-.chat-empty h2 { color: var(--text-primary); margin-bottom: calc(var(--spacing) * 2); }
-.chat-composer { margin: calc(var(--spacing) * 3); padding: var(--spacing); border: thin solid var(--color-border); border-radius: var(--radius-control); background: var(--surface-100); }
-.chat-composer .textarea-field { width: 100%; min-height: calc(var(--control-h-lg) * 2); resize: vertical; }
-.chat-composer-footer { display: flex; align-items: center; justify-content: space-between; gap: calc(var(--spacing) * 2); padding: var(--spacing); }
+.chat-prose table { border-collapse: collapse; font-size: var(--chat-code-size); }
+.chat-prose th, .chat-prose td {
+  padding: var(--spacing) calc(var(--spacing) * 2.5);
+  border: thin solid var(--border-subtle-color);
+  text-align: left;
+}
+.chat-prose th { color: var(--text-secondary); font-weight: var(--font-weight-medium); }
+
+/* Tool rows: one line closed, the input and result under it when opened.
+   Consecutive rows pull together so a run of tools reads as one step list. */
+.chat-tool-card {
+  align-self: stretch;
+  border: thin solid var(--border-subtle-color);
+  border-radius: var(--radius-lg);
+  background-color: var(--surface-50);
+  overflow: hidden;
+  font-size: var(--chat-code-size);
+}
+.chat-tool-card + .chat-tool-card { margin-top: calc(var(--spacing) * -2.5); }
+.chat-tool-card summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  min-height: var(--control-h-md);
+  padding: 0 calc(var(--spacing) * 2.5) 0 calc(var(--spacing) * 2);
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--default-transition-duration);
+}
+.chat-tool-card summary::-webkit-details-marker { display: none; }
+.chat-tool-card summary:hover { background-color: var(--surface-100); }
+.chat-tool-chevron {
+  width: var(--chat-glyph);
+  height: var(--chat-glyph);
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  transition: rotate var(--default-transition-duration) var(--ease-out-expo);
+}
+.chat-tool-card[open] .chat-tool-chevron { rotate: 90deg; }
+.chat-tool-name { flex-shrink: 0; }
+.chat-tool-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+.chat-tool-status {
+  flex-shrink: 0;
+  width: var(--chat-glyph);
+  height: var(--chat-glyph);
+  color: var(--text-tertiary);
+}
+.chat-tool-status[data-running="true"] { animation: chat-spin 1s linear infinite; }
+@keyframes chat-spin { to { rotate: 360deg; } }
+.chat-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 2);
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
+  border-top: thin solid var(--border-subtle-color);
+}
+.chat-card-label { font-size: var(--text-xs); color: var(--text-tertiary); }
+.chat-card-body pre, .chat-permission-input pre {
+  margin: 0;
+  max-height: calc(var(--spacing) * 80);
+  overflow: auto;
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 2.5);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-0);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Permission card: the one thing in the transcript that asks for a click. */
+.chat-permission-card {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 2.5);
+  padding: calc(var(--spacing) * 3.5) calc(var(--spacing) * 4);
+  border: thin solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background-color: var(--surface-50);
+}
+.chat-permission-title {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+.chat-permission-title svg { width: var(--chat-glyph); height: var(--chat-glyph); }
+.chat-permission-title .badge { background-color: var(--surface-100); color: var(--text-secondary); }
+.chat-permission-card p { margin: 0; }
+.chat-permission-input summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  user-select: none;
+}
+.chat-permission-input summary::-webkit-details-marker { display: none; }
+.chat-permission-input summary:hover { color: var(--text-secondary); }
+.chat-permission-input[open] summary { margin-bottom: calc(var(--spacing) * 1.5); }
+.chat-actions { display: flex; flex-wrap: wrap; gap: calc(var(--spacing) * 2); }
+.chat-permission-answer {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+.chat-permission-answer svg { width: var(--chat-glyph); height: var(--chat-glyph); }
+
+/* Notices sit in the column's centre, small and grey; an error carries the
+   destructive ink and a hairline so it cannot be mistaken for a status. */
+.chat-notice {
+  align-self: center;
+  max-width: 100%;
+  padding: var(--spacing) calc(var(--spacing) * 3);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+.chat-notice[data-tone="error"] {
+  align-self: stretch;
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3.5);
+  border-radius: var(--radius-lg);
+  border: thin solid color-mix(in srgb, var(--color-destructive) 40%, transparent);
+  color: var(--color-destructive);
+  font-size: var(--chat-code-size);
+}
+.chat-empty {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--spacing) * 3);
+  padding: calc(var(--spacing) * 8) calc(var(--spacing) * 4);
+  text-align: center;
+}
+.chat-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--spacing) * 12);
+  height: calc(var(--spacing) * 12);
+  border-radius: var(--radius-2xl);
+  background-color: var(--surface-100);
+  color: var(--text-tertiary);
+}
+.chat-empty-icon svg { width: calc(var(--spacing) * 5.5); height: calc(var(--spacing) * 5.5); }
+.chat-empty h2 { font-size: var(--text-sm); font-weight: var(--font-weight-medium); color: var(--text-primary); }
+.chat-empty p { font-size: var(--text-xs); color: var(--text-tertiary); }
+
+/* The composer: one rounded box holding the textarea and the send/stop
+   control, the hint and the model picker on a quiet line beneath. The box is
+   the one thing in the pane on --surface-raised, lifted off the ground by
+   --raised-shadow rather than by a border; the textarea grows with its
+   content (field-sizing) up to a few lines, then scrolls. */
+.chat-composer-wrap {
+  flex-shrink: 0;
+  width: 100%;
+  max-width: var(--chat-column);
+  margin: 0 auto;
+  padding: var(--spacing) calc(var(--spacing) * 6) calc(var(--spacing) * 3);
+}
+.chat-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: calc(var(--spacing) * 2);
+  padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 1.5) calc(var(--spacing) * 1.5) calc(var(--spacing) * 3.5);
+  border: thin solid var(--border-subtle-color);
+  border-radius: var(--radius-2xl);
+  background-color: var(--surface-raised);
+  box-shadow: var(--raised-shadow);
+  transition: border-color var(--default-transition-duration);
+}
+.chat-composer:focus-within { border-color: var(--color-border); }
+.chat-composer[data-dragging="true"] { border-color: var(--color-accent); }
+.chat-composer textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--control-h-md);
+  max-height: calc(var(--spacing) * 48);
+  padding: calc(var(--spacing) * 1.25) 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: none;
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-primary);
+  field-sizing: content;
+  overflow-y: auto;
+}
+.chat-composer textarea::placeholder { color: var(--text-tertiary); }
+.chat-composer textarea:disabled { opacity: 0.4; cursor: not-allowed; }
+.chat-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--control-h-sm);
+  height: var(--control-h-sm);
+  margin-bottom: calc(var(--spacing) / 2);
+  border-radius: var(--radius-full);
+  color: white;
+  background-color: var(--color-accent);
+  transition: background-color var(--default-transition-duration), color var(--default-transition-duration), opacity var(--default-transition-duration), scale var(--default-transition-duration) var(--ease-out-expo);
+}
+.chat-send svg { width: var(--chat-glyph); height: var(--chat-glyph); }
+.chat-send:hover { background-color: var(--color-accent-hover); }
+.chat-send:active:not(:disabled) { scale: 0.97; }
+.chat-send:disabled { opacity: 0.4; cursor: not-allowed; }
+.chat-send[data-kind="stop"] { color: var(--text-primary); background-color: var(--surface-200); }
+.chat-send[data-kind="stop"]:hover { background-color: var(--surface-300); }
+.chat-composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--spacing) * 2);
+  min-height: calc(var(--spacing) * 5);
+  margin-top: calc(var(--spacing) * 1.5);
+  padding: 0 calc(var(--spacing) * 2);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+.chat-composer-footer span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The model picker: a quiet chip on the footer line that opens a menu ABOVE
+   it, the menu's right edge on the chip's right edge (the chip sits at the
+   column's end, so that is the edge the eye lines up). */
+.chat-model-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing);
+  height: var(--control-h-sm);
+  max-width: 100%;
+  padding: 0 calc(var(--spacing) * 1.5) 0 calc(var(--spacing) * 2);
+  border-radius: var(--radius-control);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  transition: color var(--default-transition-duration), background-color var(--default-transition-duration);
+}
+.chat-model-trigger:hover, .chat-model-trigger[data-state="open"] {
+  color: var(--text-secondary);
+  background-color: var(--surface-100);
+}
+.chat-model-trigger:disabled { opacity: 0.4; cursor: not-allowed; }
+.chat-model-trigger:focus-visible { outline: thin solid var(--color-accent); outline-offset: calc(var(--spacing) / 4); }
+.chat-model-trigger svg { width: var(--chat-glyph); height: var(--chat-glyph); flex-shrink: 0; }
+.chat-model-trigger-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-model-menu {
+  min-width: calc(var(--spacing) * 56);
+  max-width: calc(var(--spacing) * 80);
+  padding: var(--spacing);
+}
+.chat-model-option { align-items: flex-start; padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 2); }
+.chat-model-option-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.chat-model-option-hint { font-size: var(--text-xs); color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-model-option .select-option-check { margin-top: calc(var(--spacing) / 2); color: var(--text-primary); }
+.chat-model-empty { padding: calc(var(--spacing) * 2); font-size: var(--text-xs); color: var(--text-tertiary); }
+
+/* The sidebar's view badge on an events session's row */
 .chat-sidebar-row { position: relative; }
 .chat-sidebar-row:has(.chat-view-badge) .sidebar-item { padding-right: var(--control-h-md); }
 .chat-view-badge { position: absolute; right: var(--spacing); top: var(--spacing); pointer-events: none; width: var(--control-h-xs); height: var(--control-h-xs); display: flex; align-items: center; justify-content: center; color: var(--text-tertiary); }
 .chat-view-badge svg { width: calc(var(--spacing) * 3); height: calc(var(--spacing) * 3); }
-.chat-host[data-focused="true"] { outline: thin solid var(--color-accent); border-radius: var(--radius-xl); }
-.chat-content-slot { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.chat-content-slot[hidden] { display: none; }

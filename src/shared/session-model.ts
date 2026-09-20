@@ -27,11 +27,22 @@ export const PermissionResponseSchema = z.object({
   optionId: z.string()
 })
 export const InterruptSchema = z.object({ type: z.literal('interrupt') })
+/** Switch the session's model; null asks the provider for its own default. */
+export const SetModelSchema = z.object({ type: z.literal('set_model'), model: z.string().nullable() })
+export type SetModel = z.infer<typeof SetModelSchema>
 export const SessionInputSchema = z.discriminatedUnion('type', [
   UserMessageSchema,
   PermissionResponseSchema,
-  InterruptSchema
+  InterruptSchema,
+  SetModelSchema
 ])
+/** One model a provider offers a live session, as the view lists it. */
+export const ModelOptionSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  hint: z.string().optional()
+})
+export type ModelOption = z.infer<typeof ModelOptionSchema>
 export type SessionInput = z.infer<typeof SessionInputSchema>
 export const SessionEventSchema = z.discriminatedUnion('type', [
   UserMessageSchema,

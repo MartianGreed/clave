@@ -60,18 +60,19 @@ export function TerminalHeader({ sessionId }: TerminalHeaderProps): ReactElement
 
   return (
     <>
-      <div className="flex items-center justify-between pl-3 pr-0.5 py-0.5 bg-surface-0 border-b border-border-subtle flex-shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
+      <div className="pane-header">
+        <div className="pane-header-lead">
           <span
-            className={cn(
-              'w-1.5 h-1.5 rounded-full flex-shrink-0',
-              session.activityStatus === 'active' && 'bg-status-working',
-              session.activityStatus === 'idle' && 'bg-status-ready',
-              session.activityStatus === 'ended' && 'bg-status-inactive'
-            )}
-            style={session.activityStatus === 'active' ? { animation: 'pulse-dot 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite' } : undefined}
+            className="pane-status-dot"
+            data-status={
+              session.activityStatus === 'active'
+                ? 'working'
+                : session.activityStatus === 'idle'
+                  ? 'ready'
+                  : 'inactive'
+            }
           />
-          <span className="text-xs font-medium text-text-secondary truncate">{session.name}</span>
+          <span className="pane-header-title">{session.name}</span>
           {multiProfile && session.claudeProfileLabel && (session.claudeMode || session.claudeAgentsMode) && (
             <span
               className="badge flex-shrink-0"
@@ -131,7 +132,7 @@ export function TerminalHeader({ sessionId }: TerminalHeaderProps): ReactElement
           )}
         </div>
 
-        <div className="flex items-center gap-0.5 flex-shrink-0">
+        <div className="pane-header-actions">
           <SessionCopyOffers sessionId={sessionId} />
           {session.claudeSessionId && (
             <button

@@ -122,10 +122,10 @@ class PtyManager {
     const decoder = new TextDecoder()
     const stopStream = sessionManager.subscribe(id, (stream) => {
       if (stream.kind === 'event' && stream.event.type === 'session_meta') {
+        // A meta naming no model means "the provider's default": it refines
+        // nothing, so it never erases a model already known here.
         const session = this.eventSessions.get(id)
-        if (session) {
-          session.model = stream.event.model ?? undefined
-        }
+        if (session && stream.event.model) session.model = stream.event.model
       }
       if (stream.kind === 'pty') onData(decoder.decode(stream.data, { stream: true }))
     })

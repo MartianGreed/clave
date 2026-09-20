@@ -215,7 +215,9 @@ setInterval(()=>{},1000);
     assert.ok(capture.some((e) => e.state === 'working'))
     assert.ok(capture.some((e) => e.state === 'blocked'))
     assert.ok(capture.some((e) => e.state === 'idle'))
-    const model = events.find((e) => e.type === 'session_meta').model
+    // The launch announces its model at ready (null: the CLI's default) and the
+    // CLI's init frame names the real one; the capture carries the latest.
+    const model = events.findLast((e) => e.type === 'session_meta').model
     for (const row of capture) {
       assert.equal(row.session.claudeSessionId, processInfo.providerId)
       assert.equal(row.session.model, model)
@@ -256,7 +258,10 @@ setInterval(()=>{},1000);
     }, second.id)
     assert.ok(
       await until(async () =>
-        (await win.evaluate(() => window.__second)).some((e) => e.type === 'session_meta')
+        // The CLI's own meta (it names its session), not the launch announcement.
+        (await win.evaluate(() => window.__second)).some(
+          (e) => e.type === 'session_meta' && e.providerSessionId
+        )
       )
     )
     const secondEvents = await win.evaluate(() => window.__second)
@@ -277,7 +282,8 @@ setInterval(()=>{},1000);
     )
     t.check('configured prompt starts once after listeners; shell commands report an error', true)
     assert.equal(
-      secondEvents.find((e) => e.type === 'session_meta').providerSessionId,
+      secondEvents.find((e) => e.type === 'session_meta' && e.providerSessionId)
+        .providerSessionId,
       'provider-diverged'
     )
     assert.ok(

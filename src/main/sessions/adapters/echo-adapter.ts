@@ -1,5 +1,9 @@
 import { EventEmitter } from 'node:events'
-import { UserMessageSchema, type UserMessage } from '../../../shared/session-model'
+import {
+  SessionInputSchema,
+  type ModelOption,
+  type SessionInput
+} from '../../../shared/session-model'
 import type {
   SessionAdapter,
   SessionAdapterEvents,
@@ -7,6 +11,11 @@ import type {
   SpawnSpec,
   Unsubscribe
 } from '../adapter'
+
+const ECHO_MODELS: ModelOption[] = [
+  { id: 'echo-1', label: 'Echo 1', hint: 'Repeats what you say' },
+  { id: 'echo-2', label: 'Echo 2', hint: 'Repeats it again' }
+]
 
 /** Deterministic, opt-in fixture for developing event-stream consumers. */
 export class EchoAdapter implements SessionAdapter {
@@ -31,8 +40,20 @@ export class EchoAdapter implements SessionAdapter {
     return { id }
   }
 
-  write(handle: SessionHandle, input: Uint8Array | UserMessage): void {
-    const message = UserMessageSchema.parse(
+  ready(handle: SessionHandle): void {
+    this.emitter(handle).emit('stream', {
+      kind: 'event',
+      event: { type: 'session_meta', model: ECHO_MODELS[0].id, providerSessionId: null }
+    })
+  }
+
+  /** A fixed menu, so the model picker can be exercised without a provider. */
+  async models(): Promise<ModelOption[]> {
+    return ECHO_MODELS
+  }
+
+  write(handle: SessionHandle, input: Uint8Array | SessionInput): void {
+    const value = SessionInputSchema.parse(
       input instanceof Uint8Array
         ? { type: 'user_message', text: new TextDecoder().decode(input) }
         : input
@@ -43,6 +64,12 @@ export class EchoAdapter implements SessionAdapter {
     ): void => {
       emitter.emit('stream', { kind: 'event', event })
     }
+    if (value.type === 'set_model') {
+      emit({ type: 'session_meta', model: value.model ?? ECHO_MODELS[0].id, providerSessionId: null })
+      return
+    }
+    if (value.type !== 'user_message') return
+    const message = value
     emit(message)
     emitter.emit('state', 'working')
     emit({ type: 'assistant_text', delta: message.text, final: true })

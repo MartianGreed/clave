@@ -5,7 +5,8 @@ import { z } from 'zod'
 import {
   SessionInputSchema,
   type SessionInput,
-  type SessionEvent
+  type SessionEvent,
+  type ModelOption
 } from '../../../shared/session-model'
 import { buildAgentArgv } from '../../../shared/agent-launch'
 import type {
@@ -45,10 +46,34 @@ type Permission = { input: unknown; suggestions: unknown[] }
 /** One translator per process: partial messages and completed snapshots overlap. */
 export class ClaudeStreamTranslator {
   readonly permissions = new Map<string, Permission>()
+  /** request_id → the model a set_model control request asked for. */
+  readonly modelRequests = new Map<string, string | null>()
   private streamed = false
   private finished = false
   private tools = new Set<string>()
   constructor(private readonly emit: (event: SessionEvent) => void) {}
+  /** A control_response answering one of our set_model requests; false for any other. */
+  private modelRequest(p: Record<string, unknown>): boolean {
+    const response = z
+      .object({
+        request_id: z.string(),
+        subtype: z.enum(['success', 'error']),
+        error: z.string().optional()
+      })
+      .safeParse(p.response)
+    if (!response.success || !this.modelRequests.has(response.data.request_id)) return false
+    const model = this.modelRequests.get(response.data.request_id) ?? null
+    this.modelRequests.delete(response.data.request_id)
+    if (response.data.subtype === 'success')
+      this.emit({ type: 'session_meta', model, providerSessionId: null })
+    else
+      this.emit({
+        type: 'error',
+        message: response.data.error ?? `Claude refused to switch to ${model ?? 'the default model'}`,
+        fatal: false
+      })
+    return true
+  }
   line(line: string): void {
     try {
       this.translate(envelope.parse(JSON.parse(line)))
@@ -109,6 +134,8 @@ export class ClaudeStreamTranslator {
       }
       // Preserve usage, thinking, attachments, and unknown content without duplicate text.
       fallback()
+    } else if (p.type === 'control_response' && this.modelRequest(p)) {
+      // Answered above: the switch either took, or the CLI said why not.
     } else if (p.type === 'control_request' && object.parse(p.request).subtype === 'can_use_tool') {
       const r = z
         .object({
@@ -207,6 +234,16 @@ export class ClaudeStreamTranslator {
   }
 }
 
+/** The CLI's own notion: 'default' is the model it picks for the account. */
+export const CLAUDE_DEFAULT_MODEL = 'default'
+export const CLAUDE_MODELS: ModelOption[] = [
+  { id: CLAUDE_DEFAULT_MODEL, label: 'Default', hint: "Claude Code's recommended model" },
+  { id: 'claude-fable-5-1', label: 'Fable 5.1' },
+  { id: 'claude-opus-5', label: 'Opus 5' },
+  { id: 'claude-sonnet-5', label: 'Sonnet 5' },
+  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' }
+]
+
 interface Live {
   handle: SessionHandle
   emitter: EventEmitter
@@ -218,6 +255,8 @@ interface Live {
   ready: boolean
   initialPrompt?: string
   commandError?: string
+  /** The model the session was launched on; the CLI's init frame refines it. */
+  model: string | null
   emit: (event: SessionEvent) => void
   finish: (code: number) => void
 }
@@ -274,6 +313,7 @@ export class ClaudeAdapter implements SessionAdapter {
       initialized: false,
       ready: false,
       initialPrompt: context.initialPrompt,
+      model: options.model ?? null,
       commandError:
         context.initialCommand !== undefined || context.autoExecute === true
           ? 'initialCommand and autoExecute are not supported by Claude chat sessions; use a terminal session for shell commands.'
@@ -384,6 +424,13 @@ export class ClaudeAdapter implements SessionAdapter {
     const live = this.live(handle)
     if (live.ready || live.ended) return
     if (live.commandError) live.emit({ type: 'error', message: live.commandError, fatal: false })
+    // The session has a model from the moment it is looked at: the one it was
+    // launched on, or the CLI's default until its init frame names it. Sent
+    // past live.emit on purpose: only the CLI's own init marks initialized.
+    live.emitter.emit('stream', {
+      kind: 'event',
+      event: { type: 'session_meta', model: live.model, providerSessionId: null }
+    })
     const initialPrompt = live.initialPrompt
     if (initialPrompt !== undefined)
       this.write(handle, { type: 'user_message', text: initialPrompt })
@@ -418,8 +465,22 @@ export class ClaudeAdapter implements SessionAdapter {
           kind: 'event',
           event: { type: 'state_change', state: 'working' }
         })
+    } else if (input.type === 'set_model') {
+      if (input.model !== null && !isValidModelName(input.model))
+        throw new Error('Invalid model name')
+      const requestId = randomUUID()
+      live.translator.modelRequests.set(requestId, input.model)
+      send({
+        type: 'control_request',
+        request_id: requestId,
+        request: { subtype: 'set_model', model: input.model }
+      })
     } else
       send({ type: 'control_request', request_id: randomUUID(), request: { subtype: 'interrupt' } })
+  }
+  /** The CLI has no model listing; this is the current family, full ids the CLI accepts. */
+  async models(): Promise<ModelOption[]> {
+    return CLAUDE_MODELS
   }
   async kill(handle: SessionHandle): Promise<void> {
     const live = this.handles.get(handle.id)
