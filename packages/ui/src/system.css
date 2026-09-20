@@ -781,9 +781,13 @@ body,
   color: var(--text-secondary);
 }
 .panel-scope-glyph {
-  font-size: 10px;
+  /* On the path's own line box (text-xs: 12px on 16px) so the letter and the
+     path share a baseline. Centring a 10px capital on a 10px box against 12px
+     lowercase on 16px put the two optical centres 2px apart, and the path read
+     as sitting under the letter (2026-09-20). */
+  font-size: 11px;
   font-weight: 600;
-  line-height: 1;
+  line-height: 16px;
   letter-spacing: 0.02em;
 }
 
@@ -806,15 +810,18 @@ body,
   color: var(--text-tertiary);
 }
 
-/* The tab bar holds one control and nothing else — Files | Git — so the BAR
-   hugs it and centres itself, rather than running the panel's full width with
-   its contents floated into the middle. A full-width box around two buttons
-   reads as a row whose other half went missing; a box the width of the choice
-   reads as the choice. Only bars holding a single cluster take this: the moment
-   a bar has a trailing group, the label group is what places it. */
-.panel-bar--hug {
+/* The tab row at the head of the side panel — Files | Git. Two .panel-tab
+   chips, centred, and no box: it used to be a .panel-bar hugged to the pair,
+   and a 34px frame around 124px of buttons read as a pill rather than a
+   switch. The selected tab's fill says which, the way a popover row does. The
+   row keeps the bar's height so the panel's top edge still lines up with the
+   toolbar band across the window. */
+.panel-tabs {
+  display: flex;
+  align-items: center;
   align-self: center;
-  flex-wrap: nowrap;
+  gap: 2px;
+  height: var(--toolbar-h);
 }
 
 /* Opting a bar out of wrapping, for the path bar: it is a line of text with a
@@ -923,6 +930,10 @@ body,
   gap: 0.25rem;
   flex: 1 1 auto;
   min-width: 5.5rem;
+  /* One control tall even when it holds only text: when the bar wraps, the
+     label takes a line of its own, and a 16px line put "2 repos" 3px under the
+     border while the controls' line below it stood 28px (2026-09-20). */
+  min-height: var(--control-h-md);
   overflow: hidden;
 }
 

@@ -1651,11 +1651,6 @@ export function Sidebar() {
                                     // grid track animates to 0); the drag hit-test
                                     // reads this to ignore them (use-sidebar-dnd).
                                     data-group-collapsed={group.collapsed ? 'true' : undefined}
-                                    style={
-                                      groupColorHex
-                                        ? ({ '--group-rail-color': groupColorHex } as React.CSSProperties)
-                                        : undefined
-                                    }
                                   >
                                     {group.sessionIds.map((sid, sIdx) => {
                                       const prevSid = sIdx > 0 ? group.sessionIds[sIdx - 1] : null

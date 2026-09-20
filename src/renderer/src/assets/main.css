@@ -394,35 +394,19 @@
   background-color: var(--group-hover-bg, var(--surface-200));
 }
 
-/* The group's colour as a rail down its session list.
-   The answer to "should selecting a group filter the sidebar?" was no — the
-   sidebar's job is showing which lane is waiting on you, and hiding the others
-   defeats it. So the boundary is made unmistakable instead: a continuous bar in
-   the group's own colour spanning its sessions, brightened while the group is
-   the selection. */
+/* The session list of a group card. Once "the group's colour as a rail down
+   its session list": a 2px bar 2px inside the card's own coloured border,
+   ending on the corner's curve, so it read as a second line rather than as a
+   boundary — the card's tint and border already say where the group ends
+   (2026-09-20). The class stays as the container the drop logic, the tests and
+   the seam token address; there is nothing to clear on the left any more, so
+   the rows sit at the card's own inset on both sides. */
 .group-rail {
   position: relative;
-  padding-left: 0.5rem;    /* clears the rail */
   /* Every seam in a rail is the 2px between two rows — the header counts as the
      row above the first one. Stated here because the list container outside sets
      6px inline and that inherits all the way down. */
   --drop-seam: 2px;
-}
-.group-rail::before {
-  content: '';
-  position: absolute;
-  left: 0.125rem;
-  /* Spans the rows: 2px of rail above them, 4px below. */
-  top: 0.125rem;
-  bottom: 0.25rem;
-  width: 2px;
-  border-radius: 1px;
-  background-color: var(--group-rail-color, var(--color-accent));
-  opacity: 0.35;
-  transition: opacity 150ms;
-}
-.group-rail[data-selected='true']::before {
-  opacity: 0.9;
 }
 
 /* ── Group picker ── */
