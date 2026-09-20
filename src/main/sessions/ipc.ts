@@ -1,6 +1,6 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { sessionManager } from './session-manager'
-import { UserMessageSchema } from '../../shared/session-model'
+import { SessionInputSchema } from '../../shared/session-model'
 import { windowRegistry } from '../window-registry'
 
 let registered = false
@@ -9,6 +9,15 @@ let registered = false
 export function registerSessionIpc(): void {
   if (registered || !ipcMain?.handle) return
   registered = true
+  sessionManager.subscribeAll((id, stream) => {
+    if (stream.kind !== 'event' || stream.event.type !== 'state_change') return
+    const record = sessionManager.get(id)
+    if (record?.transport !== 'events') return
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed() && windowRegistry.getKeyForWindow(win.id) === record.windowKey)
+        win.webContents.send(`agent:state:${id}`, stream.event.state)
+    }
+  })
   const subscriptions = new Map<number, Map<string, () => void>>()
   const watched = new Set<number>()
   ipcMain.handle('sessions:list', (event) => {
@@ -57,6 +66,7 @@ export function registerSessionIpc(): void {
         sessionManager.detachWindow(windowKey)
       })
     }
+    sessionManager.ready(id)
     return sessionManager.get(id)
   })
   ipcMain.handle('sessions:unsubscribe', (event, id: string) => {
@@ -68,6 +78,6 @@ export function registerSessionIpc(): void {
     const key = win && windowRegistry.getKeyForWindow(win.id)
     if (!key || sessionManager.get(id)?.windowKey !== key)
       throw new Error('Session belongs to another window')
-    sessionManager.write(id, input instanceof Uint8Array ? input : UserMessageSchema.parse(input))
+    sessionManager.write(id, input instanceof Uint8Array ? input : SessionInputSchema.parse(input))
   })
 }

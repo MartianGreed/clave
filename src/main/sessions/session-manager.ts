@@ -3,7 +3,7 @@ import {
   type AgentState,
   type Session,
   type SessionStream,
-  type UserMessage
+  type SessionInput
 } from '../../shared/session-model'
 import type { SessionAdapter, SessionHandle, SpawnSpec, Unsubscribe } from './adapter'
 
@@ -16,6 +16,7 @@ interface Entry {
   streams: Set<Listener<SessionStream>>
   exits: Set<Listener<number>>
   exited: boolean
+  ready: boolean
 }
 
 /** Process-independent registry: closing a view never kills its provider. */
@@ -31,6 +32,10 @@ export class SessionManager {
     if (previous && previous !== adapter)
       throw new Error(`Adapter already registered: ${adapter.id}`)
     this.adapters.set(adapter.id, adapter)
+  }
+
+  getAdapter(id: string): SessionAdapter | undefined {
+    return this.adapters.get(id)
   }
 
   async create(spec: SpawnSpec): Promise<Session> {
@@ -69,7 +74,8 @@ export class SessionManager {
       off: [],
       streams: new Set(),
       exits: new Set(),
-      exited: false
+      exited: false,
+      ready: false
     }
     this.entries.set(parsed.id, entry)
     try {
@@ -114,7 +120,25 @@ export class SessionManager {
     return handle
   }
 
-  write(id: string, input: Uint8Array | UserMessage): void {
+  ready(id: string): void {
+    const entry = this.require(id)
+    if (entry.ready) return
+    try {
+      entry.adapter.ready?.(entry.handle)
+      entry.ready = true
+    } catch (error) {
+      this.publish(entry, {
+        kind: 'event',
+        event: {
+          type: 'error',
+          message: `Session readiness failed: ${error instanceof Error ? error.message : String(error)}`,
+          fatal: false
+        }
+      })
+    }
+  }
+
+  write(id: string, input: Uint8Array | SessionInput): void {
     const entry = this.require(id)
     entry.adapter.write(entry.handle, input)
   }
