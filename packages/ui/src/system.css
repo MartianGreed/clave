@@ -371,6 +371,33 @@ body,
   background-color: var(--surface-100);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 55%, transparent);
 }
+/* Focus never draws a box inside a box. A field that sits in a bordered bar
+   has a frame already; an accent ring on the field put a 6px-cornered box
+   inside a 10px-cornered one, and the two read as a mistake the moment the
+   field was clicked (2026-09-21).
+   - A search field that is a bar's only content IS the bar: no fill of its
+     own, no corner of its own, and the bar's border takes the focus.
+   - The switcher's search is a segment beside chips, so it keeps its resting
+     fill as the "type here" affordance and steps that fill up on focus, the
+     way a chip steps up when selected: same box, darker, never a second
+     frame. */
+.panel-bar > .search-field {
+  background-color: transparent;
+  border-radius: 0;
+  padding: 0 0.25rem;
+}
+.panel-bar > .search-field:hover,
+.panel-bar > .search-field:focus-within {
+  background-color: transparent;
+  box-shadow: none;
+}
+.panel-bar:has(> .search-field:focus-within) {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+}
+.group-switcher-search:focus-within {
+  background-color: var(--surface-200);
+  box-shadow: none;
+}
 .group-switcher-search input,
 .search-field input {
   flex: 1 1 auto;
