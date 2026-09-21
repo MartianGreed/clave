@@ -379,9 +379,15 @@ function RepoSection({
     })
   }, [cwd])
 
+  // The dialog names what will actually happen: a tracked file goes back to
+  // its last commit, an untracked one is removed from disk. Its title, its
+  // sentence and its button agree, so nobody reads "Discard" over a button
+  // that says "Delete" and wonders which one is true (PRDCT critique, 2026-09-21).
   const [confirmDiscard, setConfirmDiscard] = useState<{
     files: Array<{ path: string; status: string; staged: boolean }>
+    title: string
     label: string
+    confirmLabel: string
   } | null>(null)
   const prevViewMode = useRef(gitViewMode)
   const prevCwdRef = useRef(cwd)
@@ -562,16 +568,47 @@ function RepoSection({
 
   const promptDiscardFile = useCallback((file: GitFileStatus) => {
     const name = file.path.includes('/') ? file.path.split('/').pop()! : file.path
+    const entry = { path: file.path, status: file.status, staged: file.staged }
+    if (file.status === 'untracked') {
+      setConfirmDiscard({
+        files: [entry],
+        title: 'Delete file',
+        label: `${name} is not in any commit, so it will be removed from disk. This cannot be undone.`,
+        confirmLabel: 'Delete file'
+      })
+      return
+    }
     setConfirmDiscard({
-      files: [{ path: file.path, status: file.status, staged: file.staged }],
-      label: `Discard changes to ${name}? This cannot be undone.`
+      files: [entry],
+      title: 'Discard changes',
+      label: `${name} goes back to its last commit. This cannot be undone.`,
+      confirmLabel: 'Discard changes'
     })
   }, [])
 
   const promptDiscardAll = useCallback((files: GitFileStatus[]) => {
+    const entries = files.map((f) => ({ path: f.path, status: f.status, staged: f.staged }))
+    const untrackedCount = files.filter((f) => f.status === 'untracked').length
+    const n = files.length
+    const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? '' : 's'}`
+    if (untrackedCount === n) {
+      setConfirmDiscard({
+        files: entries,
+        title: n === 1 ? 'Delete file' : 'Delete files',
+        label: `${plural(n, 'file')} not in any commit will be removed from disk. This cannot be undone.`,
+        confirmLabel: n === 1 ? 'Delete file' : `Delete ${n} files`
+      })
+      return
+    }
+    const removed =
+      untrackedCount > 0
+        ? ` ${plural(untrackedCount, 'new file')} among them will be removed from disk.`
+        : ''
     setConfirmDiscard({
-      files: files.map((f) => ({ path: f.path, status: f.status, staged: f.staged })),
-      label: `Discard all changes in ${files.length} file${files.length === 1 ? '' : 's'}? This cannot be undone.`
+      files: entries,
+      title: 'Discard changes',
+      label: `${plural(n, 'file')} go back to their last commit.${removed} This cannot be undone.`,
+      confirmLabel: n === 1 ? 'Discard changes' : `Discard ${n} files`
     })
   }, [])
 
@@ -944,8 +981,9 @@ function RepoSection({
       )}
       <ConfirmDialog
         isOpen={confirmDiscard !== null}
-        title="Discard changes"
+        title={confirmDiscard?.title ?? 'Discard changes'}
         message={confirmDiscard?.label ?? ''}
+        confirmLabel={confirmDiscard?.confirmLabel ?? 'Discard changes'}
         onConfirm={executeDiscard}
         onCancel={() => setConfirmDiscard(null)}
       />

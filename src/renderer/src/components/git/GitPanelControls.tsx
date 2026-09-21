@@ -216,15 +216,6 @@ export function SectionHeader({
         {label} ({count})
       </span>
       <span className="ml-auto flex items-center gap-2">
-        {discardAction && onDiscardAction && (
-          <button
-            className="text-[10px] text-text-tertiary hover:text-red-400 transition-colors disabled:opacity-50"
-            onClick={onDiscardAction}
-            disabled={disabled}
-          >
-            {discardAction}
-          </button>
-        )}
         {action && onAction && (
           <button
             className="text-[10px] text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-50"
@@ -232,6 +223,18 @@ export function SectionHeader({
             disabled={disabled}
           >
             {action}
+          </button>
+        )}
+        {/* The destructive verb goes LAST. It used to open the pair, at the
+            same weight as Stage All with red only on hover, so the first word
+            on the line was the one that loses work. */}
+        {discardAction && onDiscardAction && (
+          <button
+            className="text-[10px] text-text-tertiary hover:text-red-400 transition-colors disabled:opacity-50"
+            onClick={onDiscardAction}
+            disabled={disabled}
+          >
+            {discardAction}
           </button>
         )}
         {trailing}

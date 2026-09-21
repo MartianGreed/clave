@@ -1,6 +1,5 @@
 import { Fragment, useCallback, useMemo } from 'react'
 import { FileIcon } from '../files/file-icons'
-import { ArrowUturnLeftIcon } from '@heroicons/react/24/outline'
 import { statusLetter, statusColor, splitPath } from './git-status-utils'
 import { buildGitTree, compactTree, flattenGitTree } from '../../lib/git-file-tree'
 import type { GitFileStatus } from '../../../../preload/index.d'
@@ -39,7 +38,6 @@ export function FileRow({
   onClickName,
   onSelect,
   onStageToggle,
-  onDiscard,
   onContextMenu,
   disabled,
   selectedPaths,
@@ -55,6 +53,8 @@ export function FileRow({
   onClickName?: (clickY: number) => void
   onSelect?: (path: string, metaKey: boolean) => void
   onStageToggle?: () => void
+  /** Kept for callers; the row no longer shows a discard button. Discard lives in
+      the row's context menu only, one deliberate step away from the hover strip. */
   onDiscard?: () => void
   onContextMenu?: (file: GitFileStatus, clientX: number, clientY: number) => void
   disabled?: boolean
@@ -138,16 +138,6 @@ export function FileRow({
         )}
         {!readOnly && (
           <div className="ml-auto flex-shrink-0 flex items-center gap-0.5">
-            <button
-              className="btn-icon btn-icon-xs opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity"
-              onClick={(e) => {
-                e.stopPropagation()
-                onDiscard?.()
-              }}
-              title="Discard changes"
-            >
-              <ArrowUturnLeftIcon className="w-3 h-3" />
-            </button>
             <button
               className="btn-icon btn-icon-xs opacity-0 group-hover:opacity-100 transition-opacity"
               onClick={(e) => {
@@ -236,7 +226,6 @@ export function GitTreeFileRow({
   onClickName,
   onSelect,
   onStageToggle,
-  onDiscard,
   onContextMenu,
   disabled,
   selectedPaths,
@@ -251,6 +240,8 @@ export function GitTreeFileRow({
   onClickName?: (clickY: number) => void
   onSelect?: (path: string, metaKey: boolean) => void
   onStageToggle?: () => void
+  /** Kept for callers; the row no longer shows a discard button. Discard lives in
+      the row's context menu only, one deliberate step away from the hover strip. */
   onDiscard?: () => void
   onContextMenu?: (file: GitFileStatus, clientX: number, clientY: number) => void
   disabled?: boolean
@@ -327,16 +318,6 @@ export function GitTreeFileRow({
       )}
       {!readOnly && (
         <div className="ml-auto flex-shrink-0 flex items-center gap-0.5">
-          <button
-            className="btn-icon btn-icon-xs opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity"
-            onClick={(e) => {
-              e.stopPropagation()
-              onDiscard?.()
-            }}
-            title="Discard changes"
-          >
-            <ArrowUturnLeftIcon className="w-3 h-3" />
-          </button>
           <button
             className="btn-icon btn-icon-xs opacity-0 group-hover:opacity-100 transition-opacity"
             onClick={(e) => {
