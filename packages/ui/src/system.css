@@ -439,33 +439,32 @@ body,
   background-color: var(--surface-100);
   box-shadow: inset 0 0 0 1px var(--color-accent);
 }
-/* Focus never draws a box inside a box. A field that sits in a bordered bar
-   has a frame already; an accent ring on the field put a 6px-cornered box
-   inside a 10px-cornered one, and the two read as a mistake the moment the
-   field was clicked (2026-09-21).
-   - A search field that is a bar's only content IS the bar: no fill of its
-     own, no corner of its own, and the bar's border takes the focus.
-   - The switcher's search is a segment beside chips, so it keeps its resting
-     fill as the "type here" affordance and steps that fill up on focus, the
-     way a chip steps up when selected: same box, darker, never a second
-     frame. */
-.panel-bar > .search-field {
-  background-color: transparent;
-  border-radius: 0;
-  padding: 0 0.25rem;
-}
-.panel-bar > .search-field:hover,
-.panel-bar > .search-field:focus-within {
-  background-color: transparent;
-  box-shadow: none;
-}
-.panel-bar:has(> .search-field:focus-within) {
-  /* Full accent, not 55%: the border is the field's only focus indicator, and
-     at 55% over a light ground it composited to about 2.1:1. */
-  border-color: var(--color-accent);
-}
+/* Focus never draws a box inside a box (2026-09-21).
+   - Inside a frame (the switcher's search beside its chips) the field is a
+     segment: it keeps its resting fill as the "type here" affordance and steps
+     that fill up on focus, the way a chip steps up when selected: same box,
+     darker, never a second frame.
+   - Standing alone (the Files filter) a field is never framed, but it wears
+     the frame's material itself: the frame's border, ground, height and
+     corner, so the column of boxes above it reads as one family, and the
+     border takes the accent on focus. One box, not two. */
 .group-switcher-search:focus-within {
   background-color: var(--surface-200);
+  box-shadow: none;
+}
+.search-field:not(:is(.frame, .launcher-panel, .group-switcher-panel, .panel-bar, .panel-tabs) *) {
+  height: var(--frame-h);
+  padding: 0 calc(var(--control-gap) + var(--frame-inset));
+  border-radius: var(--frame-radius);
+  border: var(--frame-border) solid var(--color-border);
+  background-color: color-mix(in srgb, var(--surface-0) 70%, transparent);
+}
+.search-field:not(:is(.frame, .launcher-panel, .group-switcher-panel, .panel-bar, .panel-tabs) *):hover {
+  background-color: color-mix(in srgb, var(--surface-100) 60%, transparent);
+}
+.search-field:not(:is(.frame, .launcher-panel, .group-switcher-panel, .panel-bar, .panel-tabs) *):focus-within {
+  background-color: color-mix(in srgb, var(--surface-100) 60%, transparent);
+  border-color: var(--color-accent);
   box-shadow: none;
 }
 .group-switcher-search input,

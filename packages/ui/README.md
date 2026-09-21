@@ -101,9 +101,9 @@ surface-200). Disabled is always `opacity: 0.4` + `cursor: not-allowed`.
   will NOT work — see rule 1).
 - `.search-field` — the in-panel search (sidebar, side panel): 28px, radius-control,
   translucent surface-100 fill, clear button `.search-field-clear`. **Focus never
-  draws a box inside a box**: as a `.panel-bar`'s only child it has no fill or
-  corner of its own and the bar's border takes the focus; the switcher's search
-  segment steps its fill up instead of ringing itself.
+  draws a box inside a box**: inside a frame it is a segment that steps its fill
+  up on focus; standing alone (the Files filter) it wears the frame's material
+  itself, border, ground, height and corner, and the border takes the accent.
 
 ## Rows and lists
 
