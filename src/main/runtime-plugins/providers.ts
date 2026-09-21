@@ -145,14 +145,14 @@ export function createPluginAdapterFactory(registry: RuntimePluginRegistry): Ada
         }
         adapter = validateAdapter(module['createAdapter'](launch, safeEmit))
         const actual = adapter.capabilities
-        for (const key of ['permissions', 'questions', 'resume'] as const) {
-          if (actual[key] !== resolved.capabilities[key])
+        for (const key of ['permissions', 'questions', 'resume', 'images'] as const) {
+          if (!!actual[key] !== !!resolved.capabilities[key])
             throw new Error(`Plugin capability differs from manifest: ${key}`)
         }
         await adapter.start()
       },
-      async send(text) {
-        await requireAdapter().send(text)
+      async send(text, images) {
+        await requireAdapter().send(text, images)
       },
       async interrupt() {
         await requireAdapter().interrupt()

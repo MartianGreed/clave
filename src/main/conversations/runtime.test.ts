@@ -176,6 +176,7 @@ describe('main-process conversation integration', () => {
       fixture.session.id,
       'continue with the pinned provider',
       'existing',
+      undefined,
       undefined
     )
   })

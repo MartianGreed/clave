@@ -53,8 +53,14 @@ const electronAPI = {
     list: () => ipcRenderer.invoke('conversation:command', { type: 'list' }),
     snapshot: (sessionId) =>
       ipcRenderer.invoke('conversation:command', { type: 'snapshot', sessionId }),
-    send: (sessionId, text, commandId) =>
-      ipcRenderer.invoke('conversation:command', { type: 'send', sessionId, text, commandId }),
+    send: (sessionId, text, commandId, attachments) =>
+      ipcRenderer.invoke('conversation:command', {
+        type: 'send',
+        sessionId,
+        text,
+        commandId,
+        attachments
+      }),
     publishArtifact: (sessionId, artifact, commandId) =>
       ipcRenderer.invoke('conversation:command', {
         type: 'publish-artifact',
@@ -369,6 +375,17 @@ const electronAPI = {
   getUpdaterState: () => ipcRenderer.invoke('updater:get-state') as Promise<UpdaterState>,
   checkForUpdates: () => ipcRenderer.invoke('updater:check') as Promise<UpdaterState>,
 
+  conversationFiles: {
+    prepare: (
+      sessionId: string,
+      source: import('../shared/conversation-attachments').AttachmentSource
+    ) => ipcRenderer.invoke('conversation:files', { type: 'prepare', sessionId, source }),
+    pick: (): Promise<string[]> => ipcRenderer.invoke('conversation:files', { type: 'pick' }),
+    preview: (file: import('../shared/conversation-attachments').ConversationAttachment) =>
+      ipcRenderer.invoke('conversation:files', { type: 'preview', file }),
+    open: (file: import('../shared/conversation-attachments').ConversationAttachment) =>
+      ipcRenderer.invoke('conversation:files', { type: 'open', file })
+  },
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   persistDroppedFile: (sourcePath: string) =>
     ipcRenderer.invoke('files:persist-dropped', sourcePath) as Promise<string | null>,
@@ -454,9 +471,8 @@ const electronAPI = {
   getUsageLimits: (accountId?: string, options?: { force?: boolean }) =>
     ipcRenderer.invoke('usage:get-limits', accountId, options),
   getClaudeUsageSnapshot: () => ipcRenderer.invoke('usage:claude-snapshot'),
-  onClaudeAccountUsage: (
-    callback: (update: { accountId: string; result: unknown }) => void
-  ) => createIpcListener<[{ accountId: string; result: unknown }]>('usage:claude-account', callback),
+  onClaudeAccountUsage: (callback: (update: { accountId: string; result: unknown }) => void) =>
+    createIpcListener<[{ accountId: string; result: unknown }]>('usage:claude-account', callback),
 
   // Claude accounts: the list crosses; a token goes in and never comes back.
   claudeAccountsList: () => ipcRenderer.invoke('claude-accounts:list'),

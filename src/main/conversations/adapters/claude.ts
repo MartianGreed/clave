@@ -1,3 +1,4 @@
+import type { ProviderImage } from '../attachments'
 import { randomUUID } from 'node:crypto'
 import { BaseAdapter } from './base'
 import {
@@ -12,7 +13,7 @@ import {
 } from './transport'
 
 export class ClaudeAdapter extends BaseAdapter {
-  readonly capabilities = { permissions: true, questions: true, resume: true }
+  readonly capabilities = { permissions: true, questions: true, resume: true, images: true }
   private messageId = ''
   private tools = new Map<string, string>()
   private questionIds = new Map<string, string[]>()
@@ -77,14 +78,25 @@ export class ClaudeAdapter extends BaseAdapter {
       this.process.write({ type: 'control_request', request_id: id, request })
     )
   }
-  protected async prompt(text: string): Promise<void> {
+  protected async prompt(text: string, images: ProviderImage[]): Promise<void> {
     this.tools.clear()
     this.messageId = ''
     await this.process.write({
       type: 'user',
       session_id: this.sessionId,
       parent_tool_use_id: null,
-      message: { role: 'user', content: text }
+      message: {
+        role: 'user',
+        content: images.length
+          ? [
+              ...(text ? [{ type: 'text', text }] : []),
+              ...images.map((image) => ({
+                type: 'image',
+                source: { type: 'base64', media_type: image.mimeType, data: image.data }
+              }))
+            ]
+          : text
+      }
     })
   }
   protected async abort(): Promise<void> {

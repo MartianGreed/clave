@@ -1,3 +1,4 @@
+import { appendFileSync } from 'node:fs'
 /* eslint-disable @typescript-eslint/explicit-function-return-type -- Plain JavaScript CLI fixture. */
 // Deterministic local wire peer. No provider/network/auth calls.
 import { createInterface } from 'node:readline'
@@ -201,6 +202,8 @@ function prompt(text) {
 }
 createInterface({ input: process.stdin }).on('line', (line) => {
   const v = JSON.parse(line)
+  if (process.env.ATTACHMENT_CAPTURE)
+    appendFileSync(process.env.ATTACHMENT_CAPTURE, JSON.stringify(v) + '\n')
   if (provider === 'claude') {
     if (v.type === 'control_request') {
       emit({

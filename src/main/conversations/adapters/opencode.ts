@@ -1,3 +1,4 @@
+import type { ProviderImage } from '../attachments'
 import { randomBytes } from 'node:crypto'
 import { StringDecoder } from 'node:string_decoder'
 import { BaseAdapter } from './base'
@@ -41,7 +42,7 @@ export class ServerEvents {
 }
 
 export class OpenCodeAdapter extends BaseAdapter {
-  readonly capabilities = { permissions: true, questions: true, resume: true }
+  readonly capabilities = { permissions: true, questions: true, resume: true, images: true }
   private base = ''
   private password = randomBytes(32).toString('hex')
   private lifetime = new AbortController()
@@ -190,7 +191,7 @@ export class OpenCodeAdapter extends BaseAdapter {
       }
     })()
   }
-  protected async prompt(text: string): Promise<void> {
+  protected async prompt(text: string, images: ProviderImage[]): Promise<void> {
     this.roles.clear()
     let model: Frame | undefined
     if (this.launch.options.model) {
@@ -202,7 +203,15 @@ export class OpenCodeAdapter extends BaseAdapter {
       }
     }
     await this.http(`/session/${encodeURIComponent(this.sessionId!)}/prompt_async`, 'POST', {
-      parts: [{ type: 'text', text }],
+      parts: [
+        ...(text ? [{ type: 'text', text }] : []),
+        ...images.map((image) => ({
+          type: 'file',
+          mime: image.mimeType,
+          filename: image.name,
+          url: `data:${image.mimeType};base64,${image.data}`
+        }))
+      ],
       ...(model ? { model } : {})
     })
   }

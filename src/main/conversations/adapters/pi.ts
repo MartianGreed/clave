@@ -1,3 +1,4 @@
+import type { ProviderImage } from '../attachments'
 import { mkdir } from 'node:fs/promises'
 import { BaseAdapter } from './base'
 import {
@@ -13,6 +14,7 @@ import {
 
 export class PiAdapter extends BaseAdapter {
   readonly capabilities = {
+    images: true,
     permissions: false,
     questions: true,
     resume: true,
@@ -69,7 +71,7 @@ export class PiAdapter extends BaseAdapter {
   private call(type: string, args: Frame = {}): Promise<Frame> {
     return this.rpc.call((id) => this.process.write({ id, type, ...args }))
   }
-  protected async prompt(text: string): Promise<void> {
+  protected async prompt(text: string, images: ProviderImage[]): Promise<void> {
     this.messageId = this.newMessageId()
     this.failed = false
     const turn = ++this.turn
@@ -80,7 +82,20 @@ export class PiAdapter extends BaseAdapter {
     await new Promise<void>((resolve, reject) => {
       void this.rpc
         .call(async (id) => {
-          await this.process.write({ id, type: 'prompt', message: text })
+          await this.process.write({
+            id,
+            type: 'prompt',
+            message: text,
+            ...(images.length
+              ? {
+                  images: images.map((image) => ({
+                    type: 'image',
+                    data: image.data,
+                    mimeType: image.mimeType
+                  }))
+                }
+              : {})
+          })
           resolve()
         }, 0)
         .then(async () => {

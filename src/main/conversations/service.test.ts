@@ -481,3 +481,91 @@ test('storage failure prevents provider execution and is not silently acknowledg
   expect(f.adapter.send).not.toHaveBeenCalled()
   expect(() => service.snapshot(session.id)).toThrow(/storage failed/)
 })
+
+test('attachment-only acceptance persists metadata, survives restart and remains idempotent', async () => {
+  const f = fixture()
+  const path = join(f.directory, 'code.ts')
+  writeFileSync(path, 'export const n = 1')
+  const files = [
+    {
+      id: 'file-one',
+      path,
+      name: 'code.ts',
+      mimeType: 'text/plain',
+      size: 18,
+      delivery: 'reference' as const
+    }
+  ]
+  const service = new ConversationService(f.directory, f.factory)
+  const { session } = await service.create(f.options, f.launch)
+  await service.send(session.id, '', 'with-file', undefined, files)
+  expect(service.snapshot(session.id).entries[0]).toMatchObject({ text: '', attachments: files })
+  expect(f.adapter.send).toHaveBeenCalledWith(expect.stringContaining(path))
+  rmSync(path)
+  await service.send(session.id, '', 'with-file', undefined, files)
+  expect(f.adapter.send).toHaveBeenCalledTimes(1)
+  const restored = new ConversationService(f.directory, f.factory)
+  expect(restored.snapshot(session.id).entries[0]).toMatchObject({ attachments: files })
+})
+test('a missing attachment rejects before consuming the command or starting a provider', async () => {
+  const f = fixture()
+  const files = [
+    {
+      id: 'file-one',
+      path: join(f.directory, 'missing.ts'),
+      name: 'missing.ts',
+      mimeType: 'text/plain',
+      size: 0,
+      delivery: 'reference' as const
+    }
+  ]
+  const service = new ConversationService(f.directory, f.factory)
+  const { session } = await service.create(f.options, f.launch)
+  await expect(service.send(session.id, '', 'retry-file', undefined, files)).rejects.toThrow(
+    'unavailable'
+  )
+  expect(service.snapshot(session.id).entries).toHaveLength(0)
+  expect(f.adapter.start).not.toHaveBeenCalled()
+  writeFileSync(files[0].path, 'found')
+  await service.send(session.id, '', 'retry-file', undefined, files)
+  expect(f.adapter.send).toHaveBeenCalledOnce()
+})
+
+test('closing during file validation cannot start or append to the closed conversation', async () => {
+  const f = fixture()
+  const path = join(f.directory, 'code.ts')
+  writeFileSync(path, 'code')
+  const service = new ConversationService(f.directory, f.factory)
+  const { session } = await service.create(f.options, f.launch)
+  const pending = service.send(session.id, '', 'closing-file', undefined, [
+    { id: 'one', path, name: 'code.ts', size: 4, mimeType: 'text/plain', delivery: 'reference' }
+  ])
+  const rejected = expect(pending).rejects.toThrow('closed')
+  await service.close(session.id)
+  await rejected
+  expect(service.snapshot(session.id).entries).toHaveLength(0)
+  expect(f.adapter.start).not.toHaveBeenCalled()
+})
+
+test('validated image bytes reach the adapter without entering persisted events', async () => {
+  const f = fixture()
+  Object.assign(f.adapter.capabilities, { images: true })
+  const path = join(f.directory, 'screenshot.png')
+  const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+  writeFileSync(path, bytes)
+  const file = {
+    id: 'image-one',
+    path,
+    name: 'screenshot.png',
+    mimeType: 'image/png',
+    size: bytes.length,
+    delivery: 'image' as const
+  }
+  const service = new ConversationService(f.directory, f.factory)
+  const { session } = await service.create(f.options, f.launch)
+  await service.send(session.id, '', 'image-message', undefined, [file])
+  expect(f.adapter.send).toHaveBeenCalledWith('', [
+    { name: file.name, mimeType: file.mimeType, data: bytes.toString('base64') }
+  ])
+  expect(JSON.stringify(service.snapshot(session.id))).not.toContain(bytes.toString('base64'))
+})

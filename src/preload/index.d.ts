@@ -683,6 +683,17 @@ export interface ElectronAPI {
   cancelDownload: () => Promise<void>
   getUpdaterState: () => Promise<UpdaterState>
   checkForUpdates: () => Promise<UpdaterState>
+  conversationFiles: {
+    prepare(
+      sessionId: string,
+      source: import('../shared/conversation-attachments').AttachmentSource
+    ): Promise<import('../shared/conversation-attachments').ConversationAttachment>
+    pick(): Promise<string[]>
+    preview(
+      file: import('../shared/conversation-attachments').ConversationAttachment
+    ): Promise<import('../shared/conversation-attachments').AttachmentPreview>
+    open(file: import('../shared/conversation-attachments').ConversationAttachment): Promise<void>
+  }
   getPathForFile: (file: File) => string
   persistDroppedFile: (sourcePath: string) => Promise<string | null>
   showNotification: (options: {

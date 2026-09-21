@@ -176,3 +176,85 @@ describe('sent message recall', () => {
     expect(store.read('one').text).toBe('first')
   })
 })
+
+const attachment = {
+  id: 'file-one',
+  path: '/project/index.ts',
+  name: 'index.ts',
+  mimeType: 'text/plain',
+  size: 12,
+  delivery: 'reference' as const
+}
+it('persists an attachment-only draft and includes it in a submission', () => {
+  const store = fixture()
+  store.edit('one', '', [attachment])
+  expect(store.read('one').attachments).toEqual([attachment])
+  expect(store.begin('one')?.attachments).toEqual([attachment])
+})
+it('recalls attachments with text but never replaces newly attached files', () => {
+  const store = fixture()
+  store.edit('one', '', [attachment])
+  expect(store.recall('one', 'older', [{ text: 'old', attachments: [] }])).toBe(false)
+  store.clear('one')
+  expect(store.recall('one', 'older', [{ text: 'old', attachments: [attachment] }])).toBe(true)
+  expect(store.read('one')).toMatchObject({ text: 'old', attachments: [attachment] })
+  expect(store.recall('one', 'newer', [])).toBe(true)
+  expect(store.read('one')).toMatchObject({ text: '', attachments: [] })
+})
+it('uses a fresh command when attachments change after a failed send', () => {
+  const store = fixture()
+  store.edit('one', 'inspect', [attachment])
+  const first = store.begin('one')!
+  store.fail('one', first.commandId)
+  store.edit('one', 'inspect', [{ ...attachment, id: 'two', path: '/project/other.ts' }])
+  expect(store.begin('one')!.commandId).not.toBe(first.commandId)
+})
+it('restores attachment drafts and pending submission IDs across restart', () => {
+  const values = new Map<string, string>()
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      values.set(key, value)
+    },
+    removeItem: (key: string) => {
+      values.delete(key)
+    }
+  }
+  const first = new ConversationComposer(storage)
+  first.edit('one', '', [attachment])
+  const command = first.begin('one')!
+  const restored = new ConversationComposer(storage)
+  expect(restored.read('one').attachments).toEqual([attachment])
+  expect(restored.begin('one')?.commandId).toBe(command.commandId)
+  restored.accept('one', command.commandId)
+  expect(restored.read('one').attachments).toEqual([])
+})
+it('does not send incomplete preparations or resurrect a removed pending file', () => {
+  const store = fixture()
+  store.edit('one', 'draft')
+  const key = store.prepare('one', 'index.ts')!
+  expect(store.begin('one')).toBeNull()
+  store.removePreparation('one', key)
+  store.prepared('one', key, attachment)
+  expect(store.read('one').attachments).toEqual([])
+  expect(store.begin('one')?.text).toBe('draft')
+})
+it('keeps files added while a message is being accepted', () => {
+  const store = fixture()
+  store.edit('one', '', [attachment])
+  const sent = store.begin('one')!
+  const next = { ...attachment, id: 'two', path: '/other.ts' }
+  store.edit('one', 'next', [next])
+  store.accept('one', sent.commandId)
+  expect(store.read('one')).toMatchObject({ text: 'next', attachments: [next] })
+})
+it('settling an earlier send keeps a live file preparation pending', () => {
+  const store = fixture()
+  store.edit('one', 'first')
+  const sent = store.begin('one')!
+  const key = store.prepare('one', 'code.ts')!
+  store.accept('one', sent.commandId)
+  expect(store.read('one').preparations).toEqual([{ id: key, name: 'code.ts' }])
+  store.prepared('one', key, attachment)
+  expect(store.read('one').attachments).toEqual([attachment])
+})

@@ -1,3 +1,4 @@
+import type { ProviderImage } from '../attachments'
 import { BaseAdapter } from './base'
 import {
   JsonLines,
@@ -11,7 +12,7 @@ import {
 } from './transport'
 
 export class CodexAdapter extends BaseAdapter {
-  readonly capabilities = { permissions: true, questions: true, resume: true }
+  readonly capabilities = { permissions: true, questions: true, resume: true, images: true }
   private turnId?: string
   private questionIds = new Map<string, string[]>()
   protected async boot(): Promise<void> {
@@ -57,11 +58,17 @@ export class CodexAdapter extends BaseAdapter {
   private call(method: string, params: Frame): Promise<Frame> {
     return this.rpc.call((id) => this.process.write({ id, method, params }))
   }
-  protected async prompt(text: string): Promise<void> {
+  protected async prompt(text: string, images: ProviderImage[]): Promise<void> {
     this.turnId = undefined
     const response = await this.call('turn/start', {
       threadId: this.sessionId,
-      input: [{ type: 'text', text, text_elements: [] }]
+      input: [
+        ...(text ? [{ type: 'text', text, text_elements: [] }] : []),
+        ...images.map((image) => ({
+          type: 'image',
+          url: `data:${image.mimeType};base64,${image.data}`
+        }))
+      ]
     })
     this.turnId = identifier(object(response.turn).id)
   }

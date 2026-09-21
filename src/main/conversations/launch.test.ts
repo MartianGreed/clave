@@ -59,3 +59,29 @@ describe('conversation launch boundary', () => {
     ).toBe('send')
   })
 })
+
+it('accepts attachment-only commands and rejects malformed attachment metadata', () => {
+  const input = {
+    type: 'send',
+    sessionId: 'conversation-7b7a0f34-ff31-4377-9725-f2a806a92a92',
+    text: '',
+    commandId: 'files',
+    attachments: [
+      {
+        id: 'one',
+        path: '/project/file.ts',
+        name: 'file.ts',
+        size: 4,
+        mimeType: 'text/plain',
+        delivery: 'reference'
+      }
+    ]
+  }
+  expect(parseConversationCommand(input)).toEqual(input)
+  expect(() =>
+    parseConversationCommand({
+      ...input,
+      attachments: [{ ...input.attachments[0], delivery: 'automatic' }]
+    })
+  ).toThrow()
+})

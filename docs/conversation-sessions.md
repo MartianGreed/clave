@@ -38,6 +38,42 @@ Streaming follows the latest message while the reader is at the bottom. Scrollin
 up stops that behavior; **Jump to latest** resumes it. Permission and question
 controls remain usable even while a prompt is waiting for acknowledgment.
 
+## Adding files
+
+Drop files onto the conversation pane you want to use, choose the paperclip
+button, or paste a screenshot. A drop highlights that pane and names the target
+conversation. Files are staged in removable chips above the textbox; dropping
+never sends automatically. Click a chip for an image or short text preview, or
+open the file in its normal application. PDFs and other binary files offer the
+Open file action. Folders are rejected. You can send files without message text.
+
+Ordinary files keep their original paths. The agent receives file references and
+reads their current contents with its tools, subject to its normal permissions.
+PNG, JPEG, GIF, and WebP images use native image content with the four built-in
+providers. Models can still reject images. Unsupported providers, formats, and
+oversized images require an explicit **Send as file reference** choice; Clave
+never silently downgrades an image to a path. This choice is also available in
+the image preview if a model rejects direct image input.
+
+Draft files survive session switching and reload/restart. Sent messages retain
+attachment metadata. Up recalls both text and files, beginning only when the
+textbox and staged-file list are empty. Missing or unreadable files fail before
+provider submission; remove them or select them again. Interrupted preparation
+is shown as an error after reload rather than silently discarding the file.
+
+Pasted images and files from temporary OS locations are copied into
+`<userData>/conversation-attachments/<sessionId>/`. These copies are retained
+with the local app data, including copies removed from a draft; the terminal's
+seven-day dropped-file cleanup does not apply. Ordinary source files are never
+modified by attachment preparation. Stored message metadata references a live
+file, so a preview of an ordinary file can change after the message was sent.
+
+Each message accepts up to 10 files. Direct images are limited to 5 MiB each
+and 20 MiB total; temporary files copied into app storage are limited to 100 MiB.
+Text previews show at most 16 KiB. Image bytes are encoded only for provider
+submission, not stored in browser drafts, transcript events, or service frames.
+An older background service must be restarted before it accepts attachments.
+
 For UI iteration, use `npm run dev:ui`. It keeps app state in the gitignored
 `.clave-ui-dev/` directory in this checkout. The normal `npm run dev` still uses
 the default app profile and can restore installed-app sessions.

@@ -37,7 +37,7 @@ export function builtinPlugins(): BuiltinPlugin[] {
         name,
         entry: 'builtin.cjs',
         command: [id],
-        capabilities: { permissions: id !== 'pi', questions: true, resume: true }
+        capabilities: { permissions: id !== 'pi', questions: true, resume: true, images: true }
       },
       views: []
     },

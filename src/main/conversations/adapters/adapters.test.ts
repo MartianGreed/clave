@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { resolve } from 'node:path'
 import type { AdapterLaunch, ConversationAdapter } from '../adapter'
@@ -295,4 +298,56 @@ it('returns safe actionable startup errors without leaking executable paths or c
   await expect(adapter.start()).rejects.toMatchObject({
     safeMessage: 'Unable to start provider executable'
   })
+})
+
+describe('image delivery', () => {
+  it.each(['claude', 'codex', 'pi', 'opencode'])(
+    '%s sends native image bytes, including image-only messages',
+    async (provider) => {
+      const directory = mkdtempSync(join(tmpdir(), 'clave-image-wire-'))
+      const capture = join(directory, 'wire.jsonl')
+      const image = { name: 'shot.png', mimeType: 'image/png', data: 'aW1hZ2U=' }
+      const { adapter, events } = setup(provider, {
+        env: { ...process.env, ATTACHMENT_CAPTURE: capture } as Record<string, string>
+      })
+      try {
+        await adapter.start()
+        expect(adapter.capabilities.images).toBe(true)
+        await adapter.send('', [image])
+        await ended(events)
+        const frames = readFileSync(capture, 'utf8')
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line))
+        if (provider === 'claude')
+          expect(frames.find((f) => f.type === 'user').message.content).toEqual([
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: image.mimeType, data: image.data }
+            }
+          ])
+        if (provider === 'codex')
+          expect(frames.find((f) => f.method === 'turn/start').params.input).toEqual([
+            { type: 'image', url: `data:image/png;base64,${image.data}` }
+          ])
+        if (provider === 'pi')
+          expect(frames.find((f) => f.type === 'prompt')).toMatchObject({
+            message: '',
+            images: [{ type: 'image', mimeType: image.mimeType, data: image.data }]
+          })
+        if (provider === 'opencode')
+          expect(frames.find((f) => f.parts).parts).toEqual([
+            {
+              type: 'file',
+              mime: image.mimeType,
+              filename: image.name,
+              url: `data:image/png;base64,${image.data}`
+            }
+          ])
+      } finally {
+        await adapter.dispose()
+        rmSync(directory, { recursive: true, force: true })
+      }
+    }
+  )
 })

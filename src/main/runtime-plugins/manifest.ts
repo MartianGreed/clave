@@ -11,6 +11,7 @@ export const capabilitiesSchema = z.strictObject({
   permissions: z.boolean(),
   questions: z.boolean(),
   resume: z.boolean(),
+  images: z.boolean().optional(),
   notice: z.string().max(2000).optional()
 })
 const label = z.string().trim().min(1).max(160)

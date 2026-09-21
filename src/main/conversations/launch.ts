@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { attachmentsSchema } from '../../shared/conversation-attachments'
 import type { PtySpawnOptions } from '../pty-manager'
 import { type ConversationCommand, type ConversationProvider } from '../../shared/agent-session'
 import { artifactInputSchema, providerIdSchema } from './plugin-records'
@@ -47,7 +48,8 @@ const command = z.discriminatedUnion('type', [
     .object({
       type: z.literal('send'),
       sessionId,
-      text: z.string().min(1).max(1_048_576),
+      text: z.string().max(1_048_576),
+      attachments: attachmentsSchema.optional(),
       commandId: z.string().min(1).max(128)
     })
     .strict(),

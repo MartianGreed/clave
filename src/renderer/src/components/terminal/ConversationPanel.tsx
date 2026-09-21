@@ -1,3 +1,11 @@
+import {
+  attachmentIssue,
+  MAX_IMAGE_BYTES,
+  MAX_TOTAL_IMAGE_BYTES,
+  type AttachmentSource,
+  type ConversationAttachment
+} from '../../../../shared/conversation-attachments'
+import { ConversationAttachments } from './ConversationAttachments'
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   ArrowDownIcon,
@@ -6,6 +14,8 @@ import {
   ExclamationTriangleIcon,
   InformationCircleIcon,
   ShieldCheckIcon,
+  PaperClipIcon,
+  XMarkIcon,
   StopIcon
 } from '@heroicons/react/24/outline'
 import type {
@@ -186,6 +196,8 @@ export function ConversationPanel({ sessionId }: { sessionId: string }): React.J
 }
 
 function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Element {
+  const [dragging, setDragging] = useState(false)
+  const dragDepth = useRef(0)
   const [snapshot, setSnapshot] = useState<ConversationSnapshot>()
   const [connectionError, setConnectionError] = useState<string>()
   const [actionError, setActionError] = useState<string>()
@@ -205,8 +217,23 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
   const session = snapshot?.session
   const provider = session ? (PROVIDER_NAMES[session.provider] ?? session.provider) : 'agent'
   const running = !!session && ['starting', 'running', 'waiting'].includes(session.status)
+  const imagesSupported =
+    session?.capabilities.images ??
+    (!!session &&
+      ['claude', 'codex', 'pi', 'opencode'].includes(session.provider) &&
+      (!session.pluginBindings ||
+        session.pluginBindings.provider.pluginId === `builtin.${session.provider}`))
+  const attachmentBlocked =
+    composer.preparations.length > 0 ||
+    composer.attachments.some((file) => attachmentIssue(file, imagesSupported))
+  const hasDraft = !!composer.text.trim() || composer.attachments.length > 0
   const canSend =
-    !!session && session.status !== 'closed' && !running && !composer.sending && !actionBusy
+    !!session &&
+    session.status !== 'closed' &&
+    !running &&
+    !composer.sending &&
+    !actionBusy &&
+    !attachmentBlocked
   const error = actionError || connectionError || session?.error
 
   useEffect(
@@ -254,6 +281,69 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
     [sessionId, retry]
   )
 
+  useEffect(() => {
+    const preventFileNavigation = (event: DragEvent): void => {
+      if (event.dataTransfer?.types.includes('Files')) event.preventDefault()
+      if (event.type === 'drop' || event.type === 'dragend') {
+        dragDepth.current = 0
+        setDragging(false)
+      }
+    }
+    window.addEventListener('dragover', preventFileNavigation)
+    window.addEventListener('drop', preventFileNavigation)
+    window.addEventListener('dragend', preventFileNavigation)
+    return () => {
+      window.removeEventListener('dragover', preventFileNavigation)
+      window.removeEventListener('drop', preventFileNavigation)
+      window.removeEventListener('dragend', preventFileNavigation)
+    }
+  }, [])
+  const updateFiles = (files: ConversationAttachment[]): void => {
+    conversationComposer.edit(sessionId, conversationComposer.read(sessionId).text, files)
+  }
+  const addFiles = async (sources: (File | string)[]): Promise<void> => {
+    if (session?.status === 'closed') return
+    setActionError(undefined)
+    // Reserve the whole batch before awaiting IO. Closing the session or removing
+    // a pending chip can then cancel every remaining preparation in this batch.
+    const queued: { source: File | string; key: string }[] = []
+    for (const source of sources) {
+      const name = typeof source === 'string' ? source.split(/[\\/]/).pop()! : source.name
+      const key = conversationComposer.prepare(sessionId, name || 'Pasted image')
+      if (!key) {
+        setActionError('Attach up to 10 files per message.')
+        break
+      }
+      queued.push({ source, key })
+    }
+    for (const { source, key } of queued) {
+      if (!conversationComposer.read(sessionId).preparations.some((item) => item.id === key))
+        continue
+      try {
+        let value: AttachmentSource
+        if (typeof source === 'string') value = { path: source }
+        else {
+          const path = window.electronAPI.getPathForFile(source)
+          if (path) value = { path }
+          else {
+            if (source.size > MAX_IMAGE_BYTES)
+              throw new Error('Pasted images must be 5 MiB or smaller.')
+            value = {
+              name: source.name || 'Pasted image.png',
+              bytes: new Uint8Array(await source.arrayBuffer())
+            }
+          }
+        }
+        const file = await window.electronAPI.conversationFiles.prepare(sessionId, value)
+        conversationComposer.prepared(sessionId, key, file)
+      } catch (failure) {
+        conversationComposer.prepared(sessionId, key, undefined, String(failure))
+      }
+    }
+    input.current?.focus({ preventScroll: true })
+  }
+  const fileDrag = (transfer: DataTransfer): boolean =>
+    transfer.types.includes('Files') || transfer.types.includes('text/uri-list')
   const scrollToLatest = (): void => {
     following.current = true
     setAtLatest(true)
@@ -306,12 +396,20 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
       )
       return
     }
+    if (
+      composer.attachments
+        .filter((file) => file.delivery === 'image')
+        .reduce((sum, file) => sum + file.size, 0) > MAX_TOTAL_IMAGE_BYTES
+    ) {
+      setActionError('Images in one message must total 20 MiB or less.')
+      return
+    }
     const command = conversationComposer.begin(sessionId)
     if (!command) return
     setActionError(undefined)
     scrollToLatest()
     void window.electronAPI.conversations
-      .send(sessionId, command.text, command.commandId)
+      .send(sessionId, command.text, command.commandId, command.attachments)
       .then(() => {
         conversationComposer.accept(sessionId, command.commandId)
       })
@@ -320,8 +418,8 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
         setActionError(String(failure))
       })
   }
-  const prefill = (text: string): void => {
-    conversationComposer.edit(sessionId, text)
+  const prefill = (text: string, files?: ConversationAttachment[]): void => {
+    conversationComposer.edit(sessionId, text, files)
     input.current?.focus()
   }
 
@@ -330,8 +428,57 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
       className="conversation-panel"
       data-testid="conversation-panel"
       data-conversation-id={sessionId}
+      onDragEnter={(event) => {
+        if (!fileDrag(event.dataTransfer) || session?.status === 'closed') return
+        event.preventDefault()
+        event.stopPropagation()
+        dragDepth.current++
+        setDragging(true)
+      }}
+      onDragOver={(event) => {
+        if (!fileDrag(event.dataTransfer)) return
+        event.preventDefault()
+        event.stopPropagation()
+        event.dataTransfer.dropEffect = session?.status === 'closed' ? 'none' : 'copy'
+      }}
+      onDragLeave={(event) => {
+        if (!fileDrag(event.dataTransfer)) return
+        event.stopPropagation()
+        dragDepth.current = Math.max(0, dragDepth.current - 1)
+        if (!dragDepth.current) setDragging(false)
+      }}
+      onDrop={(event) => {
+        if (!fileDrag(event.dataTransfer)) return
+        event.preventDefault()
+        event.stopPropagation()
+        dragDepth.current = 0
+        setDragging(false)
+        const files = Array.from(event.dataTransfer.files)
+        const paths = event.dataTransfer
+          .getData('text/uri-list')
+          .split(/\r?\n/)
+          .flatMap((line) => {
+            try {
+              const url = new URL(line)
+              return url.protocol === 'file:' && (!url.hostname || url.hostname === 'localhost')
+                ? [decodeURIComponent(url.pathname).replace(/^\/([A-Za-z]:\/)/, '$1')]
+                : []
+            } catch {
+              return []
+            }
+          })
+        void addFiles(files.length ? files : paths)
+      }}
       onMouseDown={() => useSessionStore.getState().setFocusedSession(sessionId)}
     >
+      {dragging && (
+        <div className="conversation-drop-overlay" role="status">
+          <PaperClipIcon className="w-6 h-6" />
+          <strong>Add files to this conversation</strong>
+          <span>{session?.title || provider}</span>
+          <small>Files will be ready to review before you send.</small>
+        </div>
+      )}
       <TerminalHeader sessionId={sessionId} />
       <div className="conversation-toolbar">
         <div className="conversation-identity">
@@ -425,6 +572,7 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
                         className="conversation-message"
                         data-role={entry.role}
                       >
+                        <ConversationAttachments files={entry.attachments ?? []} />
                         {entry.role === 'user' ? (
                           <p className="conversation-user-text">{entry.text}</p>
                         ) : (
@@ -501,12 +649,12 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
             >
               Reconnect
             </button>
-            {composer.text && (
+            {hasDraft && (
               <button className="btn-primary" disabled={!canSend} onClick={send}>
                 Retry send
               </button>
             )}
-            {!composer.text && session?.status === 'error' && (
+            {!hasDraft && session?.status === 'error' && (
               <button
                 className="btn-secondary"
                 disabled={!canSend}
@@ -514,7 +662,8 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
                   const previous = snapshot?.entries.findLast(
                     (entry) => entry.kind === 'message' && entry.role === 'user'
                   )
-                  if (previous?.kind === 'message') prefill(previous.text)
+                  if (previous?.kind === 'message')
+                    prefill(previous.text, previous.attachments ?? [])
                 }}
               >
                 Edit last message
@@ -531,6 +680,33 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
         }}
       >
         <div className="conversation-compose-box">
+          <div className="conversation-compose-files">
+            <ConversationAttachments
+              files={composer.attachments}
+              imagesSupported={imagesSupported}
+              onChange={updateFiles}
+            />
+            {!!composer.preparations.length && (
+              <ul className="conversation-attachments" aria-label="Preparing files">
+                {composer.preparations.map((item) => (
+                  <li key={item.id} className="conversation-attachment" data-error={!!item.error}>
+                    <span role={item.error ? 'alert' : 'status'}>
+                      {item.name} · {item.error || 'Preparing…'}
+                    </span>
+                    <button
+                      type="button"
+                      className="panel-icon-btn"
+                      aria-label={`Remove ${item.name}`}
+                      onClick={() => conversationComposer.removePreparation(sessionId, item.id)}
+                    >
+                      <XMarkIcon className="w-4 h-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           <textarea
             ref={input}
             className="textarea-field conversation-input"
@@ -541,6 +717,12 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
             disabled={session?.status === 'closed'}
             maxLength={MAX_PROMPT_BYTES}
             value={composer.text}
+            onPaste={(event) => {
+              const files = Array.from(event.clipboardData.files)
+              if (!files.length) return
+              event.preventDefault()
+              void addFiles(files)
+            }}
             onChange={(event) => conversationComposer.edit(sessionId, event.target.value)}
             onKeyDown={(event) => {
               if (
@@ -559,7 +741,9 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
                     sessionId,
                     direction,
                     snapshot?.entries.flatMap((entry) =>
-                      entry.kind === 'message' && entry.role === 'user' ? [entry.text] : []
+                      entry.kind === 'message' && entry.role === 'user'
+                        ? [{ text: entry.text, attachments: entry.attachments }]
+                        : []
                     ) ?? []
                   )
                 ) {
@@ -584,6 +768,21 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
             }}
           />
           <div className="conversation-compose-footer">
+            <button
+              type="button"
+              className="panel-icon-btn"
+              aria-label="Add files"
+              title="Add files"
+              disabled={session?.status === 'closed'}
+              onClick={() => {
+                void window.electronAPI.conversationFiles
+                  .pick()
+                  .then((paths) => addFiles(paths))
+                  .catch((failure) => setActionError(String(failure)))
+              }}
+            >
+              <PaperClipIcon className="w-4 h-4" />
+            </button>
             <span id={`composer-hint-${sessionId}`}>
               {composer.localOnly
                 ? 'Draft is only kept in this window'
@@ -594,6 +793,8 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
                     : running
                       ? 'You can draft while the agent works'
                       : !composer.text &&
+                          !composer.attachments.length &&
+                          !composer.preparations.length &&
                           snapshot?.entries.some(
                             (entry) => entry.kind === 'message' && entry.role === 'user'
                           )
@@ -618,7 +819,7 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
                 className="panel-icon-btn conversation-send"
                 aria-label="Send"
                 title="Send message"
-                disabled={!canSend || !composer.text.trim()}
+                disabled={!canSend || !hasDraft}
               >
                 <ArrowUpIcon className="w-4 h-4" />
               </button>

@@ -3,6 +3,7 @@ import { StringDecoder } from 'node:string_decoder'
 import type { AdapterLaunch } from '../adapter'
 
 export type Frame = Record<string, unknown>
+const MAX_INPUT = 32 * 1024 * 1024
 export const MAX_FRAME = 4 * 1024 * 1024
 /** Only fixed, adapter-authored text may cross the daemon's error boundary. */
 export class AdapterError extends Error {
@@ -150,11 +151,11 @@ export class OwnedProcess {
   }
   write(frame: unknown): Promise<void> {
     const wire = JSON.stringify(frame) + '\n'
-    if (Buffer.byteLength(wire) > MAX_FRAME)
+    if (Buffer.byteLength(wire) > MAX_INPUT)
       return Promise.reject(new Error('Provider input exceeds limit'))
     if (!this.child || this.stopped || this.closed)
       return Promise.reject(new Error('Provider is not running'))
-    if (this.child.stdin.writableLength > MAX_FRAME)
+    if (this.child.stdin.writableLength > MAX_INPUT)
       return Promise.reject(new Error('Provider input is congested'))
     return new Promise((resolve, reject) => {
       this.child!.stdin.write(wire, (error) =>

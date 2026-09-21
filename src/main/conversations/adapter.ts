@@ -1,3 +1,4 @@
+import type { ProviderImage } from './attachments'
 import type {
   AgentCapabilities,
   AgentResponse,
@@ -24,7 +25,7 @@ export type EmitConversationEvent = (event: ConversationEvent) => void
 export interface ConversationAdapter {
   readonly capabilities: AgentCapabilities
   start(): Promise<void>
-  send(text: string): Promise<void>
+  send(text: string, images?: ProviderImage[]): Promise<void>
   interrupt(): Promise<void>
   respond(response: AgentResponse): Promise<void>
   dispose(): Promise<void>

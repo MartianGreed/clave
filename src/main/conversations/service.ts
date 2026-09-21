@@ -1,3 +1,8 @@
+import { preparePrompt } from './attachments'
+import {
+  attachmentsSchema,
+  type ConversationAttachment
+} from '../../shared/conversation-attachments'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   mkdirSync,
@@ -560,7 +565,13 @@ export class ConversationService {
     return this.snapshot(snapshot.session.id)
   }
 
-  async send(id: string, text: string, commandId: string, launch?: AdapterLaunch): Promise<void> {
+  async send(
+    id: string,
+    text: string,
+    commandId: string,
+    launch?: AdapterLaunch,
+    input?: ConversationAttachment[]
+  ): Promise<void> {
     const live = this.get(id)
     this.flush(live)
     if (live.record.snapshot.session.legacyImport?.complete === false)
@@ -573,7 +584,12 @@ export class ConversationService {
     )
       throw new Error('Invalid command ID')
     if (live.record.commands.includes(commandId)) return
-    if (typeof text !== 'string' || !text.trim() || Buffer.byteLength(text) > 128 * 1024)
+    const attachments = attachmentsSchema.parse(input ?? [])
+    if (
+      typeof text !== 'string' ||
+      (!text.trim() && !attachments.length) ||
+      Buffer.byteLength(text) > 128 * 1024
+    )
       throw new Error('Invalid message')
     if (live.record.capacityReached) throw new Error(CAPACITY_ERROR)
     if (
@@ -589,13 +605,38 @@ export class ConversationService {
     if (!live.adapter && !launch && !live.launch)
       throw new Error('A fresh launch is required to resume this conversation')
     live.busy = true
+    let prepared
+    const preparationGeneration = live.generation
+    try {
+      const session = live.record.snapshot.session
+      const images =
+        live.adapter?.capabilities.images ??
+        session.capabilities.images ??
+        (['claude', 'codex', 'pi', 'opencode'].includes(session.provider) &&
+          (!session.pluginBindings ||
+            session.pluginBindings.provider.pluginId === `builtin.${session.provider}`))
+      prepared = attachments.length
+        ? await preparePrompt(text, attachments, images)
+        : { text, images: [] }
+      if (live.generation !== preparationGeneration)
+        throw new Error('Conversation was closed or stopped while preparing files.')
+    } catch (error) {
+      live.busy = false
+      throw error
+    }
     let submitted = false
     let generation = live.generation
     try {
       live.record.commands.push(commandId)
       this.emit(live, {
         type: 'message',
-        message: { kind: 'message', id: commandId, role: 'user', text }
+        message: {
+          kind: 'message',
+          id: commandId,
+          role: 'user',
+          text,
+          ...(attachments.length ? { attachments } : {})
+        }
       })
       if (live.record.snapshot.session.error === CAPACITY_ERROR) throw new Error(CAPACITY_ERROR)
       // Consume the transient launch once. Failed starts must receive fresh credentials.
@@ -606,7 +647,13 @@ export class ConversationService {
       // Persist acceptance BEFORE touching the provider. An uncertain send is never replayed.
       this.emit(live, { type: 'status', status: 'running' })
       submitted = true
-      await deadline(live.adapter!.send(text))
+      if (prepared.images.length && !live.adapter!.capabilities.images)
+        throw new Error('Provider does not support direct images. Choose Send as file reference.')
+      await deadline(
+        prepared.images.length
+          ? live.adapter!.send(prepared.text, prepared.images)
+          : live.adapter!.send(prepared.text)
+      )
     } catch (cause) {
       if (live.broken) {
         void this.detach(live)

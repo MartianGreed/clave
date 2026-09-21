@@ -1,3 +1,4 @@
+import type { ProviderImage } from '../attachments'
 import { randomUUID } from 'node:crypto'
 import type { AdapterLaunch, ConversationAdapter, EmitConversationEvent } from '../adapter'
 import type { AgentCapabilities, AgentRequest, AgentResponse } from '../../../shared/agent-session'
@@ -22,7 +23,7 @@ export abstract class BaseAdapter implements ConversationAdapter {
     protected emit: EmitConversationEvent
   ) {}
   protected abstract boot(): Promise<void>
-  protected abstract prompt(text: string): Promise<void>
+  protected abstract prompt(text: string, images: ProviderImage[]): Promise<void>
   protected abstract abort(): Promise<void>
   async start(): Promise<void> {
     if (this.started) throw new AdapterError('Adapter already started')
@@ -44,16 +45,16 @@ export abstract class BaseAdapter implements ConversationAdapter {
       throw new AdapterError(reason)
     }
   }
-  async send(text: string): Promise<void> {
+  async send(text: string, images: ProviderImage[] = []): Promise<void> {
     if (!this.ready || this.dead) throw new AdapterError('Provider is not ready')
     if (this.active) throw new AdapterError('A turn is already active')
-    if (!text.trim() || Buffer.byteLength(text) > 1_000_000)
+    if ((!text.trim() && !images.length) || Buffer.byteLength(text) > 1_000_000)
       throw new AdapterError('Invalid prompt size')
     this.active = true
     this.interrupted = false
     this.emit({ type: 'status', status: 'running' })
     try {
-      await this.prompt(text)
+      await this.prompt(text, images)
     } catch {
       // Acceptance is ambiguous after a timeout. A second turn must not enter
       // a provider that might still be running the first.

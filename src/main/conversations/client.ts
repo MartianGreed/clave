@@ -1,3 +1,4 @@
+import type { ConversationAttachment } from '../../shared/conversation-attachments'
 import { createConnection, type Socket } from 'node:net'
 import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
@@ -240,8 +241,19 @@ export class ConversationClient {
   snapshot(sessionId: string): Promise<ConversationSnapshot> {
     return this.request({ type: 'snapshot', sessionId })
   }
-  send(sessionId: string, text: string, commandId: string, launch?: AdapterLaunch): Promise<void> {
-    return this.request({ type: 'send', sessionId, text, commandId }, launch)
+  send(
+    sessionId: string,
+    text: string,
+    commandId: string,
+    launch?: AdapterLaunch,
+    attachments?: ConversationAttachment[]
+  ): Promise<void> {
+    if (attachments?.length && !this.serverInfo.capabilities.includes('attachments'))
+      return Promise.reject(new Error('Restart the background service to send attachments.'))
+    return this.request(
+      { type: 'send', sessionId, text, commandId, ...(attachments?.length ? { attachments } : {}) },
+      launch
+    )
   }
   interrupt(sessionId: string): Promise<void> {
     return this.request({ type: 'interrupt', sessionId })

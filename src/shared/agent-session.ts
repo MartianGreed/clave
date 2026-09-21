@@ -3,6 +3,7 @@
  * A session owns its history and provider identity; a window is only a subscriber.
  */
 import type { ArtifactInput, ConversationArtifact, PluginBindings } from './runtime-plugins'
+import type { ConversationAttachment } from './conversation-attachments'
 import type { AttachedSessionView, LegacyImportState } from './session-migration'
 
 export const CONVERSATION_PROVIDERS = ['claude', 'codex', 'opencode', 'pi'] as const
@@ -14,6 +15,7 @@ export interface AgentCapabilities {
   permissions: boolean
   questions: boolean
   resume: boolean
+  images?: boolean
   /** A provider-specific limitation, displayed rather than silently bypassed. */
   notice?: string
 }
@@ -63,6 +65,7 @@ export interface ConversationMessage {
   id: string
   role: 'user' | 'assistant'
   text: string
+  attachments?: ConversationAttachment[]
 }
 
 export interface ConversationTool {
@@ -120,7 +123,13 @@ export type ConversationCommand =
   | { type: 'create'; options: ConversationOptions }
   | { type: 'list' }
   | { type: 'snapshot'; sessionId: string }
-  | { type: 'send'; sessionId: string; text: string; commandId: string }
+  | {
+      type: 'send'
+      sessionId: string
+      text: string
+      commandId: string
+      attachments?: ConversationAttachment[]
+    }
   | { type: 'interrupt'; sessionId: string }
   | { type: 'respond'; sessionId: string; response: AgentResponse }
   | { type: 'close'; sessionId: string }
@@ -130,7 +139,12 @@ export interface ConversationAPI {
   create(options: ConversationOptions): Promise<ConversationSnapshot>
   list(): Promise<ConversationSession[]>
   snapshot(sessionId: string): Promise<ConversationSnapshot>
-  send(sessionId: string, text: string, commandId: string): Promise<void>
+  send(
+    sessionId: string,
+    text: string,
+    commandId: string,
+    attachments?: ConversationAttachment[]
+  ): Promise<void>
   interrupt(sessionId: string): Promise<void>
   respond(sessionId: string, response: AgentResponse): Promise<void>
   close(sessionId: string): Promise<void>

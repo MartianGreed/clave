@@ -137,7 +137,7 @@ export async function startDaemon(
           transmit(socket, {
             ready: SESSION_PROTOCOL_VERSION,
             pid: process.pid,
-            capabilities: ['legacy-import', 'shutdown'],
+            capabilities: ['legacy-import', 'shutdown', 'attachments'],
             builtinRevision: builtinPlugins()[0].revision
           })
           return
@@ -225,7 +225,13 @@ async function dispatch(
     case 'snapshot':
       return service.snapshot(command.sessionId)
     case 'send':
-      return service.send(command.sessionId, command.text, command.commandId, launch)
+      return service.send(
+        command.sessionId,
+        command.text,
+        command.commandId,
+        launch,
+        command.attachments
+      )
     case 'respond':
       return service.respond(command.sessionId, command.response)
     case 'interrupt':

@@ -110,3 +110,20 @@ test('does not tie a local plugin launch to the builtin runtime revision', async
   await client.create(plugin.options, plugin)
   expect(commands.map((command) => command.type)).toEqual(['create'])
 })
+
+test('an older daemon rejects attachments instead of silently dropping them', async () => {
+  const { client, commands } = await connect('older-build')
+  await expect(
+    client.send('existing', 'inspect', 'attachment', undefined, [
+      {
+        id: 'one',
+        name: 'file.ts',
+        path: '/project/file.ts',
+        mimeType: 'text/plain',
+        size: 4,
+        delivery: 'reference'
+      }
+    ])
+  ).rejects.toThrow('Restart the background service')
+  expect(commands).toEqual([])
+})

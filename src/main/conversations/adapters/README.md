@@ -85,7 +85,8 @@ a model.
   per-conversation transcript directory, so they keep their native store. Changing
   their config/data homes merely to relocate history would also change account and
   project configuration.
-* JSONL/SSE events and HTTP bodies are limited to 4 MiB. Prompts are limited to
+* Incoming JSONL/SSE events and HTTP responses are limited to 4 MiB. Outgoing
+  stdio input is limited to 32 MiB to accommodate bounded base64 image content. Prompts are limited to
   1,000,000 UTF-8 bytes, pending RPC and user requests to 64, tools/message role
   indexes to 4096 per turn. Tool display fields are capped at 32 KiB. RPC calls time
   out after 30 seconds, HTTP calls and readiness after 15 seconds.
@@ -114,13 +115,29 @@ matching UI requests. OpenCode reply/reject events do the same. Pi question
 timeouts cancel the local request and send a negative response. Interrupt, exit
 and disposal invalidate all requests. Responses to stale IDs reject.
 
-Thinking/reasoning, token usage, attachments, interactive MCP elicitation,
+Thinking/reasoning, token usage, interactive MCP elicitation,
 realtime/audio, arbitrary dynamic tool execution and richer extension widgets are
 not part of this contract. New actionable server requests for these fail closed;
 non-interactive reasoning/usage events are not projected. Existing provider-native
 history is resumed but is not re-imported into Clave's already-persisted transcript.
 Claude can receive the service-generated `mcpConfigPath`; other MCP configuration
 continues to come from the provider's native configuration.
+
+## Attachments
+
+The service validates files before command acceptance and appends ordinary file
+references to prompt text. Images arrive at `send(text, images?)` as bounded
+base64 content with a MIME type and filename. The built-in adapters translate
+these into Claude image content blocks, Codex `image` inputs with data URLs,
+Pi RPC `images`, and OpenCode file parts with data URLs. Image-only turns are
+supported; model-specific vision support is still enforced by the provider.
+
+Wire references: [Claude streaming image input](https://code.claude.com/docs/en/agent-sdk/streaming-vs-single-mode),
+[Pi RPC images](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/rpc.md),
+[OpenCode input parts](https://github.com/anomalyco/opencode/blob/dev/packages/sdk/js/src/v2/gen/types.gen.ts),
+and the installed Codex 0.154.0 `app-server generate-ts` `UserInput` type.
+Fixtures capture the actual outgoing payload for all four adapters. Paid model
+turns remain unverified.
 
 ## Verification
 

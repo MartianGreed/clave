@@ -1,3 +1,4 @@
+import type { ConversationAttachment } from '../../shared/conversation-attachments'
 import { app, BrowserWindow, dialog } from 'electron'
 import { statSync } from 'node:fs'
 import { basename, isAbsolute, join } from 'node:path'
@@ -169,7 +170,12 @@ export async function createConversation(
   return snapshot
 }
 
-export async function sendConversation(id: string, text: string, commandId: string): Promise<void> {
+export async function sendConversation(
+  id: string,
+  text: string,
+  commandId: string,
+  attachments?: ConversationAttachment[]
+): Promise<void> {
   const client = await conversationClient()
   const snapshot = await ensureConversationPlugins(id)
   await requireWorkspaceTrust(windowRegistry.getWindowForSession(id), snapshot.session.cwd)
@@ -182,7 +188,8 @@ export async function sendConversation(id: string, text: string, commandId: stri
       : {
           ...launchFor(snapshot.session, id),
           providerSessionId: snapshot.session.providerSessionId
-        }
+        },
+    attachments
   )
 }
 

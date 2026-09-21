@@ -60,6 +60,13 @@ and `capabilities`. Their CommonJS entry exports
 not during inspection, installation, or listing. Plugins must bundle code into
 their built entries; they do not import Clave's stores or internal modules.
 
+Providers can optionally declare `images: true` in both manifest capabilities
+and the adapter's capabilities. `send(text, images?)` then receives prepared
+images as `{ name, mimeType, data }`, where `data` is base64. The provider must
+forward these as native image content. Omitted/false means explicit file-reference
+fallback is required. File references are already appended to the prompt text;
+providers do not need to interpret Clave attachment paths or read app storage.
+
 Every provider has a default launch profile in Settings → Agents. Its command
 comes from the provider manifest. Custom profiles can replace that command and
 add arguments; global and workspace defaults use the same selection rules as

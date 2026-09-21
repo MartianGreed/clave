@@ -1,3 +1,4 @@
+import { registerConversationAttachmentHandlers } from './conversation-attachment-handlers'
 import { BrowserWindow, ipcMain } from 'electron'
 import { parseConversationCommand } from '../conversations/launch'
 import { requireMigrationHost, requireSessionHome } from './session-migration-handlers'
@@ -10,6 +11,7 @@ import {
 } from '../conversations/runtime'
 
 export function registerConversationHandlers(): void {
+  registerConversationAttachmentHandlers()
   ipcMain.handle('conversation:command', async (event, input: unknown) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) throw new Error('Conversation commands require an application window')
@@ -20,7 +22,12 @@ export function registerConversationHandlers(): void {
       case 'list':
         return listConversations(win)
       case 'send':
-        return sendConversation(command.sessionId, command.text, command.commandId)
+        return sendConversation(
+          command.sessionId,
+          command.text,
+          command.commandId,
+          command.attachments
+        )
       case 'close':
         await requireSessionHome(requireMigrationHost(event), command.sessionId)
         return closeConversation(command.sessionId)

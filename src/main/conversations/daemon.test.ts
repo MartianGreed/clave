@@ -78,7 +78,7 @@ test('additive handshake advertises imports and shutdown acknowledges before dis
   expect(client.getServerInfo()).toEqual({
     protocolVersion: 2,
     pid: process.pid,
-    capabilities: ['legacy-import', 'shutdown'],
+    capabilities: ['legacy-import', 'shutdown', 'attachments'],
     builtinRevision: 'test-builtins-v1'
   })
   const closed = new Promise<void>((resolve) => server!.once('close', resolve))
