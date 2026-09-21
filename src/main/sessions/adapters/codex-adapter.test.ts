@@ -484,3 +484,72 @@ it.each(['on-request', 'never'])(
     await adapter.kill(handle)
   }
 )
+
+describe('Codex tool failure', () => {
+  const resultFor = (
+    item: Record<string, unknown>
+  ): Extract<SessionEvent, { type: 'tool_result' }> => {
+    const events: SessionEvent[] = []
+    const translator = new CodexTranslator((e) => events.push(e))
+    translator.notification({ method: 'item/started', params: { item } })
+    translator.notification({ method: 'item/completed', params: { item } })
+    const result = events.find((e) => e.type === 'tool_result')
+    if (result?.type !== 'tool_result') throw new Error('no tool_result emitted')
+    return result
+  }
+  it('reads a command failure off its exit status, never off its output', () => {
+    const failing = resultFor({
+      id: 'c1',
+      type: 'commandExecution',
+      exitCode: 1,
+      aggregatedOutput: 'nope'
+    })
+    expect(failing).toMatchObject({ type: 'tool_result', id: 'c1', error: true })
+    const passing = resultFor({
+      id: 'c2',
+      type: 'commandExecution',
+      exitCode: 0,
+      // Reads like a failure and is not one: exit 0 is the only word that counts.
+      aggregatedOutput: 'Error: 3 warnings emitted'
+    })
+    expect(passing).toMatchObject({ error: false })
+  })
+  it('says nothing when the server reported no exit status and no error', () => {
+    expect(resultFor({ id: 'c3', type: 'commandExecution', aggregatedOutput: 'x' }).error).toBe(
+      undefined
+    )
+  })
+  it('keeps a command failure that arrives as an error with no exit status', () => {
+    // A command that never ran has no exit code; reading only the status
+    // dropped the failure AND its reason, and the row read as a clean success.
+    const spawnFailed = resultFor({ id: 'c5', type: 'commandExecution', error: 'spawn failed' })
+    expect(spawnFailed).toMatchObject({ error: true, output: 'spawn failed' })
+  })
+  it('still prefers the aggregated output when there is one', () => {
+    const both = resultFor({
+      id: 'c6',
+      type: 'commandExecution',
+      exitCode: 0,
+      aggregatedOutput: 'all good',
+      error: ''
+    })
+    expect(both).toMatchObject({ error: false, output: 'all good' })
+  })
+  it('flags a tool call that carried an error, and leaves a clean one alone', () => {
+    expect(resultFor({ id: 'm1', type: 'mcpToolCall', error: 'upstream refused' })).toMatchObject({
+      error: true
+    })
+    expect(resultFor({ id: 'm2', type: 'mcpToolCall', result: 'ok' }).error).toBe(undefined)
+  })
+  it('carries the flag THROUGH the contract, not merely past it', () => {
+    const event = resultFor({
+      id: 'c4',
+      type: 'commandExecution',
+      exitCode: 2,
+      aggregatedOutput: ''
+    })
+    // zod strips an unknown key silently, so asserting "did not throw" would
+    // pass just as well with `error` removed from the schema altogether.
+    expect(SessionEventSchema.parse(event)).toMatchObject({ type: 'tool_result', error: true })
+  })
+})
