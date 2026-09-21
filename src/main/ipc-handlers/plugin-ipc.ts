@@ -28,6 +28,19 @@ export function registerPluginHandlers(): void {
       if (!win.isDestroyed()) win.webContents.send('plugins:changed')
   }
   const surfaces = new Map<string, string>()
+  /** Which session the user is looking at. Only a renderer knows this — focus is a
+   *  renderer-store fact — so each window reports its own, and the most recent report
+   *  wins: the host is one per application, and the last window to move focus is the
+   *  window the user is in.
+   *
+   *  A window that goes away has its report cleared HERE, on the window's own `closed`
+   *  event. The renderer's unmount does clear it on an ordinary teardown, but a renderer
+   *  destroyed with its window never runs that cleanup and could not reach us afterwards
+   *  anyway (`guard` throws for a destroyed window) — so every plugin holding
+   *  `sessions.read` would have gone on being told a closed window's session was the
+   *  focused one, and the id still resolves, because sessions outlive their window. */
+  let focused: { windowId: number; sessionId: string } | null = null
+  const watchedWindows = new Set<number>()
   const secretRequests = new Map<
     string,
     {
@@ -51,6 +64,10 @@ export function registerPluginHandlers(): void {
     ? new PluginHost(store!, {
         sessions: {
           list: () => ptyManager.getAllSessions(),
+          focused: () =>
+            focused
+              ? (ptyManager.getAllSessions().find((s) => s.id === focused!.sessionId) ?? null)
+              : null,
           send: (id, text) => {
             if (!ptyManager.getSession(id)?.alive) throw new Error('Session is not running')
             ptyManager.write(id, text)
@@ -164,6 +181,30 @@ export function registerPluginHandlers(): void {
       file,
       `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: ${net}; connect-src 'self' ${net}; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`
     )
+  })
+  // The renderer reports its focused session whenever it changes; the host turns that
+  // into the plugins' `context.changed`. Null clears this window's report.
+  ipcMain.handle('plugins:context', (event, sessionId: string | null) => {
+    const win = guard(event)
+    if (sessionId !== null && (typeof sessionId !== 'string' || sessionId.length > 256))
+      throw new Error('Invalid session id')
+    if (sessionId === null) {
+      if (focused?.windowId === win.id) focused = null
+    } else focused = { windowId: win.id, sessionId }
+    // One listener per reporting window, attached where we first hear from it: this file
+    // is registered once at startup and windows arrive later.
+    if (!watchedWindows.has(win.id)) {
+      const id = win.id
+      watchedWindows.add(id)
+      win.once('closed', () => {
+        watchedWindows.delete(id)
+        if (focused?.windowId === id) {
+          focused = null
+          host?.contextChanged()
+        }
+      })
+    }
+    host?.contextChanged()
   })
   ipcMain.handle('plugins:secrets', (event) => {
     const win = guard(event)
