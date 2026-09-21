@@ -319,9 +319,11 @@ function SidePanelBody(): React.JSX.Element {
     if (isSingleRepo) singleRepoGit.refresh()
   }, [multiRepo, isSingleRepo, singleRepoGit])
 
-  const displayPath = useMemo(() => {
-    if (!cwd) return ''
-    return shortenPath(cwd)
+  const [displayPathHead, displayPathTail] = useMemo(() => {
+    if (!cwd) return ['', '']
+    const shown = shortenPath(cwd)
+    const cut = shown.lastIndexOf('/')
+    return cut === -1 ? ['', shown] : [shown.slice(0, cut + 1), shown.slice(cut + 1)]
   }, [cwd])
 
   const handleChangeFolder = useCallback(async () => {
@@ -507,8 +509,20 @@ function SidePanelBody(): React.JSX.Element {
                   onDoubleClick={() => setCustomCwd(null)}
                   title={`Double-click to go back to ${SCOPE_HOME[scope]}`}
                 >
+                  {/* The last segment is the row's whole point, so it never
+                      shrinks (capped so a long name still leaves the ancestors
+                      a trace); the ancestors truncate first. It used to be the
+                      one word destroyed: every segment shrank alike and the
+                      current folder read "a…" at 240px (2026-09-21). */}
                   {breadcrumbSegments.map((seg, i) => (
-                    <span key={seg.path} className="flex items-center min-w-0">
+                    <span
+                      key={seg.path}
+                      className={
+                        i === breadcrumbSegments.length - 1
+                          ? 'flex items-center flex-shrink-0 min-w-0 max-w-[60%]'
+                          : 'flex items-center min-w-0'
+                      }
+                    >
                       {i > 0 && (
                         <span className="text-text-tertiary mx-0.5 flex-shrink-0">/</span>
                       )}
@@ -536,10 +550,16 @@ function SidePanelBody(): React.JSX.Element {
                   ref={pathButtonRef}
                   onClick={() => cwd && setPathMenuOpen((v) => !v)}
                   style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-                  className="max-w-full text-left text-xs text-text-secondary font-medium truncate hover:text-text-primary cursor-pointer transition-colors"
+                  className="panel-path"
                   title={cwd ?? ''}
                 >
-                  {displayPath}
+                  {/* Where you are is the LAST word of the path, so it stays
+                      whole and the way there ellipsizes; the old single span
+                      cut from the right and hid the folder name first. The
+                      two spans still spell the exact path for anything that
+                      reads the bar's text. */}
+                  <span className="panel-path-head">{displayPathHead}</span>
+                  <span className="panel-path-tail">{displayPathTail}</span>
                 </button>
               )}
             </div>
@@ -691,7 +711,10 @@ function SidePanelBody(): React.JSX.Element {
                 slack on its line and truncates inside it, so a long branch name
                 never claims a line of its own and never pushes the badges off
                 the one it is on. */}
-            <span className="panel-bar-label">
+            <span
+              className="panel-bar-label"
+              data-text-only={multiRepo.result.mode === 'multi' ? 'true' : undefined}
+            >
             {/* Branch name (single-repo only). The badges sit outside the
                 truncating name so a long branch never clips them away — they are
                 the toolbar's controls, the name is only a label. */}

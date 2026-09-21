@@ -116,7 +116,8 @@ body,
 .switch:focus-visible,
 .settings-row-action:focus-visible,
 .git-tree-row:focus-visible,
-.git-sync-badge:focus-visible {
+.git-sync-badge:focus-visible,
+.panel-path:focus-visible {
   outline: 1.5px solid var(--color-accent);
   outline-offset: -1.5px;
 }
@@ -1012,6 +1013,43 @@ body,
      border while the controls' line below it stood 28px (2026-09-20). */
   min-height: var(--control-h-md);
   overflow: hidden;
+}
+/* A label that is only words ("2 repos") has no branch to keep room for, so it
+   gives up the branch's minimum and lets the controls share its line: the bar
+   is one row again instead of two words over a row of icons. */
+.panel-bar-label[data-text-only="true"] {
+  min-width: 0;
+}
+
+/* The path on the path bar: one control tall so its hit box is the row, not a
+   12px line inside it; the head ellipsizes and the tail (the folder you are
+   in) never does. */
+.panel-path {
+  display: flex;
+  align-items: center;
+  height: var(--control-h-md);
+  max-width: 100%;
+  min-width: 0;
+  border-radius: var(--radius-control);
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  transition: color 150ms;
+}
+.panel-path:hover {
+  color: var(--text-primary);
+}
+.panel-path-head {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel-path-tail {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* ── Overlays: menus, popovers, modals ──
