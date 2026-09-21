@@ -121,6 +121,7 @@ export async function run(t) {
         name: panel.querySelector('.sidebar-footer-name')?.textContent,
         border: cs.borderTopWidth,
         radius: cs.borderTopLeftRadius,
+        panelRadius: (() => { const pr = document.createElement('div'); pr.style.borderRadius = 'var(--radius-xl)'; document.body.appendChild(pr); const r = getComputedStyle(pr).borderRadius; pr.remove(); return r })(),
         // Nothing may sit loose beside the panel any more.
         siblings: panel.parentElement?.children.length
       }
@@ -134,7 +135,7 @@ export async function run(t) {
     t.check('the collapsed feedback door is in it', shape?.feedback, shape)
     t.equal('and it carries the name', shape?.name, 'Ada Lovelace')
     t.equal('it is bordered like the launcher panel', shape?.border, '1px')
-    t.equal('and rounded like it', shape?.radius, '10px')
+    t.equal('and rounded like it', shape?.radius, shape?.panelRadius)
     t.equal('nothing else sits loose at the foot', shape?.siblings, 1)
 
     // ── the controls sit INSIDE the panel, and light up in the field ──

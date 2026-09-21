@@ -81,7 +81,7 @@ body,
    reads as chrome rather than depth. */
 .floating-card {
   border-radius: var(--radius-xl);
-  border: 1px solid var(--color-border);
+  border: var(--frame-border) solid var(--color-border);
   background-color: var(--color-surface-0);
   overflow: hidden;
 }
@@ -131,8 +131,8 @@ body,
   gap: 0.5rem;             /* gap-2 */
   height: var(--sidebar-row-h);
   padding: 0 var(--sidebar-row-px);
-  border-radius: var(--radius-lg);
-  font-size: 13.5px;
+  border-radius: var(--control-radius);
+  font-size: var(--control-text);
   font-weight: var(--font-weight-medium);
   text-align: left;
   transition: color 150ms, background-color 150ms, opacity 150ms;
@@ -197,7 +197,7 @@ body,
 .launcher-panel {
   height: var(--toolbar-h);
   border-radius: var(--radius-xl);
-  border: 1px solid var(--color-border);
+  border: var(--frame-border) solid var(--color-border);
   background-color: color-mix(in srgb, var(--surface-0) 70%, transparent);
   overflow: hidden;
 }
@@ -206,7 +206,7 @@ body,
   display: flex;
   align-items: center;
   height: 100%;
-  padding: 0 2px;
+  padding: 0 var(--frame-inset);
 }
 
 /* Hairline between a panel row's segments — terminal | agent+caret | folder in
@@ -226,14 +226,14 @@ body,
 .launcher-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;           /* gap-1.5 */
+  gap: var(--control-gap);
   min-width: 0;
   height: var(--control-h-md);
-  padding: 0 0.5rem;       /* px-2 — the panels stay on their own padding: they
+  padding: 0 var(--control-px);       /* px-2 — the panels stay on their own padding: they
                               are chrome, not list, and a sidebar dragged narrow
                               squeezes this row first */
   border-radius: var(--radius-control);
-  font-size: 13px;
+  font-size: var(--control-text);
   font-weight: var(--font-weight-medium);
   white-space: nowrap;
   color: var(--sidebar-item-text);
@@ -320,9 +320,9 @@ body,
 .group-switcher-panel {
   position: relative;
   min-height: var(--toolbar-h);
-  padding: 2px;
+  padding: var(--frame-inset);
   border-radius: var(--radius-xl);
-  border: 1px solid var(--color-border);
+  border: var(--frame-border) solid var(--color-border);
   background-color: color-mix(in srgb, var(--surface-0) 70%, transparent);
 }
 
@@ -387,11 +387,11 @@ body,
 .search-field {
   display: flex;
   align-items: center;
-  gap: 0.375rem;
+  gap: var(--control-gap);
   flex: 1 1 auto;
   min-width: 0;
   height: var(--control-h-md);
-  padding: 0 0.375rem;
+  padding: 0 var(--control-gap);
   border-radius: var(--radius-control);
   color: var(--text-tertiary);
   background-color: color-mix(in srgb, var(--surface-100) 60%, transparent);
@@ -405,7 +405,7 @@ body,
 .search-field:focus-within {
   color: var(--text-secondary);
   background-color: var(--surface-100);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 55%, transparent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 /* Focus never draws a box inside a box. A field that sits in a bordered bar
    has a frame already; an accent ring on the field put a 6px-cornered box
@@ -443,7 +443,7 @@ body,
   background: transparent;
   border: none;
   outline: none;
-  font-size: 13px;
+  font-size: var(--control-text);
   font-weight: var(--font-weight-medium);
   color: var(--text-primary);
 }
@@ -474,14 +474,14 @@ body,
 .panel-tab {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;           /* gap-1.5 */
+  gap: var(--control-gap);
   flex-shrink: 0;
   min-width: 0;
   max-width: 100%;         /* a long group name wraps the row, never the panel */
   height: var(--control-h-md);
-  padding: 0 0.5rem;       /* px-2 — see .launcher-btn */
+  padding: 0 var(--control-px);       /* px-2 — see .launcher-btn */
   border-radius: var(--radius-control);
-  font-size: 13px;
+  font-size: var(--control-text);
   font-weight: var(--font-weight-medium);
   white-space: nowrap;
   color: var(--text-tertiary);
@@ -582,7 +582,7 @@ body,
   position: relative;
   isolation: isolate;
   border-radius: var(--radius-xl);
-  border: 1px solid var(--color-border);
+  border: var(--frame-border) solid var(--color-border);
   background-color: color-mix(in srgb, var(--surface-0) 70%, transparent);
   overflow: hidden;
 }
@@ -796,9 +796,9 @@ body,
   flex-wrap: wrap;
   gap: 2px;
   min-height: var(--toolbar-h);
-  padding: 2px;
+  padding: var(--frame-inset);
   border-radius: var(--radius-xl);
-  border: 1px solid var(--color-border);
+  border: var(--frame-border) solid var(--color-border);
   background-color: color-mix(in srgb, var(--surface-0) 70%, transparent);
 }
 
@@ -890,16 +890,16 @@ body,
   align-items: center;
   align-self: center;
   gap: 2px;
-  height: var(--control-h-md);
+  height: var(--control-h);
   margin-block: calc((var(--toolbar-h) - var(--control-h-md)) / 2);
-  padding: 1px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border);
+  padding: calc(var(--frame-inset) / 2);
+  border-radius: var(--control-radius);
+  border: var(--frame-border) solid var(--color-border);
   background-color: color-mix(in srgb, var(--surface-0) 70%, transparent);
 }
 .panel-tabs .panel-tab {
   height: var(--control-h-sm);
-  border-radius: var(--radius-md);
+  border-radius: calc(var(--control-radius) - var(--frame-border) - var(--frame-inset) / 2);
 }
 
 /* Opting a bar out of wrapping, for the path bar: it is a line of text with a
@@ -1148,12 +1148,12 @@ body,
   position: relative;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--control-gap);
   width: 100%;
   min-height: var(--control-h-md);
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--radius-lg);
-  font-size: 13px;
+  padding: 0.25rem var(--control-px);
+  border-radius: var(--control-radius);
+  font-size: var(--control-text);
   font-weight: var(--font-weight-medium);
   color: var(--text-primary);
   text-align: left;
@@ -1303,11 +1303,11 @@ body,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.375rem;           /* gap-1.5 */
+  gap: var(--control-gap);
   height: var(--control-h-md);
-  padding: 0 1rem;         /* px-4 */
-  border-radius: var(--radius-lg);
-  font-size: 0.75rem;      /* text-xs */
+  padding: 0 calc(var(--control-px) * 2);
+  border-radius: var(--control-radius);
+  font-size: var(--control-text);
   font-weight: var(--font-weight-medium);
   color: white;
   background-color: var(--color-accent);
@@ -1326,11 +1326,11 @@ body,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.375rem;
+  gap: var(--control-gap);
   height: var(--control-h-md);
-  padding: 0 0.75rem;      /* px-3 */
-  border-radius: var(--radius-lg);
-  font-size: 0.75rem;
+  padding: 0 calc(var(--control-px) * 1.5);
+  border-radius: var(--control-radius);
+  font-size: var(--control-text);
   font-weight: var(--font-weight-medium);
   color: var(--text-secondary);
   background-color: transparent;
@@ -1532,11 +1532,11 @@ body,
 .input-compact {
   width: 100%;
   height: var(--control-h-md);
-  padding: 0 0.75rem;
-  border-radius: var(--radius-lg);
+  padding: 0 calc(var(--control-px) * 1.5);
+  border-radius: var(--control-radius);
   background-color: var(--surface-100);
   border: 1px solid var(--border-subtle-color);
-  font-size: 0.75rem;      /* text-xs */
+  font-size: var(--control-text);
   color: var(--text-primary);
   outline: none;
   transition: border-color 150ms, box-shadow 150ms;

@@ -32,6 +32,9 @@ export async function run(t) {
       const item = el.querySelector('.menu-item')
       return {
         radius: getComputedStyle(el).borderRadius,
+        // The panel radius is a token (derived from the control spec), so the
+        // check reads it rather than pinning a number.
+        panelRadius: (() => { const pr = document.createElement('div'); pr.style.borderRadius = 'var(--radius-xl)'; document.body.appendChild(pr); const r = getComputedStyle(pr).borderRadius; pr.remove(); return r })(),
         hasLabel: !!el.querySelector('.menu-label'),
         hasSep: !!el.querySelector('.menu-sep'),
         itemRadius: item ? getComputedStyle(item).borderRadius : null,
@@ -39,7 +42,7 @@ export async function run(t) {
       }
     })
     t.check('the workspace popover is a menu-surface', !!pop)
-    t.equal('the surface carries the panel radius', pop?.radius, '10px')
+    t.equal('the surface carries the panel radius', pop?.radius, pop?.panelRadius)
     t.check('a regular-case menu-label heads it', !!pop?.hasLabel)
     t.check('sections split on an inset separator', !!pop?.hasSep)
     t.equal('rows are rounded menu-items, not full-bleed strips', pop?.itemRadius, '6px')
@@ -130,6 +133,7 @@ export async function run(t) {
         bdAnim: getComputedStyle(bd).animationName,
         panelAnim: getComputedStyle(panel).animationName,
         radius: getComputedStyle(panel).borderRadius,
+        panelRadius: (() => { const pr = document.createElement('div'); pr.style.borderRadius = 'var(--radius-xl)'; document.body.appendChild(pr); const r = getComputedStyle(pr).borderRadius; pr.remove(); return r })(),
         bg: getComputedStyle(panel).backgroundColor,
         ground
       }
@@ -137,7 +141,7 @@ export async function run(t) {
     t.check('the group picker opens', !!gp)
     t.equal('its backdrop fades in on the shared keyframe', gp?.bdAnim, 'scrim-in')
     t.equal('its panel enters via surface-in', gp?.panelAnim, 'surface-in')
-    t.equal('its panel carries the panel radius, like every other surface', gp?.radius, '10px')
+    t.equal('its panel carries the panel radius, like every other surface', gp?.radius, gp?.panelRadius)
     t.equal("its panel is painted with the panels' ground", gp?.bg, gp?.ground)
     await win.keyboard.press('Escape')
     await win.waitForTimeout(200)

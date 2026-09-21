@@ -486,7 +486,11 @@ export function FileTree({ cwd, onNavigateToFolder }: {
           folder picker, the way home and collapse-all are NOT here: they belong
           to both tabs and live in the panel's tab bar above. */}
       <div className="px-2 pb-1.5 flex-shrink-0">
-        <div className="panel-bar" data-panel-bar="files">
+        {/* A field, not a bar around a field. A frame groups two or more
+            controls; this row has one, and framed alone it was a 28px field
+            inside a 34px box, the thickest-looking thing on the panel
+            (2026-09-21). The wrapper keeps the bar's name for the specs. */}
+        <div data-panel-bar="files">
           <div className="search-field">
             <MagnifyingGlassIcon className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
             <input

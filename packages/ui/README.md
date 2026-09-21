@@ -22,6 +22,23 @@ class next to its family; never inline the styling at the call site.
    other themes. If you type `#`, `rgba(`, or a px number that is not in this
    file, stop.
 
+## The control spec and the frame spec
+
+Every control reads five numbers from `tokens.css` and writes none of them as
+a literal: `--control-h` (28px), `--control-px` (8px sides), `--control-gap`
+(6px icon-to-label), `--control-text` (13px), `--control-radius` (6px). That is
+the ratio of the workspace popover's rows, and it is the ratio of every button,
+chip, tab, row and field because they all inherit it. Text buttons take
+multiples of `--control-px` (`.btn-secondary` ×1.5, `.btn-primary` ×2).
+
+A **frame** is a bordered box that groups **two or more** controls: the
+launcher, the switcher, the side panel's bars, the toolbar card. It reads
+`--frame-inset` (2px) and `--frame-border` (1px), and `--radius-xl` is derived
+from them (control corner + inset + border) so the controls inside are
+concentric by construction. **A single control is never framed**: a field alone
+is a field, not a bar around a field. Change the spec, and the whole app moves;
+add a literal, and it stops.
+
 ## Boxes (panels, cards, overlays)
 
 | Surface | Class | Look |
@@ -73,7 +90,7 @@ surface-200). Disabled is always `opacity: 0.4` + `cursor: not-allowed`.
 
 - `.input-field` — 32px (`--control-h-lg`), radius-lg, surface-100, subtle border,
   accent border on focus. `.textarea-field` is its multi-line twin.
-- `.input-compact` — 28px, text-xs, accent ring on focus; add
+- `.input-compact` — 28px, the control label size, accent ring on focus; add
   `.input-compact-icon-right` when a trailing glyph needs room (a `pr-*` utility
   will NOT work — see rule 1).
 - `.search-field` — the in-panel search (sidebar, side panel): 28px, radius-control,
