@@ -144,6 +144,12 @@ color). Borders: `--color-border` (a panel's one structural border) →
 `--border-subtle` (inner seams) → `--rule-color` (repeating list hairlines).
 Accent: `--color-accent` — state and primary actions only, never decoration.
 
+Every ink clears 4.5:1 on `--surface-50` in every theme, tertiary included (it
+is the branch names, counters and placeholders people actually read). Keyboard
+focus is one rule, the "── Keyboard focus ──" block: a 1.5px accent ring drawn
+inside the control's edge for every control family; a new family joins that
+selector, never invents its own ring, and never sets `outline: none` without it.
+
 ## Type and numbers
 
 Geist Sans everywhere via `--font-sans`; `font-medium` resolves to 400 — do not

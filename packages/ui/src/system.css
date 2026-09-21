@@ -86,6 +86,41 @@ body,
   overflow: hidden;
 }
 
+/* ── Keyboard focus ──
+   One ring for every control the keyboard can land on. Without this rule each
+   family fell back to Chromium's own outline, drawn in the OS accent colour,
+   a ring that belongs to no theme; and the families that set outline: none
+   showed nothing at all. The ring is the app's accent, drawn INSIDE the
+   control's edge so it follows the control's corner and never collides with
+   the bar the control sits in (2026-09-21). Text fields keep their own
+   focus (a fill step, or the bar's border) because a caret is already a
+   focus indicator; the ring is for the things without one. */
+.sidebar-item:focus-visible,
+.menu-item:focus-visible,
+.panel-tab:focus-visible,
+.panel-icon-btn:focus-visible,
+.launcher-btn:focus-visible,
+.launcher-icon-btn:focus-visible,
+.launcher-caret:focus-visible,
+.group-switcher-chip:focus-visible,
+.btn-icon:focus-visible,
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible,
+.btn-dialog:focus-visible,
+.btn-add:focus-visible,
+.sidebar-footer-btn:focus-visible,
+.sidebar-footer-line:focus-visible,
+.sidebar-footer-avatar:focus-visible,
+.segmented-item:focus-visible,
+.select-trigger:focus-visible,
+.switch:focus-visible,
+.settings-row-action:focus-visible,
+.git-tree-row:focus-visible,
+.git-sync-badge:focus-visible {
+  outline: 1.5px solid var(--color-accent);
+  outline-offset: -1.5px;
+}
+
 /* ── Sidebar items ── */
 
 .sidebar-item {
@@ -392,7 +427,9 @@ body,
   box-shadow: none;
 }
 .panel-bar:has(> .search-field:focus-within) {
-  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  /* Full accent, not 55%: the border is the field's only focus indicator, and
+     at 55% over a light ground it composited to about 2.1:1. */
+  border-color: var(--color-accent);
 }
 .group-switcher-search:focus-within {
   background-color: var(--surface-200);
