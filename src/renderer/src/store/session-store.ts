@@ -5,6 +5,7 @@ import type { GitRangeDirection } from '../../../shared/git-range'
 import type {
   Theme,
   AppIcon,
+  Density,
   TreeRuleIntensity,
   PanelScope,
   ActivityStatus,
@@ -21,7 +22,7 @@ import type {
   ExtensionsSection,
   SessionType
 } from './session-types'
-import { PANEL_ROOTS } from './session-types'
+import { PANEL_ROOTS, resolveDensity } from './session-types'
 import type { Agent, AgentStatus } from '../../../shared/remote-types'
 import { useWorkspaceStore } from './workspace-store'
 import { mergeLayoutForKeys, absorbLayout, placeAdopted } from '../lib/sidebar-layout-partition'
@@ -46,6 +47,7 @@ export type {
   ExtensionsSection,
   SessionType,
   TreeRuleIntensity,
+  Density,
   PanelScope
 }
 export {
@@ -54,8 +56,13 @@ export {
   TERMINAL_COLOR_VALUES,
   TREE_RULE_INTENSITIES,
   PANEL_ROOTS,
+  DENSITY_LEVELS,
+  DEFAULT_DENSITY,
+  resolveDensity,
   resolveColorHex,
   treeRuleMultiplier,
+  densityScale,
+  densityIndex,
   panelRootLadder
 } from './session-types'
 
@@ -90,6 +97,8 @@ interface SessionState {
   appIcon: AppIcon
   /** How heavily every tree draws the hairlines between its rows. */
   treeRuleIntensity: TreeRuleIntensity
+  /** How tight the chrome is drawn — the stop `--density` is written from. */
+  density: Density
   /** Run new sessions inside persistent tmux sessions. On by default; falls
    *  back to a plain shell automatically when tmux isn't installed. */
   tmuxMode: boolean
@@ -262,6 +271,7 @@ interface SessionState {
   setTheme: (theme: Theme) => void
   setAppIcon: (icon: AppIcon) => void
   setTreeRuleIntensity: (intensity: TreeRuleIntensity) => void
+  setDensity: (density: Density) => void
   setTmuxMode: (enabled: boolean) => void
   setMessageTrailEnabled: (enabled: boolean) => void
   updateSessionAlive: (id: string, alive: boolean) => void
@@ -546,6 +556,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   appIcon: (localStorage.getItem('clave-app-icon') as AppIcon) || 'dark',
   treeRuleIntensity:
     (localStorage.getItem('clave-tree-rule-intensity') as TreeRuleIntensity) || 'normal',
+  density: resolveDensity(localStorage.getItem('clave-density')),
   tmuxMode: localStorage.getItem('clave-tmux-mode') !== 'false',
   messageTrailEnabled: localStorage.getItem('clave-message-trail') !== 'false',
   searchQuery: '',
@@ -1206,6 +1217,11 @@ export const useSessionStore = create<SessionState>((set) => ({
   setTreeRuleIntensity: (treeRuleIntensity) => {
     localStorage.setItem('clave-tree-rule-intensity', treeRuleIntensity)
     set({ treeRuleIntensity })
+  },
+
+  setDensity: (density) => {
+    localStorage.setItem('clave-density', density)
+    set({ density })
   },
 
   setAppIcon: (appIcon) => {
