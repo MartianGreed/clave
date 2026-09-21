@@ -1030,6 +1030,7 @@ body,
   height: var(--control-h-md);
   max-width: 100%;
   min-width: 0;
+  overflow: hidden;
   border-radius: var(--radius-control);
   font-size: 12px;
   font-weight: var(--font-weight-medium);
@@ -1042,13 +1043,20 @@ body,
   color: var(--text-primary);
 }
 .panel-path-head {
-  min-width: 0;
+  /* Gives way first, by a wide margin (shrink weight 1000 against the tail's
+     1), and keeps room for its own ellipsis so the cut is visible. */
+  flex: 0 1000 auto;
+  min-width: 1.25rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .panel-path-tail {
-  flex-shrink: 0;
+  /* Shrinks only once the head is down to its ellipsis. */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

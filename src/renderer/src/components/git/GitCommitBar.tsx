@@ -203,16 +203,25 @@ export function CommitBar({
         </div>
       )}
       <div className="flex items-center gap-1.5">
+        {/* System buttons, not inline utilities: the bar used to paint its own
+            accent pill and a green tint the design system has no word for. */}
         <button
-          className="flex-1 text-xs font-medium px-2 py-1 rounded bg-accent text-white disabled:opacity-40 transition-opacity"
+          className="btn-primary flex-1"
           disabled={operating || stagedCount === 0 || !commitMessage.trim()}
           onClick={handleCommit}
+          title={
+            stagedCount === 0
+              ? 'Include at least one file first'
+              : !commitMessage.trim()
+                ? 'Write a commit message first'
+                : undefined
+          }
         >
           Commit
         </button>
         {!hasUpstream ? (
           <IconButton
-            className="text-xs font-medium px-2 py-1 rounded bg-green-500/15 text-green-400 hover:bg-green-500/25 disabled:opacity-40 transition-all"
+            className="btn-secondary"
             disabled={operating}
             onClick={handlePublishBranch}
             tooltip="Put this branch on the remote so it can be pushed and pulled (git push -u)"
@@ -224,7 +233,7 @@ export function CommitBar({
           <>
             {ahead > 0 && (
               <IconButton
-                className="text-xs font-medium px-2 py-1 rounded bg-green-500/15 text-green-400 hover:bg-green-500/25 disabled:opacity-40 transition-all"
+                className="btn-secondary"
                 disabled={operating}
                 onClick={handlePush}
                 tooltip="Push to remote"

@@ -466,7 +466,7 @@ function SidePanelBody(): React.JSX.Element {
                 ref={scopeButtonRef}
                 onClick={() => setScopeMenuOpen((v) => !v)}
                 className="panel-icon-btn panel-scope-btn"
-                aria-label="Choose the panel's root"
+                aria-label={`Rooted at ${SCOPE_HOME[scope]}. Choose the panel's root`}
                 aria-expanded={scopeMenuOpen}
                 data-panel-scope={scope}
                 data-active={scopeMenuOpen ? 'true' : undefined}

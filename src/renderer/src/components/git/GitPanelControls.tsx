@@ -219,7 +219,7 @@ export function SectionHeader({
       <span className="ml-auto flex items-center gap-2">
         {action && onAction && (
           <button
-            className="text-[10px] text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-50"
+            className="text-[11px] text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-50"
             onClick={onAction}
             disabled={disabled}
           >
@@ -231,7 +231,7 @@ export function SectionHeader({
             on the line was the one that loses work. */}
         {discardAction && onDiscardAction && (
           <button
-            className="text-[10px] text-text-tertiary hover:text-red-400 transition-colors disabled:opacity-50"
+            className="text-[11px] text-text-tertiary hover:text-red-400 transition-colors disabled:opacity-50"
             onClick={onDiscardAction}
             disabled={disabled}
           >
