@@ -28,6 +28,7 @@ class next to its family; never inline the styling at the call site.
 |---|---|---|
 | Toolbar, terminal panes, main views | `.floating-card` | radius-xl, 1px `--color-border`, `--surface-0`, **no shadow** (flat on purpose) |
 | Sidebar chrome panels (launcher, switcher, side-panel bars) | `.launcher-panel` / `.sidebar-panel` | same material at 70% surface-0 |
+| The side panel's Files / Git switch | `.panel-tabs` | same material and border, but one control tall: a 28px track, 24px `.panel-tab` items on `--radius-md`, held in the 34px row by its margins |
 | Menus, popovers, dropdowns, floating widgets | `.menu-surface` | radius-xl, border, surface-0, `--overlay-shadow` |
 | Document-sized floaters (file preview, diff panel, palette) | `.menu-surface menu-surface--sheet` | same, heavier `--overlay-shadow-lg` |
 | Modal dialogs | `.modal-card` (+ `.modal-pop` for motion, `.modal-scrim`) | radius-xl, border, surface-0, overlay-shadow-lg |

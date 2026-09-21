@@ -810,15 +810,31 @@ body,
   color: var(--text-tertiary);
 }
 
-/* The tab bar holds one control and nothing else — Files | Git — so the BAR
-   hugs it and centres itself, rather than running the panel's full width with
-   its contents floated into the middle. A full-width box around two buttons
-   reads as a row whose other half went missing; a box the width of the choice
-   reads as the choice. Only bars holding a single cluster take this: the moment
-   a bar has a trailing group, the label group is what places it. */
-.panel-bar--hug {
+/* The Files | Git switch at the head of the side panel: a segmented control at
+   control height, not a bar. It used to be a .panel-bar hugged to the pair —
+   a 34px frame around a 28px fill around 13px text, the fill three times the
+   letter height, and the selected fill (--surface-200, twice the contrast of
+   the hover) showed every one of those pixels. A two-way switch is one control,
+   so it takes one control's height: a 28px track, 24px items, and the
+   item's corner one step inside the track's (6 − 2 = 4, --radius-md). The
+   track keeps the bar's material and border so the two edges of the window
+   still read as one system, and holds the bar's 34px row through its margins
+   so the path bar below stays on the content card's top edge. */
+.panel-tabs {
+  display: inline-flex;
+  align-items: center;
   align-self: center;
-  flex-wrap: nowrap;
+  gap: 2px;
+  height: var(--control-h-md);
+  margin-block: calc((var(--toolbar-h) - var(--control-h-md)) / 2);
+  padding: 1px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background-color: color-mix(in srgb, var(--surface-0) 70%, transparent);
+}
+.panel-tabs .panel-tab {
+  height: var(--control-h-sm);
+  border-radius: var(--radius-md);
 }
 
 /* Opting a bar out of wrapping, for the path bar: it is a line of text with a
