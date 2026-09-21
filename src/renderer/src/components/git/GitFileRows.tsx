@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useMemo } from 'react'
 import { FileIcon } from '../files/file-icons'
-import { statusLetter, statusColor, splitPath } from './git-status-utils'
+import { statusWord, statusColor, splitPath } from './git-status-utils'
 import { buildGitTree, compactTree, flattenGitTree } from '../../lib/git-file-tree'
 import type { GitFileStatus } from '../../../../preload/index.d'
 import type { FlatGitTreeNode } from '../../lib/git-file-tree'
@@ -121,9 +121,13 @@ export function FileRow({
         draggable
         onDragStart={handleDragStart}
       >
-        <span className={`font-mono w-3 flex-shrink-0 ${statusColor(file.status)}`}>
-          {statusLetter(file.status)}
-        </span>
+        <span
+          className={`git-status-dot ${statusColor(file.status)}`}
+          data-status={file.status}
+          role="img"
+          aria-label={statusWord(file.status)}
+          title={statusWord(file.status)}
+        />
         <span className="text-text-primary truncate hover:underline">
           {name}
         </span>
@@ -144,7 +148,7 @@ export function FileRow({
                 e.stopPropagation()
                 onStageToggle?.()
               }}
-              title={isStaged ? 'Unstage' : 'Stage'}
+              title={isStaged ? 'Exclude from commit' : 'Include in commit'}
             >
               {isStaged ? '\u2212' : '+'}
             </button>
@@ -302,9 +306,13 @@ export function GitTreeFileRow({
       onDragStart={handleDragStart}
     >
       <span className="w-4 flex-shrink-0" />
-      <span className={`font-mono w-3 flex-shrink-0 ${statusColor(file.status)}`}>
-        {statusLetter(file.status)}
-      </span>
+      <span
+        className={`git-status-dot ${statusColor(file.status)}`}
+        data-status={file.status}
+        role="img"
+        aria-label={statusWord(file.status)}
+        title={statusWord(file.status)}
+      />
       <span className="text-text-primary truncate hover:underline">
         {node.name}
       </span>
@@ -324,7 +332,7 @@ export function GitTreeFileRow({
               e.stopPropagation()
               onStageToggle?.()
             }}
-            title={isStaged ? 'Unstage' : 'Stage'}
+            title={isStaged ? 'Exclude from commit' : 'Include in commit'}
           >
             {isStaged ? '\u2212' : '+'}
           </button>

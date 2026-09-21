@@ -696,8 +696,10 @@ export async function run(t) {
         incoming: resolve('var(--color-git-incoming)'),
         orange: resolve('var(--color-orange-400)')
       }
-      const letters = [...document.querySelectorAll('[data-git-row="file"] .font-mono')].map(
-        (el) => ({ letter: el.textContent.trim(), color: getComputedStyle(el).color })
+      // The status is a dot in the row's tone with the word on the element
+      // (data-status, title), no longer a letter.
+      const letters = [...document.querySelectorAll('[data-git-row="file"] .git-status-dot')].map(
+        (el) => ({ letter: el.dataset.status, color: getComputedStyle(el).color })
       )
       const badges = [...document.querySelectorAll('.git-sync-badge')].map((el) => ({
         text: el.textContent.trim(),
@@ -711,7 +713,7 @@ export async function run(t) {
       new Set(Object.values(tones.wanted)).size === 3,
       tones.wanted
     )
-    const modifiedLetters = tones.letters.filter((l) => l.letter === 'M')
+    const modifiedLetters = tones.letters.filter((l) => l.letter === 'modified' || l.letter === 'staged-modified')
     t.check('the repo has a modified file to judge', modifiedLetters.length > 0, tones.letters)
     t.check(
       'a modified file wears the modified tone, not orange',

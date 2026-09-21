@@ -721,7 +721,11 @@ function SidePanelBody(): React.JSX.Element {
                     count={singleRepoGit.status.ahead}
                     active={showOutgoingSingle}
                     onToggle={() => setShowOutgoingSingle((v) => !v)}
-                    title="Show what a push will send"
+                    title={
+                      singleRepoGit.status.hasUpstream
+                        ? 'Show what a push will send'
+                        : `${singleRepoGit.status.ahead} commit${singleRepoGit.status.ahead === 1 ? '' : 's'} not published anywhere yet`
+                    }
                   />
                 )}
                 {singleRepoGit.status.behind > 0 && (

@@ -744,6 +744,26 @@
 /* A row in the git panel's repo tree: a directory, or a repo header. Fixed
    height so the tree never jumps when a trailing badge appears or disappears
    — expanding a folder hides its roll-up, and that used to resize the row. */
+/* The status beside a file name in the git panel: a dot in the status tone,
+   the word on the element (data-status, title, aria-label). It replaced git's
+   own letters (M, A, D, ?), which meant nothing to anyone who is not already a
+   git user, in a product that wants non-developers reading this panel
+   (2026-09-21). Same slot width as the letter had, so nothing else moves. */
+.git-status-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.75rem;
+  flex-shrink: 0;
+}
+.git-status-dot::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background-color: currentColor;
+}
+
 .git-tree-row {
   position: relative;
   height: var(--git-tree-row-h);

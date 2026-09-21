@@ -1,4 +1,5 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
+import { ConfirmDialog } from '@clave/ui/components'
 import { useSessionStore } from '../../store/session-store'
 import {
   ListBulletIcon,
@@ -354,16 +355,34 @@ export function MagicSyncButton({
     })
   }, [run, repoPaths, onDone])
 
+  // Named for what it does, and gated: one click used to pull, stage every
+  // change, write a message, commit and push across every listed repo, under
+  // the word "Magic". The confirm says the five steps and the count once.
+  const [confirming, setConfirming] = useState(false)
+  const n = repoPaths.length
   return (
-    <IconButton
-      onClick={handleSync}
-      disabled={state.running || repoPaths.length === 0}
-      className="panel-icon-btn"
-      aria-label="Magic sync"
-      tooltip={mine ? 'Syncing...' : 'Magic sync'}
-    >
-      <ArrowPathIcon className={`w-3.5 h-3.5 ${mine ? 'animate-spin' : ''}`} />
-    </IconButton>
+    <>
+      <IconButton
+        onClick={() => setConfirming(true)}
+        disabled={state.running || n === 0}
+        className="panel-icon-btn"
+        aria-label="Commit and push all"
+        tooltip={mine ? 'Committing and pushing…' : 'Commit and push all'}
+      >
+        <ArrowPathIcon className={`w-3.5 h-3.5 ${mine ? 'animate-spin' : ''}`} />
+      </IconButton>
+      <ConfirmDialog
+        isOpen={confirming}
+        title="Commit and push all"
+        message={`In ${n === 1 ? 'this repo' : `${n} repos`}: pull what is behind, include every change, write a commit message for it, commit, and push. A repo with nothing to do is left alone.`}
+        confirmLabel="Commit and push"
+        onConfirm={() => {
+          setConfirming(false)
+          handleSync()
+        }}
+        onCancel={() => setConfirming(false)}
+      />
+    </>
   )
 }
 
@@ -432,7 +451,7 @@ export function JourneyButton({ cwd, repoName }: { cwd: string; repoName: string
       onClick={() => openJourneyPanel(cwd, repoName)}
       className="panel-icon-btn"
       aria-label="Journey"
-      tooltip="Journey"
+      tooltip="Journey: this repo's history drawn as a map"
     >
       {/* Timeline/route icon */}
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none">

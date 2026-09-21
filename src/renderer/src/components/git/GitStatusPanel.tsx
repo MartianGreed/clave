@@ -662,7 +662,7 @@ function RepoSection({
         onClick: () => openAsTab(file)
       },
       {
-        label: file.staged ? 'Unstage' : 'Stage',
+        label: file.staged ? 'Exclude from commit' : 'Include in commit',
         icon: file.staged
           ? <MinusIcon className="w-3.5 h-3.5" />
           : <PlusIcon className="w-3.5 h-3.5" />,
@@ -816,12 +816,12 @@ function RepoSection({
         {staged.length > 0 && (
           <>
             <SectionHeader
-              label="Staged"
+              label="Ready to commit"
               indentPx={sectionIndentPx}
               count={staged.length}
-              action="Unstage All"
+              action="Exclude all"
               onAction={unstageAll}
-              discardAction="Discard All"
+              discardAction="Discard all"
               onDiscardAction={() => promptDiscardAll(staged)}
               disabled={operating}
             />
@@ -866,12 +866,12 @@ function RepoSection({
         {unstaged.length > 0 && (
           <>
             <SectionHeader
-              label="Modified"
+              label="Changed"
               indentPx={sectionIndentPx}
               count={unstaged.length}
-              action="Stage All"
+              action="Include all"
               onAction={() => stageAll(unstaged)}
-              discardAction="Discard All"
+              discardAction="Discard all"
               onDiscardAction={() => promptDiscardAll(unstaged)}
               disabled={operating}
             />
@@ -916,12 +916,12 @@ function RepoSection({
         {untracked.length > 0 && (
           <>
             <SectionHeader
-              label="Untracked"
+              label="New files"
               indentPx={sectionIndentPx}
               count={untracked.length}
-              action="Stage All"
+              action="Include all"
               onAction={() => stageAll(untracked)}
-              discardAction="Discard All"
+              discardAction="Discard all"
               onDiscardAction={() => promptDiscardAll(untracked)}
               disabled={operating}
             />
@@ -1507,13 +1507,21 @@ function MultiRepoSection({
               title="Show what a pull will bring"
             />
           )}
+          {/* Without an upstream, ahead counts every commit on the branch: the
+              badge stays (it is the "unpublished" count the worktree rows lean
+              on) but says so, instead of promising a push that has nowhere to
+              go. */}
           {status.ahead > 0 && (
             <GitSyncBadge
               tone="outgoing"
               count={status.ahead}
               active={showOutgoing}
               onToggle={(e) => toggleSection(e, 'outgoing')}
-              title="Show what a push will send"
+              title={
+                status.hasUpstream
+                  ? 'Show what a push will send'
+                  : `${status.ahead} commit${status.ahead === 1 ? '' : 's'} not published anywhere yet`
+              }
             />
           )}
           {changeCount > 0 && (

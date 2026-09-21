@@ -215,10 +215,10 @@ export function CommitBar({
             className="text-xs font-medium px-2 py-1 rounded bg-green-500/15 text-green-400 hover:bg-green-500/25 disabled:opacity-40 transition-all"
             disabled={operating}
             onClick={handlePublishBranch}
-            tooltip="Publish branch to origin (git push -u)"
+            tooltip="Put this branch on the remote so it can be pushed and pulled (git push -u)"
             side="top"
           >
-            {'\u2191'} Publish Branch{ahead > 0 ? ` (${ahead})` : ''}
+            {'\u2191'} Publish{ahead > 0 ? ` (${ahead})` : ''}
           </IconButton>
         ) : (
           <>
