@@ -13,7 +13,21 @@ export type Entry =
       complete: boolean
       at: number
     }
-  | { kind: 'permission'; request: Permission; answer?: string; at: number }
+  | {
+      kind: 'permission'
+      request: Permission
+      answer?: string
+      /* The kernel left blocked while this request was still open, so the
+         adapter is no longer holding it: it abandoned the request (Claude's
+         `control_cancel_request` and the end-of-turn `result` both drop their
+         pending set, claude-adapter.ts:198-213), or another consumer of this
+         window answered it through sessionsWrite. Not another WINDOW: the
+         session IPC refuses a subscribe or a write whose window key is not the
+         session's (sessions/ipc.ts:34, :79-93). Either way the card offers no
+         click the adapter would refuse. */
+      answeredElsewhere?: boolean
+      at: number
+    }
   | { kind: 'error'; message: string; at: number }
 export interface Conversation {
   entries: Entry[]
@@ -34,7 +48,9 @@ export function reduceConversation(state: Conversation, action: Action): Convers
         ? { ...e, answer: action.optionId }
         : e
     )
-    const waiting = entries.some((e) => e.kind === 'permission' && !e.answer)
+    const waiting = entries.some(
+      (e) => e.kind === 'permission' && !e.answer && !e.answeredElsewhere
+    )
     return {
       ...state,
       entries,
@@ -43,6 +59,32 @@ export function reduceConversation(state: Conversation, action: Action): Convers
   }
   const { event } = action
   const at = action.at ?? Date.now()
+  if (event.type === 'state_change') {
+    // The kernel record is the conversation's state, never the view's own tally
+    // of what it answered. Leaving blocked means the adapter is holding no
+    // request of ours any more, whether it was answered elsewhere or abandoned,
+    // so a still-open card stops offering a click. Going back to blocked means
+    // something IS awaited again — and the view cannot tell which request, so it
+    // restores every card it had closed on the kernel's word. That is the right
+    // way round: a card wrongly closed can never be answered (codex emits
+    // working on every turn/started, approvals pending or not, and leaves an
+    // approval whose turn id is empty in its set), while a card wrongly
+    // reopened costs at worst one refused answer, which shows as an error card.
+    const marks = event.state === 'working' || event.state === 'done' || event.state === 'idle'
+    const clears = event.state === 'blocked'
+    const touches = (e: Entry): boolean =>
+      e.kind === 'permission' &&
+      !e.answer &&
+      (marks ? e.answeredElsewhere !== true : clears && e.answeredElsewhere === true)
+    if (!state.entries.some(touches)) return { ...state, state: event.state }
+    return {
+      ...state,
+      entries: state.entries.map((e) =>
+        touches(e) ? { ...e, answeredElsewhere: marks ? true : undefined } : e
+      ),
+      state: event.state
+    }
+  }
   const entries = [...state.entries]
   switch (event.type) {
     case 'user_message':
@@ -79,8 +121,6 @@ export function reduceConversation(state: Conversation, action: Action): Convers
       if (!entries.some((e) => e.kind === 'permission' && e.request.id === event.id))
         entries.push({ kind: 'permission', request: event, at })
       return { ...state, entries, state: 'blocked' }
-    case 'state_change':
-      return { ...state, state: event.state }
     case 'session_meta':
       return { ...state, model: event.model }
     case 'error':
