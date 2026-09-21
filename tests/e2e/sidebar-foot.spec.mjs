@@ -519,12 +519,15 @@ export async function run(t) {
         by: !!strip.querySelector('.wordmark-by'),
         link: !!strip.querySelector('.wordmark-link'),
         drag: getComputedStyle(strip).webkitAppRegion,
-        hasNav: !!nav
+        hasNav: !!nav,
+        // The band is a token (--content-top-offset, derived from the frame
+        // spec), so the check reads it rather than pinning a number.
+        band: (() => { const pr = document.createElement('div'); pr.style.height = 'var(--content-top-offset)'; document.body.appendChild(pr); const h = Math.round(pr.getBoundingClientRect().height); pr.remove(); return h })()
       }
     })
     t.check('the mark is still there in Settings', !!settingsStrip, settingsStrip)
     t.equal('at the same clearance', settingsStrip?.pad, '90px')
-    t.equal('in the same 50px band', settingsStrip?.h, 50)
+    t.equal('in the same band as the toolbar', settingsStrip?.h, settingsStrip?.band)
     t.check(
       'with the attribution and its link',
       !!settingsStrip?.by && !!settingsStrip?.link,

@@ -32,19 +32,25 @@ chip, tab, row and field because they all inherit it. Text buttons take
 multiples of `--control-px` (`.btn-secondary` ×1.5, `.btn-primary` ×2).
 
 A **frame** is a bordered box that groups **two or more** controls: the
-launcher, the switcher, the side panel's bars, the toolbar card. It reads
-`--frame-inset` (2px) and `--frame-border` (1px), and `--radius-xl` is derived
-from them (control corner + inset + border) so the controls inside are
-concentric by construction. **A single control is never framed**: a field alone
-is a field, not a bar around a field. Change the spec, and the whole app moves;
-add a literal, and it stops.
+launcher, the switcher, the side panel's bars, the toolbar (`.frame`). The rule
+that keeps every frame the same size: **a control is 28px free-standing and one
+size down inside a frame**, so the frame is one control tall (`--frame-h` 28px)
+with the control's corner (`--frame-radius` 6px), and what sits inside is
+`--framed-control-h` (24px) on `--framed-control-radius` (4px) with a 14px
+glyph, applied by the "── Frames ──" descendant rule so a control class never
+knows where it sits. **A single control is never framed**: a field alone is a
+field, not a bar around a field. Surfaces (menus, cards, panes) are not frames:
+they hold full-size rows and their corner, `--radius-xl`, is derived from the
+control corner plus `--surface-inset` plus the border. Change the spec, and the
+whole app moves; add a literal, and it stops.
 
 ## Boxes (panels, cards, overlays)
 
 | Surface | Class | Look |
 |---|---|---|
-| Toolbar, terminal panes, main views | `.floating-card` | radius-xl, 1px `--color-border`, `--surface-0`, **no shadow** (flat on purpose) |
-| Sidebar chrome panels (launcher, switcher, side-panel bars) | `.launcher-panel` / `.sidebar-panel` | same material at 70% surface-0 |
+| Terminal panes, main views | `.floating-card` | radius-xl, 1px `--color-border`, `--surface-0`, **no shadow** (flat on purpose) |
+| Frames: the toolbar, the launcher, the switcher, the side-panel bars | `.frame` / `.launcher-panel` / `.group-switcher-panel` / `.panel-bar` | one control tall, the control's corner, 70% surface-0; the controls inside are one size down |
+| The sidebar's foot | `.sidebar-panel` | a surface: radius-xl, same material at 70% surface-0 |
 | The side panel's Files / Git switch | `.panel-tabs` | same material and border, but one control tall: a 28px track, 24px `.panel-tab` items on `--radius-md`, held in the 34px row by its margins |
 | Menus, popovers, dropdowns, floating widgets | `.menu-surface` | radius-xl, border, surface-0, `--overlay-shadow` |
 | Document-sized floaters (file preview, diff panel, palette) | `.menu-surface menu-surface--sheet` | same, heavier `--overlay-shadow-lg` |
@@ -68,7 +74,7 @@ add a literal, and it stops.
 
 | Where it sits | Class | Size / hover |
 |---|---|---|
-| Inside a panel, bar, or floating box (side panel path bar, terminal header, message trail, git bar) | `.panel-icon-btn` | 28px (`--control-h-md`) box, 16px icon (`w-4 h-4`), hover `--surface-100`, `data-active="true"` = accent tint (toggles), `:disabled` = 0.4 |
+| Inside a panel, bar, or floating box (side panel path bar, terminal header, message trail, git bar) | `.panel-icon-btn` | 28px (`--control-h-md`) box, 16px icon (`w-4 h-4`), hover `--surface-100`, `data-active="true"` = accent tint (toggles), `:disabled` = 0.4; inside a frame the Frames rule makes it 24px with a 14px glyph |
 | The sidebar launcher row specifically | `.launcher-icon-btn` | identical look; launcher-local name |
 | The sidebar's foot panel | `.sidebar-footer-btn` (and `.sidebar-footer-line` for the row-shaped one) | identical box, but the hover fill is `--field-fill` — the user's own palette, not `--surface-100` |
 | The app toolbar and standalone spots | `.btn-icon btn-icon-md` (also `-sm`/`-xs`) | fixed square per size, hover `--surface-200`, `:disabled` = 0.4 |

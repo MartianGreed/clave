@@ -678,11 +678,11 @@ export function AppShell() {
         {/* Toolbar — its own floating card. Its row height is a token because
             the sidebar derives from it: --content-top-offset, and with it the
             launcher panel's top edge, is measured off this bar. */}
-        <div className="floating-card flex-shrink-0 !bg-surface-0/70">
+        <div className="frame flex-shrink-0">
           <div
             data-toolbar-row
             className={cn(
-              'h-[var(--toolbar-row-h)] flex items-center justify-between px-0.5 flex-shrink-0',
+              'h-[var(--toolbar-row-h)] flex items-center justify-between px-[var(--frame-inset)] flex-shrink-0',
               // With the sidebar closed the toolbar is what runs under the
               // traffic lights, so it holds their width open. Whenever they are
               // not there — macOS fullscreen, or any Windows or Linux window,

@@ -16,7 +16,12 @@
   "--font-sans",
   "--font-weight-medium",
   "--frame-border",
+  "--frame-h",
   "--frame-inset",
+  "--frame-radius",
+  "--framed-control-h",
+  "--framed-control-icon",
+  "--framed-control-radius",
   "--git-tree-row-h",
   "--panel-row-h",
   "--radius",
@@ -30,6 +35,7 @@
   "--sidebar-row-h",
   "--sidebar-row-px",
   "--sidebar-tab-icon-size",
+  "--surface-inset",
   "--toolbar-h",
   "--toolbar-row-h"
 ]

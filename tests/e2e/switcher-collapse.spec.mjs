@@ -24,8 +24,18 @@ const WS = {
   createdAt: 1
 }
 
-/** The panel's head row alone: --toolbar-h, which the panel's min-height is. */
-const HEAD_ONLY = 34
+/** The panel's head row alone: --toolbar-h, which the panel's min-height is.
+ *  Read from the token at run time (it is derived from the frame spec), never
+ *  pinned as a number. */
+const headOnly = (win) =>
+  win.evaluate(() => {
+    const pr = document.createElement('div')
+    pr.style.height = 'var(--toolbar-h)'
+    document.body.appendChild(pr)
+    const h = Math.round(pr.getBoundingClientRect().height)
+    pr.remove()
+    return h
+  })
 
 /** What the switcher measures to, and what it is showing. */
 const measure = (win) =>
@@ -76,6 +86,7 @@ export async function run(t) {
   seedTrustedRoots(DIR, [ROOT])
 
   const { app, win } = await launchApp(DIR)
+  const HEAD_ONLY = await headOnly(win)
   try {
     // ── At rest with nothing running: the head row and nothing else ──
     const rest = await measure(win)
