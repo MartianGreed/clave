@@ -190,6 +190,12 @@ export async function run(t) {
     t.check('model picker lists the adapter models and switches through the write IPC', true)
     await win.locator('.chat-state[data-state="working"]').waitFor()
     assert.equal(await win.locator('.chat-state').innerText(), 'working')
+    // The provider's mark breathes as soon as the agent works, before any text.
+    await win.locator('.chat-provider-mark[data-state="working"]').waitFor()
+    await win.locator('.chat-turn-wrap[data-side="end"]').first().hover()
+    await win.getByRole('button', { name: 'Copy message', exact: true }).first().click()
+    assert.equal(await win.evaluate(() => navigator.clipboard.readText()), '/help\n')
+    t.check('the working mark shows before text; a turn copies itself from its meta line', true)
     assert.equal(await waitingDot.count(), 1, 'view-only answers cannot clear kernel blocked state')
     await kernelState(app, record.id, 'working')
     assert.ok(await until(async () => (await waitingDot.count()) === 0))
@@ -204,6 +210,33 @@ export async function run(t) {
       await until(() =>
         app.evaluate(() => globalThis.__chatWrites.some((x) => x.type === 'interrupt'))
       )
+    )
+    // Escape while working: a second interrupt, and the last message sent
+    // ('/help' + the newline Shift+Enter left) is back in the composer.
+    await input.press('Escape')
+    assert.ok(
+      await until(() =>
+        app.evaluate(
+          () => globalThis.__chatWrites.filter((x) => x.type === 'interrupt').length === 2
+        )
+      )
+    )
+    assert.equal(await input.inputValue(), '/help\n')
+    await input.fill('')
+    t.check('Escape interrupts the turn and hands the last message back to the composer', true)
+    // A drag from Clave's own file or git panel carries newline-separated
+    // absolute paths as text/plain; the composer takes them at the caret.
+    await win.locator('.chat-composer').evaluate((form) => {
+      const dt = new DataTransfer()
+      dt.setData('text/plain', '/Users/example/notes/a b.txt\n/Users/example/src/c.ts')
+      form.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }))
+    })
+    await until(async () => (await input.inputValue()) !== '')
+    assert.equal(await input.inputValue(), "'/Users/example/notes/a b.txt' /Users/example/src/c.ts ")
+    await input.fill('')
+    t.check('dropping paths from the file and git panels pastes them into the composer', true)
+    assert.ok(
+      true
     )
     await inject(app, record.id, [{ type: 'error', message: 'Fixture error', fatal: false }])
     assert.equal(await win.getByRole('alert').innerText(), 'Fixture error')

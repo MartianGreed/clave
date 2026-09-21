@@ -119,6 +119,7 @@
      they carry the sync badges, and they are the level you scan, not the level
      you read. */
   --panel-row-h: 1.75rem; /* 28px */
+  --brand-claude: #d97757; /* Claude's mark keeps its colour in every skin */
   --row-gap: 2px;         /* the air between two filled rows — see "Row rhythm" in system.css */
 
   /* Height of a tab row in the sidebar list — a session, a file tab, a group

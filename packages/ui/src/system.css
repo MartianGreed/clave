@@ -1986,16 +1986,17 @@ button.extension-card:hover {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: calc(var(--spacing) * 4);
+  gap: calc(var(--spacing) * 5);
   width: 100%;
   max-width: var(--chat-column);
   min-height: 100%;
   margin: 0 auto;
   padding: calc(var(--spacing) * 6) calc(var(--spacing) * 6) calc(var(--spacing) * 3);
 }
+.chat-turn-wrap { position: relative; display: flex; flex-direction: column; align-self: stretch; }
+.chat-turn-wrap[data-side="end"] { align-items: flex-end; }
 .chat-turn { overflow-wrap: anywhere; }
 .chat-turn[data-role="user"] {
-  align-self: flex-end;
   max-width: 85%;
   padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3.5);
   border-radius: var(--radius-2xl);
@@ -2003,16 +2004,65 @@ button.extension-card:hover {
   white-space: pre-wrap;
 }
 .chat-turn[data-role="assistant"] { align-self: stretch; padding: 0 var(--spacing); }
-.chat-turn[data-role="assistant"][data-final="false"]::after {
-  content: "";
-  display: inline-block;
+
+/* On approach, a turn shows when it was said and a copy of it: a hover-revealed
+   line that lives in the column's gap under the message — out of the flow, so
+   a turn costs no extra height for a line nobody sees until they reach for
+   it. It is the wrap's child, so hovering it keeps the wrap hovered. The
+   column's gap is one row of meta plus the air above it, so the copy
+   button's hover fill never touches the text it copies. */
+.chat-turn-meta {
+  position: absolute;
+  top: calc(100% + var(--spacing));
+  display: flex;
+  align-items: center;
+  gap: var(--spacing);
+  height: calc(var(--spacing) * 4);
+  padding: 0 var(--spacing);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  opacity: 0;
+  transition: opacity var(--default-transition-duration);
+}
+.chat-turn-wrap[data-side="end"] .chat-turn-meta { right: 0; }
+.chat-turn-wrap[data-side="start"] .chat-turn-meta { left: 0; }
+.chat-turn-wrap:hover .chat-turn-meta, .chat-turn-meta:focus-within { opacity: 1; }
+.chat-turn-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--spacing) * 4);
+  height: calc(var(--spacing) * 4);
+  border-radius: var(--radius-control);
+  color: var(--text-tertiary);
+  transition: color var(--default-transition-duration), background-color var(--default-transition-duration);
+}
+.chat-turn-copy:hover { color: var(--text-primary); background-color: var(--surface-100); }
+.chat-turn-copy svg { width: var(--chat-glyph); height: var(--chat-glyph); }
+
+/* The provider's mark closes the transcript: it breathes while the agent
+   works, from the first moment and wherever the end currently is, and rests
+   fully opaque under the finished answer. Claude keeps its colour; the others
+   are drawn in ink. */
+.chat-provider-mark {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--spacing) * 5);
+  height: calc(var(--spacing) * 5);
+  margin: var(--spacing) 0 0 var(--spacing);
+  color: var(--text-primary);
+}
+.chat-provider-mark svg { width: calc(var(--spacing) * 4); height: calc(var(--spacing) * 4); }
+.chat-provider-mark[data-provider="claude"] { color: var(--brand-claude); }
+.chat-provider-mark[data-state="working"] { animation: chat-breathe 1.4s ease-in-out infinite; }
+@keyframes chat-breathe { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+.chat-provider-mark-dot {
   width: calc(var(--spacing) * 2);
   height: calc(var(--spacing) * 2);
-  margin-left: var(--spacing);
   border-radius: var(--radius-full);
-  background-color: var(--text-tertiary);
-  vertical-align: baseline;
-  animation: pulse-dot 1.2s ease-in-out infinite;
+  background-color: currentColor;
 }
 
 /* Markdown, as the assistant writes it */
@@ -2067,7 +2117,9 @@ button.extension-card:hover {
 .chat-prose th { color: var(--text-secondary); font-weight: var(--font-weight-medium); }
 
 /* Tool rows: one line closed, the input and result under it when opened.
-   Consecutive rows pull together so a run of tools reads as one step list. */
+   The view folds consecutive rows into .chat-tool-group, spaced by the row
+   rhythm, so a run of tools reads as one tight step list. */
+.chat-tool-group { align-self: stretch; display: flex; flex-direction: column; gap: var(--row-gap); }
 .chat-tool-card {
   align-self: stretch;
   border: thin solid var(--border-subtle-color);
@@ -2076,7 +2128,6 @@ button.extension-card:hover {
   overflow: hidden;
   font-size: var(--chat-code-size);
 }
-.chat-tool-card + .chat-tool-card { margin-top: calc(var(--spacing) * -2.5); }
 .chat-tool-card summary {
   list-style: none;
   display: flex;

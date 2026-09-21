@@ -35,6 +35,7 @@
   "--color-switch-knob": "#ffffff",
   "--color-ring": "#5e6ad2",
   "--radius-full": "9999px",
+  "--brand-claude": "#d97757",
   "--row-gap": "2px",
   "--color-status-working": "#3b82f6",
   "--color-status-ready": "#22c55e",

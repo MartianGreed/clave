@@ -6,6 +6,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { useSessionStore } from '../store/session-store'
 import { shellEscape } from '../lib/shell'
+import { pathsFromDataTransfer } from '../lib/dropped-paths'
 import { getXtermTheme } from '../lib/terminal-theme'
 import { safePort } from '../lib/utils'
 import { stripAnsi, detectLocalhostUrl } from '../lib/localhost-url'
@@ -389,47 +390,7 @@ export function useTerminal(sessionId: string) {
 
       if (!e.dataTransfer) return
 
-      let paths: string[] = []
-
-      // 1. Files from native file manager (Finder, etc.)
-      if (e.dataTransfer.files.length > 0) {
-        paths = Array.from(e.dataTransfer.files)
-          .map((f) => window.electronAPI.getPathForFile(f))
-          .filter(Boolean)
-      }
-
-      // 2. text/uri-list (VS Code, other apps)
-      if (paths.length === 0) {
-        const uriList = e.dataTransfer.getData('text/uri-list')
-        if (uriList) {
-          paths = uriList
-            .split(/\r?\n/)
-            .filter((line) => line.trim() && !line.startsWith('#'))
-            .map((uri) => {
-              try {
-                const url = new URL(uri.trim())
-                if (url.protocol === 'file:') {
-                  return decodeURIComponent(url.pathname)
-                }
-              } catch {
-                // not a valid URL
-              }
-              return ''
-            })
-            .filter(Boolean)
-        }
-      }
-
-      // 3. text/plain fallback (file paths as plain text)
-      if (paths.length === 0) {
-        const text = e.dataTransfer.getData('text/plain')
-        if (text) {
-          paths = text
-            .split(/\r?\n/)
-            .map((l) => l.trim())
-            .filter((l) => l.startsWith('/') || l.startsWith('~'))
-        }
-      }
+      const paths = pathsFromDataTransfer(e.dataTransfer)
 
       // Persist any transient sources (e.g. macOS screenshot previews that live
       // in a temp dir and get deleted before the agent reads them) into stable

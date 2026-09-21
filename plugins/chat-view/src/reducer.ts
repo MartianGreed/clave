@@ -52,7 +52,13 @@ export function reduceConversation(state: Conversation, action: Action): Convers
       const last = entries.at(-1)
       if (last?.kind === 'assistant' && !last.final)
         entries[entries.length - 1] = { ...last, text: last.text + event.delta, final: event.final }
-      else entries.push({ kind: 'assistant', text: event.delta, final: event.final, at })
+      else if (event.delta === '' && event.final) {
+        // The turn's closing frame after a tool call: it closes the last open
+        // answer and never opens an empty one of its own.
+        const open = entries.findLastIndex((e) => e.kind === 'assistant' && !e.final)
+        const answer = open >= 0 ? entries[open] : undefined
+        if (answer?.kind === 'assistant') entries[open] = { ...answer, final: true }
+      } else entries.push({ kind: 'assistant', text: event.delta, final: event.final, at })
       break
     }
     case 'tool_call':

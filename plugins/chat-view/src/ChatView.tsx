@@ -8,6 +8,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  ClipboardDocumentIcon,
   ArrowPathIcon,
   ShieldCheckIcon,
   StopIcon
@@ -20,6 +21,8 @@ import type {
 } from '../../../src/shared/session-model'
 import { emptyConversation, reduceConversation, type Entry } from './reducer'
 import { ChatCode } from './code'
+import { pathsFromDataTransfer, pathForMessage } from '../../../src/renderer/src/lib/dropped-paths'
+import { ClaudeLogo, CodexLogo, PiLogo } from '../../../src/renderer/src/components/icons/cli-logos'
 
 export interface ChatViewProps {
   session: Session
@@ -42,6 +45,61 @@ function summarize(input: unknown): string {
     if (key) return String(record[key])
   }
   return JSON.stringify(input) ?? ''
+}
+/** When a turn happened, the way a reader wants it: relative while fresh,
+ *  clock time today, the date once it is older. */
+function whenLabel(at: number, now = Date.now()): string {
+  const seconds = Math.round((now - at) / 1000)
+  if (seconds < 45) return 'just now'
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes} min ago`
+  const then = new Date(at)
+  const time = then.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const today = new Date(now)
+  if (then.toDateString() === today.toDateString()) return time
+  const yesterday = new Date(now - 86_400_000)
+  if (then.toDateString() === yesterday.toDateString()) return `yesterday ${time}`
+  return `${then.toLocaleDateString([], { day: 'numeric', month: 'short' })} ${time}`
+}
+/** The line under a turn that appears on approach: when it was said, and a copy of it. */
+function TurnMeta({ at, text }: { at: number; text: string }): React.JSX.Element {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="chat-turn-meta">
+      <span title={new Date(at).toLocaleString()}>{whenLabel(at)}</span>
+      <button
+        type="button"
+        className="chat-turn-copy"
+        aria-label="Copy message"
+        title="Copy message"
+        onClick={() => {
+          void navigator.clipboard.writeText(text).then(() => {
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1500)
+          })
+        }}
+      >
+        {copied ? <CheckIcon /> : <ClipboardDocumentIcon />}
+      </button>
+    </div>
+  )
+}
+/** The provider's mark at the end of the transcript: breathing while the agent
+ *  works (from the moment it starts, before any text), resting fully opaque
+ *  under the finished answer. */
+function ProviderMark({ provider, working }: { provider: string; working: boolean }): React.JSX.Element {
+  const Logo = provider === 'claude' ? ClaudeLogo : provider === 'codex' ? CodexLogo : provider === 'pi' ? PiLogo : null
+  return (
+    <div
+      className="chat-provider-mark"
+      data-provider={provider}
+      data-state={working ? 'working' : 'done'}
+      role="status"
+      aria-label={working ? `${provider} is working` : `${provider} finished`}
+    >
+      {Logo ? <Logo /> : <span className="chat-provider-mark-dot" />}
+    </div>
+  )
 }
 // Only keep the transcript pinned to its end while the reader is already
 // there; a reader who scrolled up to re-read is never yanked back down.
@@ -159,6 +217,8 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
   const scroll = useRef<HTMLDivElement>(null)
   const stuck = useRef(true)
   const textarea = useRef<HTMLTextAreaElement>(null)
+  // The last message sent, so Escape can hand it back to the composer.
+  const lastSent = useRef<string | null>(null)
   useEffect(() => {
     let live = true
     const stop = window.electronAPI.onSessionStream(session.id, (value) => {
@@ -199,6 +259,7 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
     stuck.current = true
     try {
       await write({ type: 'user_message', text })
+      lastSent.current = text
       setDraft((current) => (current === text ? '' : current))
     } catch (error) {
       report(error)
@@ -221,24 +282,17 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
   const renderEntry = (entry: Entry, index: number): React.JSX.Element | null => {
     if (entry.kind === 'user')
       return (
-        <article
-          key={index}
-          className="chat-turn"
-          data-role="user"
-          title={new Date(entry.at).toLocaleTimeString()}
-        >
-          {entry.text.replace(/\s+$/, '')}
-        </article>
+        <div key={index} className="chat-turn-wrap" data-side="end">
+          <article className="chat-turn" data-role="user">
+            {entry.text.replace(/\s+$/, '')}
+          </article>
+          <TurnMeta at={entry.at} text={entry.text} />
+        </div>
       )
     if (entry.kind === 'assistant')
       return (
-        <article
-          key={index}
-          className="chat-turn chat-prose"
-          data-role="assistant"
-          data-final={entry.final}
-          title={new Date(entry.at).toLocaleTimeString()}
-        >
+        <div key={index} className="chat-turn-wrap" data-side="start">
+        <article className="chat-turn chat-prose" data-role="assistant">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
@@ -262,6 +316,8 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
             {entry.text}
           </ReactMarkdown>
         </article>
+          <TurnMeta at={entry.at} text={entry.text} />
+        </div>
       )
     if (entry.kind === 'tool')
       return (
@@ -340,9 +396,58 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
       )
     return null
   }
+  // Escape while the agent works is the TUI's gesture: stop the turn and hand
+  // the message back to the composer to edit and resend, unless something
+  // new is already being typed there.
+  const takeBack = (): void => {
+    void write({ type: 'interrupt' }).catch(report)
+    const text = lastSent.current
+    if (text) setDraft((current) => (current.trim() ? current : text))
+    textarea.current?.focus()
+  }
+  // A dropped file lands as its path at the caret, the way the TUI pastes it:
+  // quoted only when needed, a space after, transient sources persisted first
+  // (a macOS screenshot preview is gone before the agent reads it).
+  const dropPaths = async (paths: string[]): Promise<void> => {
+    if (!paths.length) return
+    const stable = (
+      await Promise.all(paths.map((p) => window.electronAPI.persistDroppedFile(p)))
+    ).filter((p): p is string => Boolean(p))
+    if (!stable.length) return
+    const insert = stable.map(pathForMessage).join(' ') + ' '
+    const el = textarea.current
+    const start = el?.selectionStart ?? draft.length
+    const end = el?.selectionEnd ?? draft.length
+    setDraft((current) => current.slice(0, start) + insert + current.slice(end))
+    requestAnimationFrame(() => {
+      el?.focus()
+      el?.setSelectionRange(start + insert.length, start + insert.length)
+    })
+  }
   const closed = !ready || state === 'ended'
+  // Empty assistant turns (a closing frame that opened nothing) do not render;
+  // consecutive tool calls fold into one tight group.
+  const visible = conversation.entries.filter((e) => e.kind !== 'assistant' || e.text.trim())
+  const blocks: (Entry | Entry[])[] = []
+  for (const entry of visible) {
+    const last = blocks.at(-1)
+    if (entry.kind === 'tool' && Array.isArray(last)) last.push(entry)
+    else if (entry.kind === 'tool') blocks.push([entry])
+    else blocks.push(entry)
+  }
+  const lastVisible = visible.at(-1)
+  const showMark = state === 'working' || (!!lastVisible && lastVisible.kind !== 'user')
   return (
-    <div className="chat-view" data-testid="chat-view">
+    <div
+      className="chat-view"
+      data-testid="chat-view"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && state === 'working') {
+          event.preventDefault()
+          takeBack()
+        }
+      }}
+    >
       <div
         ref={scroll}
         className="chat-scroll"
@@ -363,7 +468,16 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
               </div>
             </div>
           )}
-          {conversation.entries.map(renderEntry)}
+          {blocks.map((block, i) =>
+            Array.isArray(block) ? (
+              <div key={`tools-${i}`} className="chat-tool-group">
+                {block.map((entry) => renderEntry(entry, conversation.entries.indexOf(entry)))}
+              </div>
+            ) : (
+              renderEntry(block, conversation.entries.indexOf(block))
+            )
+          )}
+          {showMark && <ProviderMark provider={session.provider} working={state === 'working'} />}
           {state === 'ended' && (
             <div className="chat-notice" role="status">
               Session ended
@@ -388,10 +502,7 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
           onDrop={(event) => {
             event.preventDefault()
             setDragging(false)
-            const paths = Array.from(event.dataTransfer.files)
-              .map((file) => window.electronAPI.getPathForFile(file))
-              .filter(Boolean)
-            if (paths.length) setDraft((current) => [current, ...paths].filter(Boolean).join('\n'))
+            void dropPaths(pathsFromDataTransfer(event.dataTransfer))
           }}
         >
           <textarea
@@ -433,7 +544,11 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
           )}
         </form>
         <div className="chat-composer-footer">
-          <span>Enter to send · Shift+Enter for a new line</span>
+          <span>
+            {state === 'working'
+              ? 'Esc to interrupt and take the message back'
+              : 'Enter to send · Shift+Enter for a new line'}
+          </span>
           <ModelMenu
             sessionId={session.id}
             model={conversation.model}

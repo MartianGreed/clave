@@ -1,6 +1,7 @@
 [
   "--border-color",
   "--border-subtle-color",
+  "--brand-claude",
   "--claude-toggle-active",
   "--claude-toggle-bg",
   "--claude-toggle-glow",
