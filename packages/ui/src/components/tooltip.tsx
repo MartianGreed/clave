@@ -35,11 +35,25 @@ const IconButton = React.forwardRef<
   }
 >(({ tooltip, side = 'bottom', children, ...props }, ref) => (
   <Tooltip>
-    <TooltipTrigger asChild>
-      <button ref={ref} {...props}>
-        {children}
-      </button>
-    </TooltipTrigger>
+    {/* A disabled button emits no pointer events, so a tooltip hung on it
+        never opens: the one moment a control needs to say why it is grey was
+        the one moment it could not. Radix's answer is a wrapper that does
+        receive the pointer; an inline-flex span keeps the button's box. */}
+    {props.disabled ? (
+      <TooltipTrigger asChild>
+        <span className="inline-flex" tabIndex={-1}>
+          <button ref={ref} {...props}>
+            {children}
+          </button>
+        </span>
+      </TooltipTrigger>
+    ) : (
+      <TooltipTrigger asChild>
+        <button ref={ref} {...props}>
+          {children}
+        </button>
+      </TooltipTrigger>
+    )}
     <TooltipContent side={side}>{tooltip}</TooltipContent>
   </Tooltip>
 ))

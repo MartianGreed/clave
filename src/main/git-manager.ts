@@ -3,6 +3,7 @@ import { execFile, spawn } from 'child_process'
 import * as fs from 'fs'
 import * as path from 'path'
 import { getLoginShellEnv } from './pty-manager'
+import { repoRootAsAsked } from './git-repo-root'
 import type {
   GitBatchOp,
   GitBatchPhase,
@@ -1289,7 +1290,7 @@ No quotes, no markdown, no extra formatting. Just two lines of plain text.`
 
       const [status, repoRoot] = await Promise.all([
         git.status(),
-        git.revparse(['--show-toplevel']).then((r) => r.trim())
+        git.revparse(['--show-toplevel']).then((r) => repoRootAsAsked(cwd, r.trim()))
       ])
 
       const hasUpstream = status.tracking != null && status.tracking !== ''
