@@ -1,4 +1,4 @@
-import type { Session, SessionStream, SessionInput, ModelOption } from '../shared/session-model'
+import type { Session, SessionStream, SessionInput, ModelOption, CommandOption } from '../shared/session-model'
 
 /** Additive wire contract for adapter stream consumers. Existing PTY IPC is unchanged. */
 export interface SessionIPC {
@@ -504,6 +504,7 @@ export interface ElectronAPI {
   sessionsUnsubscribe: (id: string) => Promise<void>
   sessionsWrite: (id: string, input: Uint8Array | SessionInput) => Promise<void>
   sessionsModels: (id: string) => Promise<ModelOption[]>
+  sessionsCommands: (id: string) => Promise<CommandOption[]>
   onSessionStream: (id: string, callback: (stream: SessionStream) => void) => () => void
   onSessionStreamExit: (id: string, callback: (code: number) => void) => () => void
 

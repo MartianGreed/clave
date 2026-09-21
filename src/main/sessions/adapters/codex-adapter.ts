@@ -3,7 +3,8 @@ import {
   SessionInputSchema,
   type SessionInput,
   type SessionEvent,
-  type ModelOption
+  type ModelOption,
+  type CommandOption
 } from '../../../shared/session-model'
 import type {
   SessionAdapter,
@@ -335,6 +336,30 @@ export class CodexAdapter implements SessionAdapter {
       if (!id || r.hidden === true) return []
       const hint = text(r.description)
       return [{ id, label: text(r.displayName) || id, ...(hint ? { hint } : {}) }]
+    })
+  }
+  /** The skills the app-server finds for this folder; a Codex skill is invoked
+   *  by mentioning it as $name in the message. */
+  async commands(handle: SessionHandle): Promise<CommandOption[]> {
+    const state = this.require(handle)
+    if (state.ended || state.closing) throw new Error('Codex session has ended')
+    await this.start(state)
+    if (!state.connection) throw new Error('Codex is not connected')
+    const listing = state.connection.request('skills/list', { cwds: [state.spec.cwd] })
+    const deadline = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Codex did not list its skills in time')), 5000)
+    )
+    const result = object(await Promise.race([listing, deadline]))
+    const folders = Array.isArray(result.data) ? result.data : []
+    return folders.flatMap((folder) => {
+      const skills = object(folder).skills
+      return (Array.isArray(skills) ? skills : []).flatMap((row) => {
+        const r = object(row)
+        const name = text(r.name)
+        if (!name || r.enabled === false) return []
+        const description = text(r.shortDescription) || text(r.description)
+        return [{ name, insert: `$${name} `, ...(description ? { description } : {}) }]
+      })
     })
   }
   private async sendTurn(state: HandleState, message: string): Promise<void> {

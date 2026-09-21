@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
@@ -17,7 +17,8 @@ import type {
   Session,
   SessionInput,
   AgentState,
-  ModelOption
+  ModelOption,
+  CommandOption
 } from '../../../src/shared/session-model'
 import { emptyConversation, reduceConversation, type Entry } from './reducer'
 import { ChatCode } from './code'
@@ -98,6 +99,98 @@ function ProviderMark({ provider, working }: { provider: string; working: boolea
       aria-label={working ? `${provider} is working` : `${provider} finished`}
     >
       {Logo ? <Logo /> : <span className="chat-provider-mark-dot" />}
+    </div>
+  )
+}
+/** The "/" the composer opens on: the draft is a single line starting with a
+ *  slash and no space yet — the moment a command is being named. */
+const slashQuery = (draft: string): string | null => {
+  const m = /^\/([\w:-]*)$/.exec(draft)
+  return m ? m[1] : null
+}
+/** The commands a session offers, listed above the composer while a "/" is
+ *  being typed; filtered by what follows the slash, walked with the arrows,
+ *  taken with Tab or Enter. */
+function SlashMenu({
+  sessionId,
+  query,
+  onPick,
+  onClose,
+  bind
+}: {
+  sessionId: string
+  query: string
+  onPick: (command: CommandOption) => void
+  onClose: () => void
+  bind: (handler: ((event: React.KeyboardEvent) => boolean) | null) => void
+}): React.JSX.Element {
+  const [commands, setCommands] = useState<CommandOption[] | null>(null)
+  const [failure, setFailure] = useState<string | null>(null)
+  const [active, setActive] = useState(0)
+  useEffect(() => {
+    let live = true
+    Promise.resolve()
+      .then(() => window.electronAPI.sessionsCommands(sessionId))
+      .then((list) => {
+        if (live) setCommands(list)
+      })
+      .catch((error) => {
+        if (live) setFailure(String(error))
+      })
+    return () => {
+      live = false
+    }
+  }, [sessionId])
+  const q = query.toLowerCase()
+  const shown = (commands ?? []).filter((c) => c.name.toLowerCase().includes(q))
+  const index = Math.min(active, Math.max(shown.length - 1, 0))
+  // The composer's textarea keeps the focus; it hands its arrow, Tab, Enter
+  // and Escape keys here while the menu is open.
+  useEffect(() => {
+    bind((event) => {
+      // A modified key is the composer's (Shift+Enter is a newline), never the menu's.
+      if (event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return false
+      if (event.key === 'ArrowDown') setActive((i) => (i + 1) % Math.max(shown.length, 1))
+      else if (event.key === 'ArrowUp')
+        setActive((i) => (i - 1 + Math.max(shown.length, 1)) % Math.max(shown.length, 1))
+      else if ((event.key === 'Enter' || event.key === 'Tab') && shown[index]) onPick(shown[index])
+      else if (event.key === 'Escape') onClose()
+      else return false
+      return true
+    })
+    return () => bind(null)
+  }, [bind, shown, index, onPick, onClose])
+  return (
+    <div className="menu-surface menu-pop-mount chat-slash-menu" role="listbox" aria-label="Commands">
+      <div className="menu-label">Commands</div>
+      {commands === null && !failure && <div className="chat-model-empty">Loading…</div>}
+      {failure && <div className="chat-model-empty">Commands unavailable</div>}
+      {commands?.length === 0 && (
+        <div className="chat-model-empty">Commands load after the first message</div>
+      )}
+      {commands && commands.length > 0 && shown.length === 0 && (
+        <div className="chat-model-empty">No command matches “/{query}”</div>
+      )}
+      <div className="chat-slash-list">
+        {shown.map((command, i) => (
+          <button
+            key={command.name}
+            type="button"
+            role="option"
+            aria-selected={i === index}
+            className="menu-item chat-slash-option"
+            data-selected={i === index ? 'true' : undefined}
+            onMouseEnter={() => setActive(i)}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onPick(command)}
+          >
+            <span className="chat-slash-name">/{command.name}</span>
+            {command.description && (
+              <span className="chat-slash-hint">{command.description}</span>
+            )}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
@@ -219,6 +312,15 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
   const textarea = useRef<HTMLTextAreaElement>(null)
   // The last message sent, so Escape can hand it back to the composer.
   const lastSent = useRef<string | null>(null)
+  // The slash menu's key handler while it is open; the textarea defers to it.
+  const slashKeys = useRef<((event: React.KeyboardEvent) => boolean) | null>(null)
+  const bindSlashKeys = useCallback(
+    (handler: ((event: React.KeyboardEvent) => boolean) | null): void => {
+      slashKeys.current = handler
+    },
+    []
+  )
+  const [slashDismissed, setSlashDismissed] = useState<string | null>(null)
   useEffect(() => {
     let live = true
     const stop = window.electronAPI.onSessionStream(session.id, (value) => {
@@ -425,6 +527,14 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
     })
   }
   const closed = !ready || state === 'ended'
+  const query = closed ? null : slashQuery(draft)
+  const slashOpen = query !== null && slashDismissed !== draft
+  const pickCommand = useCallback((command: CommandOption): void => {
+    setDraft(command.insert)
+    setSlashDismissed(command.insert)
+    textarea.current?.focus()
+  }, [])
+  const closeSlash = useCallback((): void => setSlashDismissed(draft), [draft])
   // Empty assistant turns (a closing frame that opened nothing) do not render;
   // consecutive tool calls fold into one tight group.
   const visible = conversation.entries.filter((e) => e.kind !== 'assistant' || e.text.trim())
@@ -487,6 +597,17 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
         </div>
       </div>
       <div className="chat-composer-wrap">
+        {slashOpen && (
+          <div className="chat-slash-anchor">
+            <SlashMenu
+              sessionId={session.id}
+              query={query}
+              onPick={pickCommand}
+              onClose={closeSlash}
+              bind={bindSlashKeys}
+            />
+          </div>
+        )}
         <form
           className="chat-composer"
           data-dragging={dragging}
@@ -514,6 +635,11 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
             disabled={closed}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
+              if (slashOpen && slashKeys.current?.(event)) {
+                event.preventDefault()
+                event.stopPropagation()
+                return
+              }
               if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault()
                 void send()

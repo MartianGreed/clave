@@ -43,6 +43,15 @@ export const ModelOptionSchema = z.object({
   hint: z.string().optional()
 })
 export type ModelOption = z.infer<typeof ModelOptionSchema>
+/** One command the composer can offer under "/": the provider says what it is
+ *  called, what it does, and the exact text that invokes it (Claude's "/name",
+ *  Codex's "$name" skill mention). */
+export const CommandOptionSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  insert: z.string()
+})
+export type CommandOption = z.infer<typeof CommandOptionSchema>
 export type SessionInput = z.infer<typeof SessionInputSchema>
 export const SessionEventSchema = z.discriminatedUnion('type', [
   UserMessageSchema,

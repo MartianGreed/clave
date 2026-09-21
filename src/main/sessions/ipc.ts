@@ -87,4 +87,11 @@ export function registerSessionIpc(): void {
       throw new Error('Session belongs to another window')
     return sessionManager.models(id)
   })
+  ipcMain.handle('sessions:commands', (event, id: string) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const key = win && windowRegistry.getKeyForWindow(win.id)
+    if (!key || sessionManager.get(id)?.windowKey !== key)
+      throw new Error('Session belongs to another window')
+    return sessionManager.commands(id)
+  })
 }

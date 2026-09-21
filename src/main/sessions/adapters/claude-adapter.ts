@@ -6,7 +6,8 @@ import {
   SessionInputSchema,
   type SessionInput,
   type SessionEvent,
-  type ModelOption
+  type ModelOption,
+  type CommandOption
 } from '../../../shared/session-model'
 import { buildAgentArgv } from '../../../shared/agent-launch'
 import type {
@@ -44,8 +45,18 @@ const optionsSchema = z.object({
 type Permission = { input: unknown; suggestions: unknown[] }
 
 /** One translator per process: partial messages and completed snapshots overlap. */
+/** The CLI only names its commands in the init frame, which only follows the
+ *  first message; a session that has not spoken yet is served the last list a
+ *  session in the same folder received (the built-ins plus the skills found
+ *  there), else the last list seen anywhere. */
+const lastCommandsByCwd = new Map<string, string[]>()
+let lastCommandsAnywhere: string[] = []
+const toCommands = (names: string[]): CommandOption[] =>
+  names.map((name) => ({ name, insert: `/${name} ` }))
 export class ClaudeStreamTranslator {
   readonly permissions = new Map<string, Permission>()
+  /** The slash commands (skills included) the CLI named at init. */
+  commands: string[] | null = null
   /** request_id → the model a set_model control request asked for. */
   readonly modelRequests = new Map<string, string | null>()
   private streamed = false
@@ -85,6 +96,8 @@ export class ClaudeStreamTranslator {
     const fallback = (): void =>
       this.emit({ type: 'provider_event', provider: 'claude', payload: p })
     if (p.type === 'system' && p.subtype === 'init') {
+      const names = z.array(z.string()).safeParse(p.slash_commands)
+      if (names.success) this.commands = names.data
       this.emit({
         type: 'session_meta',
         model: typeof p.model === 'string' ? p.model : null,
@@ -267,6 +280,7 @@ export class ClaudeAdapter implements SessionAdapter {
   readonly transports = ['events'] as const
   private handles = new Map<string, Live>()
   private contexts = new Map<string, PtySpawnOptions>()
+  private cwds = new Map<string, string>()
   /** Main-only launch/account context; never part of the Session record or wire. */
   configure(id: string, context: PtySpawnOptions): void {
     this.contexts.set(id, context)
@@ -278,6 +292,7 @@ export class ClaudeAdapter implements SessionAdapter {
     const options = optionsSchema.parse(spec.options ?? {})
     const context = this.contexts.get(spec.id) ?? {}
     this.contexts.delete(spec.id)
+    this.cwds.set(spec.id, spec.cwd)
     const sessionId = options.resume ?? context.claudeSessionId ?? randomUUID()
     if (!isValidClaudeSessionId(sessionId)) throw new Error('Invalid Claude session id')
     if (options.model && !isValidModelName(options.model)) throw new Error('Invalid model name')
@@ -290,6 +305,10 @@ export class ClaudeAdapter implements SessionAdapter {
     const emit = (event: SessionEvent): void => {
       if (event.type === 'session_meta') {
         live.initialized = true
+        if (live.translator.commands) {
+          lastCommandsByCwd.set(spec.cwd, live.translator.commands)
+          lastCommandsAnywhere = live.translator.commands
+        }
         if (event.providerSessionId && event.providerSessionId !== sessionId)
           emit({
             type: 'error',
@@ -477,6 +496,13 @@ export class ClaudeAdapter implements SessionAdapter {
       })
     } else
       send({ type: 'control_request', request_id: randomUUID(), request: { subtype: 'interrupt' } })
+  }
+  async commands(handle: SessionHandle): Promise<CommandOption[]> {
+    const live = this.live(handle)
+    const cwd = this.cwds.get(handle.id) ?? ''
+    return toCommands(
+      live.translator.commands ?? lastCommandsByCwd.get(cwd) ?? lastCommandsAnywhere
+    )
   }
   /** The CLI has no model listing; this is the current family, full ids the CLI accepts. */
   async models(): Promise<ModelOption[]> {

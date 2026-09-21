@@ -235,6 +235,27 @@ export async function run(t) {
     assert.equal(await input.inputValue(), "'/Users/example/notes/a b.txt' /Users/example/src/c.ts ")
     await input.fill('')
     t.check('dropping paths from the file and git panels pastes them into the composer', true)
+    const sentBefore = await app.evaluate(
+      () => globalThis.__chatWrites.filter((x) => x.type === 'user_message').length
+    )
+    await input.fill('/')
+    await win.getByRole('option', { name: /\/help/ }).waitFor()
+    assert.equal(await win.getByRole('option').count(), 2)
+    await input.type('sh')
+    await win.getByRole('option', { name: /\/shout/ }).waitFor()
+    assert.equal(await win.getByRole('option').count(), 1)
+    await input.press('Enter')
+    assert.equal(await input.inputValue(), '/shout ')
+    assert.equal(await win.getByRole('option').count(), 0)
+    assert.equal(
+      await app.evaluate(
+        () => globalThis.__chatWrites.filter((x) => x.type === 'user_message').length
+      ),
+      sentBefore,
+      'completing a command never sends the message'
+    )
+    await input.fill('')
+    t.check('a slash lists the session commands, filters as typed, completes on Enter', true)
     assert.ok(
       true
     )

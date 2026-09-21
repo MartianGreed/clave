@@ -4,7 +4,8 @@ import {
   type Session,
   type SessionStream,
   type SessionInput,
-  type ModelOption
+  type ModelOption,
+  type CommandOption
 } from '../../shared/session-model'
 import type { SessionAdapter, SessionHandle, SpawnSpec, Unsubscribe } from './adapter'
 
@@ -146,6 +147,10 @@ export class SessionManager {
   async models(id: string): Promise<ModelOption[]> {
     const entry = this.require(id)
     return entry.adapter.models ? entry.adapter.models(entry.handle) : []
+  }
+  async commands(id: string): Promise<CommandOption[]> {
+    const entry = this.require(id)
+    return entry.adapter.commands ? entry.adapter.commands(entry.handle) : []
   }
 
   resize(id: string, cols: number, rows: number): void {

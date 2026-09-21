@@ -1,4 +1,4 @@
-import type { Session, SessionStream, SessionInput, ModelOption } from '../shared/session-model'
+import type { Session, SessionStream, SessionInput, ModelOption, CommandOption } from '../shared/session-model'
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { UpdaterState } from '../shared/updater-types'
 import type { LaunchProfile, LauncherFamily } from '../shared/agent-launch'
@@ -45,6 +45,8 @@ const electronAPI = {
   sessionsWrite: (id: string, input: Uint8Array | SessionInput): Promise<void> =>
     ipcRenderer.invoke('sessions:write', id, input),
   sessionsModels: (id: string): Promise<ModelOption[]> => ipcRenderer.invoke('sessions:models', id),
+  sessionsCommands: (id: string): Promise<CommandOption[]> =>
+    ipcRenderer.invoke('sessions:commands', id),
   onSessionStream: (id: string, callback: (stream: SessionStream) => void) =>
     createIpcListener(`sessions:stream:${id}`, callback),
   onSessionStreamExit: (id: string, callback: (code: number) => void) =>

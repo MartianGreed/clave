@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events'
 import {
   SessionInputSchema,
+  type CommandOption,
   type ModelOption,
   type SessionInput
 } from '../../../shared/session-model'
@@ -15,6 +16,11 @@ import type {
 const ECHO_MODELS: ModelOption[] = [
   { id: 'echo-1', label: 'Echo 1', hint: 'Repeats what you say' },
   { id: 'echo-2', label: 'Echo 2', hint: 'Repeats it again' }
+]
+
+const ECHO_COMMANDS: CommandOption[] = [
+  { name: 'help', description: 'Show what echo can do', insert: '/help ' },
+  { name: 'shout', description: 'Echo it in capitals', insert: '/shout ' }
 ]
 
 /** Deterministic, opt-in fixture for developing event-stream consumers. */
@@ -45,6 +51,10 @@ export class EchoAdapter implements SessionAdapter {
       kind: 'event',
       event: { type: 'session_meta', model: ECHO_MODELS[0].id, providerSessionId: null }
     })
+  }
+
+  async commands(): Promise<CommandOption[]> {
+    return ECHO_COMMANDS
   }
 
   /** A fixed menu, so the model picker can be exercised without a provider. */
