@@ -810,18 +810,15 @@ body,
   color: var(--text-tertiary);
 }
 
-/* The tab row at the head of the side panel — Files | Git. Two .panel-tab
-   chips, centred, and no box: it used to be a .panel-bar hugged to the pair,
-   and a 34px frame around 124px of buttons read as a pill rather than a
-   switch. The selected tab's fill says which, the way a popover row does. The
-   row keeps the bar's height so the panel's top edge still lines up with the
-   toolbar band across the window. */
-.panel-tabs {
-  display: flex;
-  align-items: center;
+/* The tab bar holds one control and nothing else — Files | Git — so the BAR
+   hugs it and centres itself, rather than running the panel's full width with
+   its contents floated into the middle. A full-width box around two buttons
+   reads as a row whose other half went missing; a box the width of the choice
+   reads as the choice. Only bars holding a single cluster take this: the moment
+   a bar has a trailing group, the label group is what places it. */
+.panel-bar--hug {
   align-self: center;
-  gap: 2px;
-  height: var(--toolbar-h);
+  flex-wrap: nowrap;
 }
 
 /* Opting a bar out of wrapping, for the path bar: it is a line of text with a

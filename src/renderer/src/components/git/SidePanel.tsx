@@ -392,12 +392,11 @@ function SidePanelBody(): React.JSX.Element {
             two belong to WHERE the panel is pointed, which is the row below, and
             help was a button in the panel's corner for a panel that is not
             about help — ⌘? still opens it. What is left is the one choice this
-            row was ever for: two tabs, centred, with no box around them. The
-            bordered bar they used to sit in was the launcher's recipe hugged to
-            124px, and at that width a 34px frame reads as a pill, not a
-            switch; the selected tab's fill is the whole statement. */}
+            row was ever for, so the bar is the width of that choice and sits
+            centred, rather than a full-width box with two buttons adrift in
+            it. */}
         <div
-          className="panel-tabs"
+          className="panel-bar panel-bar--hug"
           data-panel-bar="tabs"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
