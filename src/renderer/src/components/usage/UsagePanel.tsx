@@ -15,6 +15,7 @@ import {
 } from '../../store/claude-profile-store'
 import { ClaudeLogo, CodexLogo, AntigravityLogo, PiLogo } from '../icons/cli-logos'
 import { ClaudeAccountsSection } from '../settings/ClaudeAccountsSection'
+import { SettingsCallout, SettingsRow } from '../settings/primitives'
 
 type Tool = 'claude' | 'codex' | 'antigravity' | 'pi'
 
@@ -112,7 +113,7 @@ function QuotaWindows({
         <button
           onClick={() => load({ force: true })}
           disabled={loading}
-          className="btn-icon btn-icon-md"
+          className="btn-icon btn-icon-sm"
           title="Refresh usage"
           aria-label="Refresh usage"
         >
@@ -169,10 +170,8 @@ function ClaudeAccountUsage({ account }: { account: ClaudeProfile }): ReactEleme
         resource={claudeUsageStore(account.id)}
         title={
           <div className="flex items-center gap-2 min-w-0">
-            <span className="text-control font-medium text-text-primary truncate">
-              {account.label}
-            </span>
-            <span className="badge bg-surface-200 text-text-tertiary flex-shrink-0">
+            <span className="settings-row-title truncate">{account.label}</span>
+            <span className="badge badge-muted flex-shrink-0">
               {describeClaudeProfileAuth(account)}
             </span>
           </div>
@@ -219,8 +218,8 @@ function PiUsage(): ReactElement {
   }, [load])
   const number = (value: number): string => new Intl.NumberFormat().format(value)
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+    <>
+      <div className="settings-row">
         <div className="segmented">
           {(
             [
@@ -241,7 +240,7 @@ function PiUsage(): ReactElement {
           ))}
         </div>
         <button
-          className="btn-icon btn-icon-md"
+          className="btn-icon btn-icon-sm"
           title="Refresh usage"
           aria-label="Refresh usage"
           disabled={refreshing}
@@ -251,38 +250,38 @@ function PiUsage(): ReactElement {
         </button>
       </div>
       {status === 'error' ? (
-        <div className="space-y-3">
-          <p className="text-control text-text-tertiary">{error}</p>
-          <button className="btn-secondary" onClick={() => load({ force: true })}>
-            Retry
-          </button>
-        </div>
+        <SettingsCallout
+          inset
+          tone="danger"
+          text={error}
+          actions={
+            <button className="btn-secondary" onClick={() => load({ force: true })}>
+              Retry
+            </button>
+          }
+        />
       ) : !totals ? (
-        <span className="text-control text-text-tertiary">Reading local Pi sessions…</span>
+        <SettingsRow label="Reading local Pi sessions…" />
       ) : (
         <>
-          <p className="text-xs text-text-tertiary">
-            Local session totals, not account quota. {totals.sessions} session
-            {totals.sessions === 1 ? '' : 's'}.
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              ['Input', number(totals.input)],
-              ['Output', number(totals.output)],
-              ['Cache read', number(totals.cacheRead)],
-              ['Cache write', number(totals.cacheWrite)],
-              ['Total tokens', number(totals.totalTokens)],
-              ['Recorded cost', `$${totals.cost.toFixed(4)}`]
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-lg bg-surface-100 px-3 py-2.5">
-                <div className="text-xs text-text-tertiary">{label}</div>
-                <div className="text-control tabular-nums text-text-primary">{value}</div>
-              </div>
-            ))}
-          </div>
+          <SettingsRow label="Sessions" description="Local session totals, not account quota.">
+            <span className="settings-row-value">{number(totals.sessions)}</span>
+          </SettingsRow>
+          {[
+            ['Input', number(totals.input)],
+            ['Output', number(totals.output)],
+            ['Cache read', number(totals.cacheRead)],
+            ['Cache write', number(totals.cacheWrite)],
+            ['Total tokens', number(totals.totalTokens)],
+            ['Recorded cost', `$${totals.cost.toFixed(4)}`]
+          ].map(([label, value]) => (
+            <SettingsRow key={label} label={label}>
+              <span className="settings-row-value">{value}</span>
+            </SettingsRow>
+          ))}
         </>
       )}
-    </div>
+    </>
   )
 }
 
@@ -298,11 +297,14 @@ export function UsagePanel(): ReactElement {
         <ClaudeUsage />
       ) : (
         <div className="settings-card">
-          <div className="px-3.5 py-3">
-            {tool === 'codex' && <CodexUsage />}
-            {tool === 'antigravity' && <ComingSoon label="Antigravity" />}
-            {tool === 'pi' && <PiUsage />}
-          </div>
+          {tool === 'pi' ? (
+            <PiUsage />
+          ) : (
+            <div className="px-3.5 py-3">
+              {tool === 'codex' && <CodexUsage />}
+              {tool === 'antigravity' && <ComingSoon label="Antigravity" />}
+            </div>
+          )}
         </div>
       )}
     </div>

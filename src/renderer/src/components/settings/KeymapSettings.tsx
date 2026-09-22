@@ -21,7 +21,7 @@ import {
   type ResolvedKeymapConfig
 } from '../../../../shared/keymaps'
 import { saveKeymapOverrides, useKeymapStore } from '../../store/keymap-store'
-import { SettingsCard, SettingsPage, SettingsSection } from './primitives'
+import { SettingsCallout, SettingsCard, SettingsPage, SettingsSection } from './primitives'
 
 type EditorMode = 'actions' | 'json'
 
@@ -245,7 +245,7 @@ export function KeymapSettings(): React.JSX.Element {
   return (
     <SettingsPage
       title="Keymaps"
-      description="Changes stay in this draft until Save. Each action accepts at most two bindings."
+      description="Changes stay in this draft until you save. Up to two bindings per action."
       actions={
         <>
           <button onClick={() => void importJson()} className="btn-secondary">
@@ -259,17 +259,17 @@ export function KeymapSettings(): React.JSX.Element {
     >
       <SettingsSection
         title="Command mode"
-        description={`Press the master key, then a command sequence. Each next key has ${KEYMAP_SEQUENCE_TIMEOUT_MS}ms to match.`}
+        description={`The master key opens a sequence: press it, then the command's keys, each within ${KEYMAP_SEQUENCE_TIMEOUT_MS}ms.`}
       >
         <SettingsCard>
           <div className="settings-row">
             <div>
               <p className="settings-row-title">Master key</p>
               <p className="settings-row-description">
-                Unset it to disable command mode without changing direct shortcuts.
+                Unset it to turn command mode off. Direct shortcuts keep working.
               </p>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="settings-row-controls">
               <button
                 data-keymap-recorder
                 data-recording="master"
@@ -371,7 +371,7 @@ export function KeymapSettings(): React.JSX.Element {
                             title="Remove binding"
                             aria-label={`Remove binding for ${action.label}`}
                           >
-                            <TrashIcon className="w-3 h-3" />
+                            <TrashIcon className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       )
@@ -428,13 +428,15 @@ export function KeymapSettings(): React.JSX.Element {
       </SettingsSection>
 
       {(loadError || errors.length > 0) && (
-        <div className="keymap-message" data-tone="error">
+        <SettingsCallout tone="danger" role="alert">
           {(errors.length > 0 ? errors : [loadError]).map((error) => (
-            <p key={error}>{error}</p>
+            <p key={error} className="settings-callout-text whitespace-pre-wrap">
+              {error}
+            </p>
           ))}
-        </div>
+        </SettingsCallout>
       )}
-      {notice && <div className="keymap-message">{notice}</div>}
+      {notice && <SettingsCallout text={notice} role="status" />}
 
       <div className="flex items-center justify-between gap-3">
         <button

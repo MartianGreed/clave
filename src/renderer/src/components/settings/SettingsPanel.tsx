@@ -1,6 +1,6 @@
 import { PluginsTab } from './PluginsTab'
 import { useSkinStore, skinAction } from '../../lib/skin'
-import { useState, useRef, useEffect, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import {
   TREE_RULE_INTENSITIES,
   DENSITY_LEVELS,
@@ -42,9 +42,9 @@ import {
   SettingsRow,
   SettingsSelect,
   SettingsCallout,
-  ToggleRow
+  ToggleRow,
+  Radio
 } from './primitives'
-import { cn } from '@clave/ui/components'
 import { KeymapSettings } from './KeymapSettings'
 import { AgentsSettings } from './AgentsSettings'
 
@@ -65,19 +65,19 @@ function ProfileSection(): React.JSX.Element {
   const setAvatarIcon = useUserStore((s) => s.setAvatarIcon)
   const setAvatarField = useUserStore((s) => s.setAvatarField)
   const reseedAvatar = useUserStore((s) => s.reseedAvatar)
-  const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState(name)
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  const handleStartEdit = (): void => {
+  // Follow a rename made elsewhere (another window): derive during render,
+  // the React-sanctioned shape, rather than a setState inside an effect.
+  const [syncedName, setSyncedName] = useState(name)
+  if (syncedName !== name) {
+    setSyncedName(name)
     setEditName(name)
-    setEditing(true)
-    setTimeout(() => inputRef.current?.focus(), 0)
   }
 
+  // Commit on blur or Enter; an empty field falls back to the saved name.
   const handleSave = (): void => {
     if (editName.trim()) setName(editName.trim())
-    setEditing(false)
+    else setEditName(name)
   }
 
   return (
@@ -87,25 +87,20 @@ function ProfileSection(): React.JSX.Element {
     >
       <SettingsCard>
         <SettingsRow label="Name" description="Shown at the foot of the sidebar and to the agents.">
-          {editing ? (
-            <input
-              ref={inputRef}
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              onBlur={handleSave}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSave()
-                if (e.key === 'Escape') setEditing(false)
-              }}
-              className="input-compact w-48"
-              aria-label="Your name"
-            />
-          ) : (
-            <button onClick={handleStartEdit} className="btn-secondary" title="Edit your name">
-              {name}
-              <PencilIcon className="w-3.5 h-3.5 text-text-tertiary" />
-            </button>
-          )}
+          <input
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onBlur={handleSave}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              if (e.key === 'Escape') {
+                setEditName(name)
+                ;(e.target as HTMLInputElement).blur()
+              }
+            }}
+            className="input-compact w-48"
+            aria-label="Your name"
+          />
         </SettingsRow>
 
         {/* Twelve of each, laid out as two rows of six rather than left to
@@ -290,9 +285,7 @@ function AppearanceSettings(): React.JSX.Element {
             ))}
         </SettingsCard>
         {(error || errors.length > 0) && (
-          <div role="alert" className="settings-callout" data-tone="danger">
-            {error || errors.join('; ')}
-          </div>
+          <SettingsCallout role="alert" tone="danger" text={error || errors.join('; ')} />
         )}
       </SettingsSection>
 
@@ -333,14 +326,11 @@ function DensitySection(): React.JSX.Element {
   return (
     <SettingsSection
       title="Density"
-      description="How tight the app's controls, bars and rows are drawn. Applies everywhere at once, and to this page as you move it."
+      description="How tight every control, bar and row is drawn, this page included."
     >
       <SettingsCard>
-        <SettingsRow
-          label="Scale"
-          description="The middle stop is the app's default. Left and right arrows step through the stops."
-        >
-          <span className="text-text-secondary" data-testid="density-value">
+        <SettingsRow label="Scale" description="Regular is the default.">
+          <span className="settings-row-value" data-testid="density-value">
             {level.label}
           </span>
         </SettingsRow>
@@ -394,7 +384,7 @@ function TreeSeparatorsSection(): React.JSX.Element {
   return (
     <SettingsSection
       title="Tree separators"
-      description="The hairlines between rows in the Files tab and in the git panel, the repo tree and the changed files inside it. Off draws none of them."
+      description="The hairlines between rows in the Files tab and the git panel."
     >
       <SettingsCard>
         <SettingsRow label="Weight" description="Applies to every tree in the app at once.">
@@ -468,8 +458,8 @@ function SessionsSection(): React.JSX.Element {
           label="Persistent sessions (tmux)"
           description={
             unavailable
-              ? 'Install tmux (e.g. `brew install tmux`) to enable. New sessions then keep running after you quit Clave and reattach on next launch.'
-              : 'Run new sessions inside tmux so agents keep running after you quit Clave, survive crashes, and reattach on next launch. Also reachable from any terminal via `tmux -L clave attach`.'
+              ? 'Needs tmux (brew install tmux). Sessions then survive quitting Clave and reattach on the next launch.'
+              : 'Sessions keep running after you quit Clave and reattach on the next launch. Reachable from any terminal with tmux -L clave attach.'
           }
           checked={tmuxMode && !unavailable}
           onChange={setTmuxMode}
@@ -555,7 +545,7 @@ function SidePanelSection(): ReactNode {
       <SettingsCard>
         <SettingsRow
           label="Default root"
-          description="Which folder the Files and Git panels open a tab on. A tab with nothing on the chosen root falls to the next one down, a tab outside any group opens on its own folder, and the panel's root chip still overrides it per tab."
+          description="Where the Files and Git panels open for a new tab. The panel's root chip still changes it per tab."
         >
           <div className="segmented">
             {PANEL_ROOTS.map(({ id, label }) => (
@@ -599,13 +589,13 @@ function GitSection(): React.JSX.Element {
       <SettingsCard>
         <ToggleRow
           label="Always keep live updates on"
-          description="Never pause auto-refresh, regardless of how many repositories a folder contains. May be heavy on very large folders (e.g. opening '/')."
+          description="Never pause auto-refresh, however many repositories a folder holds. Heavy on very large folders."
           checked={livePollAlways}
           onChange={setLivePollAlways}
         />
         <SettingsRow
           label="Pause live updates above"
-          description="When a folder has more repositories than this, the git panel stops auto-polling and refreshes on demand (and when an agent finishes or the window regains focus)."
+          description="Past this many repositories the git panel refreshes on demand instead of polling."
           disabled={livePollAlways}
         >
           <input
@@ -621,7 +611,7 @@ function GitSection(): React.JSX.Element {
             className="input-compact w-16 text-right"
             aria-label="Repositories above which live updates pause"
           />
-          <span className="text-xs text-text-tertiary">repos</span>
+          <span className="settings-row-value">repos</span>
         </SettingsRow>
       </SettingsCard>
     </SettingsSection>
@@ -637,7 +627,7 @@ function SidebarWidgetsSection(): React.JSX.Element {
       <SettingsCard>
         <ToggleRow
           label="Work Tracker"
-          description="Track daily work time, break reminders, and weekly trends"
+          description="Daily work time, break reminders and weekly trends in the sidebar."
           checked={workTrackerEnabled}
           onChange={setWorkTrackerEnabled}
         />
@@ -744,237 +734,251 @@ function WorkspacesSection(): React.JSX.Element {
   const removalWs = confirmRemoveId ? workspaces.find((w) => w.id === confirmRemoveId) : null
 
   return (
+    <>
+      <SettingsSection
+        title="Workspaces"
+        description={
+          <>
+            A root folder with its own sessions, groups, pinned templates and toolbar, each read
+            from one <code className="text-text-primary">.clave</code> profile file.
+          </>
+        }
+      >
+        <SettingsCard>
+          {workspaces.map((ws) => {
+            const isActive = ws.id === activeWorkspaceId
+            const candidates = profileCandidates[ws.id] ?? []
+            const missing = profileMissing[ws.id] === true
+            const orphanProfile =
+              ws.profileFile && !candidates.some((c) => c.path === ws.profileFile)
+            const profileOptions = [
+              ...(orphanProfile
+                ? [
+                    {
+                      value: ws.profileFile!,
+                      label: `${ws.profileFile!.split('/').pop()?.replace('.clave', '')} (missing)`
+                    }
+                  ]
+                : []),
+              ...candidates.map((c) => ({ value: c.path, label: c.name })),
+              { value: NO_PROFILE, label: 'No profile' }
+            ]
+            return (
+              <div key={ws.id} className="settings-row" data-workspace-row={ws.id}>
+                <div
+                  className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                  onClick={() => {
+                    if (!isActive) void setActiveWorkspace(ws.id)
+                  }}
+                  title={isActive ? 'Active workspace' : 'Switch to this workspace'}
+                >
+                  <FolderIcon className="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+                  <div className="flex-1 min-w-0">
+                    {renamingId === ws.id ? (
+                      <input
+                        autoFocus
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onBlur={commitRename}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') commitRename()
+                          if (e.key === 'Escape') setRenamingId(null)
+                        }}
+                        className="input-compact w-40"
+                        aria-label="Workspace name"
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2 min-w-0">
+                        <p className="settings-row-title truncate">{ws.name}</p>
+                        {isActive && <span className="badge badge-muted">Active</span>}
+                      </div>
+                    )}
+                    <p className="settings-row-description truncate" title={ws.rootDir}>
+                      {ws.rootDir}
+                    </p>
+                  </div>
+                </div>
+                <div className="settings-row-controls">
+                  {missing && (
+                    <span title="The selected profile file no longer exists — pins are frozen at their last state.">
+                      <ExclamationTriangleIcon className="w-3.5 h-3.5 text-warning" />
+                    </span>
+                  )}
+                  <SettingsSelect
+                    value={ws.profileFile ?? NO_PROFILE}
+                    options={profileOptions}
+                    onChange={(value) =>
+                      void setWorkspaceProfile(ws.id, value === NO_PROFILE ? null : value)
+                    }
+                    ariaLabel={`Profile file for ${ws.name}`}
+                    className="max-w-36"
+                    testId="workspace-profile"
+                  />
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      startRename(ws.id, ws.name)
+                    }}
+                    className="btn-icon btn-icon-sm"
+                    title="Rename workspace"
+                    aria-label="Rename workspace"
+                  >
+                    <PencilIcon className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setConfirmRemoveId(ws.id)
+                    }}
+                    className="btn-icon btn-icon-sm btn-icon--danger"
+                    title="Remove workspace"
+                    aria-label="Remove workspace"
+                  >
+                    <TrashIcon className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+
+          <button onClick={handleAddWorkspace} className="settings-row-action">
+            <PlusIcon className="w-4 h-4" />
+            Add workspace
+          </button>
+        </SettingsCard>
+
+        {/* Removal confirmation — spells out the cascade before anything happens */}
+        {removal && removalWs && (
+          <SettingsCallout
+            tone="danger"
+            title={<>Remove workspace “{removalWs.name}”?</>}
+            text={
+              <>
+                {removal.pinCount > 0
+                  ? `${removal.pinCount} pinned template${removal.pinCount === 1 ? '' : 's'} will be removed (recoverable from their .clave files). `
+                  : ''}
+                {removal.sessionCount > 0
+                  ? `${removal.sessionCount} running session${removal.sessionCount === 1 ? '' : 's'} will be kept and moved to ${removal.target ? `“${removal.target.name}”` : 'the unscoped view'}.`
+                  : 'No running sessions are affected.'}
+              </>
+            }
+            actions={
+              <>
+                <button onClick={() => setConfirmRemoveId(null)} className="btn-secondary">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    void removeWorkspace(confirmRemoveId!)
+                    setConfirmRemoveId(null)
+                  }}
+                  className="btn-primary"
+                >
+                  Remove
+                </button>
+              </>
+            }
+          />
+        )}
+
+        {/* Profile picker for a freshly added folder with several candidates */}
+        {pendingAdd && (
+          <SettingsCallout
+            tone="accent"
+            title="Which profile should this workspace read?"
+            text={`${pendingAdd.candidates.length} .clave files found in the folder.`}
+            actions={
+              <>
+                <button onClick={() => setPendingAdd(null)} className="btn-secondary">
+                  Cancel
+                </button>
+                <button onClick={handleConfirmAdd} className="btn-primary">
+                  Add workspace
+                </button>
+              </>
+            }
+          >
+            <div className="mt-2" role="radiogroup" aria-label="Profile file">
+              {pendingAdd.candidates.map((file) => {
+                const isSelected = pendingAdd.selected === file.path
+                return (
+                  <button
+                    key={file.path}
+                    type="button"
+                    className="menu-item"
+                    data-selected={isSelected ? 'true' : undefined}
+                    onClick={() => setPendingAdd({ ...pendingAdd, selected: file.path })}
+                  >
+                    <Radio
+                      checked={isSelected}
+                      onSelect={() => setPendingAdd({ ...pendingAdd, selected: file.path })}
+                      ariaLabel={file.name}
+                    />
+                    <span>{file.name}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </SettingsCallout>
+        )}
+
+        {error && <SettingsCallout tone="danger" text={error} role="alert" />}
+      </SettingsSection>
+      <TrustedFoldersSection
+        roots={trustedRoots}
+        onRevoke={(root) => {
+          void window.electronAPI?.untrustWorkspaceRoot(root)
+          setTrustedRoots((r) => r.filter((x) => x !== root))
+        }}
+      />
+    </>
+  )
+}
+
+/** The folders whose .clave files run their auto commands without the review
+ *  dialog. Its own section under Workspaces, since it is a list of a different
+ *  thing: a grant, not a workspace. */
+function TrustedFoldersSection({
+  roots,
+  onRevoke
+}: {
+  roots: string[]
+  onRevoke: (root: string) => void
+}): React.JSX.Element | null {
+  if (roots.length === 0) return null
+  return (
     <SettingsSection
-      title="Workspaces"
-      description={
+      title={
         <>
-          A workspace is a root folder: its sessions, groups, pinned templates, and toolbar are
-          scoped together, and the switcher at the top of the sidebar flips between them. Each
-          workspace reads one <code className="text-text-primary">.clave</code> profile file.
+          <ShieldCheckIcon />
+          Trusted workspace folders
         </>
       }
+      description="Workspace files inside these folders run their auto commands without asking."
     >
       <SettingsCard>
-        {workspaces.map((ws) => {
-          const isActive = ws.id === activeWorkspaceId
-          const candidates = profileCandidates[ws.id] ?? []
-          const missing = profileMissing[ws.id] === true
-          const orphanProfile = ws.profileFile && !candidates.some((c) => c.path === ws.profileFile)
-          const profileOptions = [
-            ...(orphanProfile
-              ? [
-                  {
-                    value: ws.profileFile!,
-                    label: `${ws.profileFile!.split('/').pop()?.replace('.clave', '')} (missing)`
-                  }
-                ]
-              : []),
-            ...candidates.map((c) => ({ value: c.path, label: c.name })),
-            { value: NO_PROFILE, label: 'No profile' }
-          ]
-          return (
-            <div
-              key={ws.id}
-              className={cn(
-                'settings-row transition-colors',
-                isActive ? 'bg-accent/5' : 'hover:bg-surface-100/60'
-              )}
-              data-workspace-row={ws.id}
-            >
-              <div
-                className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
-                onClick={() => {
-                  if (!isActive) void setActiveWorkspace(ws.id)
-                }}
-                title={isActive ? 'Active workspace' : 'Switch to this workspace'}
-              >
-                <FolderIcon className="w-4 h-4 flex-shrink-0 text-text-tertiary" />
-                <div className="flex-1 min-w-0">
-                  {renamingId === ws.id ? (
-                    <input
-                      autoFocus
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      onBlur={commitRename}
-                      onClick={(e) => e.stopPropagation()}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') commitRename()
-                        if (e.key === 'Escape') setRenamingId(null)
-                      }}
-                      className="input-compact w-40"
-                      aria-label="Workspace name"
-                    />
-                  ) : (
-                    <p className="settings-row-title truncate">{ws.name}</p>
-                  )}
-                  <p className="settings-row-description truncate" title={ws.rootDir}>
-                    {ws.rootDir}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                {missing && (
-                  <span title="The selected profile file no longer exists — pins are frozen at their last state.">
-                    <ExclamationTriangleIcon className="w-3.5 h-3.5 text-warning" />
-                  </span>
-                )}
-                <SettingsSelect
-                  value={ws.profileFile ?? NO_PROFILE}
-                  options={profileOptions}
-                  onChange={(value) =>
-                    void setWorkspaceProfile(ws.id, value === NO_PROFILE ? null : value)
-                  }
-                  ariaLabel={`Profile file for ${ws.name}`}
-                  className="max-w-36"
-                  testId="workspace-profile"
-                />
-                {isActive && <div className="w-2 h-2 rounded-full bg-accent" />}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    startRename(ws.id, ws.name)
-                  }}
-                  className="btn-icon btn-icon-sm"
-                  title="Rename workspace"
-                  aria-label="Rename workspace"
-                >
-                  <PencilIcon className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setConfirmRemoveId(ws.id)
-                  }}
-                  className="btn-icon btn-icon-sm btn-icon--danger"
-                  title="Remove workspace"
-                  aria-label="Remove workspace"
-                >
-                  <TrashIcon className="w-3.5 h-3.5" />
-                </button>
-              </div>
+        {roots.map((root) => (
+          <div key={root} className="settings-row">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <FolderIcon className="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+              <p className="settings-row-title truncate" title={root}>
+                {root}
+              </p>
             </div>
-          )
-        })}
-
-        <button onClick={handleAddWorkspace} className="settings-row-action">
-          <PlusIcon className="w-4 h-4" />
-          Add Workspace
-        </button>
+            <div className="settings-row-controls">
+              <button
+                onClick={() => onRevoke(root)}
+                className="btn-icon btn-icon-sm btn-icon--danger"
+                title="Revoke trust"
+                aria-label="Revoke trust"
+              >
+                <TrashIcon className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        ))}
       </SettingsCard>
-
-      {/* Removal confirmation — spells out the cascade before anything happens */}
-      {removal && removalWs && (
-        <SettingsCallout
-          tone="danger"
-          className="mt-2"
-          title={<>Remove workspace “{removalWs.name}”?</>}
-          text={
-            <>
-              {removal.pinCount > 0
-                ? `${removal.pinCount} pinned template${removal.pinCount === 1 ? '' : 's'} will be removed (recoverable from their .clave files). `
-                : ''}
-              {removal.sessionCount > 0
-                ? `${removal.sessionCount} running session${removal.sessionCount === 1 ? '' : 's'} will be kept and moved to ${removal.target ? `“${removal.target.name}”` : 'the unscoped view'}.`
-                : 'No running sessions are affected.'}
-            </>
-          }
-        >
-          <div className="flex justify-end gap-2 mt-3">
-            <button onClick={() => setConfirmRemoveId(null)} className="btn-secondary">
-              Cancel
-            </button>
-            <button
-              onClick={() => {
-                void removeWorkspace(confirmRemoveId!)
-                setConfirmRemoveId(null)
-              }}
-              className="btn-primary"
-            >
-              Remove
-            </button>
-          </div>
-        </SettingsCallout>
-      )}
-
-      {/* Profile picker for a freshly added folder with several candidates */}
-      {pendingAdd && (
-        <SettingsCallout
-          tone="accent"
-          className="mt-2"
-          title={`Pick the profile for this workspace (${pendingAdd.candidates.length} found)`}
-        >
-          <div className="mt-2 space-y-0.5">
-            {pendingAdd.candidates.map((file) => {
-              const isSelected = pendingAdd.selected === file.path
-              return (
-                <label
-                  key={file.path}
-                  className="menu-item"
-                  data-selected={isSelected ? 'true' : undefined}
-                >
-                  <input
-                    type="radio"
-                    name="workspace-profile"
-                    checked={isSelected}
-                    onChange={() => setPendingAdd({ ...pendingAdd, selected: file.path })}
-                    className="accent-accent w-3.5 h-3.5"
-                  />
-                  <span className="text-xs">{file.name}</span>
-                </label>
-              )
-            })}
-          </div>
-          <div className="flex justify-end gap-2 mt-3">
-            <button onClick={() => setPendingAdd(null)} className="btn-secondary">
-              Cancel
-            </button>
-            <button onClick={handleConfirmAdd} className="btn-primary">
-              Add Workspace
-            </button>
-          </div>
-        </SettingsCallout>
-      )}
-
-      {/* Error message */}
-      {error && <p className="mt-2 text-xs text-destructive px-1">{error}</p>}
-
-      {/* Trusted workspace folders */}
-      {trustedRoots.length > 0 && (
-        <div className="mt-6">
-          <div className="settings-section-head">
-            <h3 className="settings-section-title">
-              <ShieldCheckIcon />
-              Trusted workspace folders
-            </h3>
-            <p className="settings-section-description">
-              Workspace files inside these folders run their auto commands without prompting.
-            </p>
-          </div>
-          <SettingsCard>
-            {trustedRoots.map((root) => (
-              <div key={root} className="settings-row">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <FolderIcon className="w-4 h-4 flex-shrink-0 text-text-tertiary" />
-                  <p className="settings-row-description truncate" title={root}>
-                    {root}
-                  </p>
-                </div>
-                <button
-                  onClick={async () => {
-                    await window.electronAPI?.untrustWorkspaceRoot(root)
-                    setTrustedRoots((r) => r.filter((x) => x !== root))
-                  }}
-                  className="btn-icon btn-icon-sm btn-icon--danger flex-shrink-0"
-                  title="Revoke trust"
-                  aria-label="Revoke trust"
-                >
-                  <TrashIcon className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))}
-          </SettingsCard>
-        </div>
-      )}
     </SettingsSection>
   )
 }

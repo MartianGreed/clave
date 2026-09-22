@@ -7,7 +7,7 @@ import {
   type ClaudeProfile
 } from '../../store/claude-profile-store'
 import { tightestWindow, shortLabel, formatReset } from '../../store/usage-store'
-import { SettingsSection, SettingsCard } from './primitives'
+import { SettingsSection, SettingsCard, SettingsCallout, Radio } from './primitives'
 import { cn } from '@clave/ui/components'
 
 /** What a paste came back with, in one line under the form. */
@@ -57,68 +57,68 @@ function TokenForm({
   }
 
   return (
-    <div className="px-3.5 py-3 space-y-3" data-claude-token-form>
-      <div className="flex items-center justify-between">
-        <p className="settings-row-title">{title}</p>
-        <button
-          onClick={onCancel}
-          className="btn-icon btn-icon-sm"
-          title="Close the form"
-          aria-label="Close the form"
-        >
-          <XMarkIcon className="w-4 h-4" />
-        </button>
-      </div>
-      <p className="settings-row-description">
-        In a terminal signed in to the account you want, run <code>claude setup-token</code>, finish
-        the sign-in it opens in the browser, and paste the token it prints. It lasts a year, is
-        stored encrypted by macOS, and only the sessions you start on this account use it. Your
-        settings, plugins and history stay shared.
-      </p>
-      {askName && (
-        <input
-          className="input-field"
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          placeholder="Account name (Work, Personal, Max 20x…)"
-          aria-label="Account name"
-          autoFocus
-        />
-      )}
-      <input
-        className="input-field font-mono"
-        type="password"
-        value={token}
-        onChange={(e) => setToken(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') void submit()
-        }}
-        placeholder="sk-ant-oat01-…"
-        aria-label="Claude Code token"
-        autoComplete="off"
-        spellCheck={false}
-        autoFocus={!askName}
-      />
-      {note && (
-        <p
-          className={cn('text-xs', note.ok ? 'text-text-secondary' : 'text-destructive')}
-          data-claude-token-note={note.ok ? 'ok' : 'error'}
-        >
-          {note.text}
-        </p>
-      )}
-      <div className="flex justify-end gap-2">
-        <button onClick={onCancel} className="btn-secondary">
-          {note?.ok ? 'Done' : 'Cancel'}
-        </button>
-        <button
-          onClick={() => void submit()}
-          disabled={busy || !token.trim() || (askName && !label.trim())}
-          className="btn-primary"
-        >
-          {busy ? 'Checking…' : askName ? 'Add account' : 'Save token'}
-        </button>
-      </div>
+    <div data-claude-token-form>
+      <SettingsCallout
+        inset
+        tone="accent"
+        title={title}
+        text={
+          <>
+            Run <code>claude setup-token</code> in a terminal signed in to that account and paste
+            the token it prints. Only sessions started on this account use it; your settings,
+            plugins and history stay shared.
+          </>
+        }
+        actions={
+          <>
+            <button onClick={onCancel} className="btn-secondary">
+              {note?.ok ? 'Done' : 'Cancel'}
+            </button>
+            <button
+              onClick={() => void submit()}
+              disabled={busy || !token.trim() || (askName && !label.trim())}
+              className="btn-primary"
+            >
+              {busy ? 'Checking…' : askName ? 'Add account' : 'Save token'}
+            </button>
+          </>
+        }
+      >
+        <div className="mt-3 space-y-1.5">
+          {askName && (
+            <input
+              className="input-compact"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="Account name (Work, Personal, Max 20x…)"
+              aria-label="Account name"
+              autoFocus
+            />
+          )}
+          <input
+            className="input-compact font-mono"
+            type="password"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void submit()
+            }}
+            placeholder="sk-ant-oat01-…"
+            aria-label="Claude Code token"
+            autoComplete="off"
+            spellCheck={false}
+            autoFocus={!askName}
+          />
+        </div>
+        {note && (
+          <p
+            className={cn('mt-2 text-xs', note.ok ? 'text-text-secondary' : 'text-destructive')}
+            data-claude-token-note={note.ok ? 'ok' : 'error'}
+          >
+            {note.text}
+          </p>
+        )}
+      </SettingsCallout>
     </div>
   )
 }
@@ -147,18 +147,14 @@ function AccountRow({
   return (
     <div className="settings-row" data-claude-account-row={account.id}>
       <div className="flex items-center gap-3 flex-1 min-w-0">
-        <button
-          onClick={onSelect}
+        <Radio
+          checked={selected}
+          onSelect={onSelect}
           title={selected ? 'Default account for new sessions' : 'Make default'}
-          aria-label={
+          ariaLabel={
             selected ? 'Default account for new sessions' : `Make ${account.label} the default`
           }
-          className={`flex-shrink-0 w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
-            selected ? 'border-accent' : 'border-border hover:border-text-tertiary'
-          }`}
-        >
-          {selected && <span className="w-1.5 h-1.5 rounded-full bg-accent" />}
-        </button>
+        />
 
         <div className="flex-1 min-w-0">
           {isDefault ? (
@@ -179,13 +175,13 @@ function AccountRow({
                 ? 'Token'
                 : account.configDir
                   ? `Config directory · ${account.configDir}`
-                  : 'No credential yet · paste a token or pick a directory'}
+                  : 'No credential yet'}
           </p>
         </div>
       </div>
 
       {!isDefault && (
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="settings-row-controls">
           <button
             onClick={onReplaceToken}
             className="btn-icon btn-icon-sm"
@@ -196,7 +192,7 @@ function AccountRow({
                 : `Paste a token for ${account.label}`
             }
           >
-            <KeyIcon className="w-4 h-4" />
+            <KeyIcon className="w-3.5 h-3.5" />
           </button>
           {account.hasToken ? (
             <button
@@ -205,7 +201,7 @@ function AccountRow({
               title="Forget token"
               aria-label={`Forget token for ${account.label}`}
             >
-              <XMarkIcon className="w-4 h-4" />
+              <XMarkIcon className="w-3.5 h-3.5" />
             </button>
           ) : (
             <button
@@ -214,7 +210,7 @@ function AccountRow({
               title={account.configDir ? 'Change directory' : 'Use a config directory instead'}
               aria-label={account.configDir ? 'Change directory' : 'Use a config directory instead'}
             >
-              <FolderIcon className="w-4 h-4" />
+              <FolderIcon className="w-3.5 h-3.5" />
             </button>
           )}
           <button
@@ -223,7 +219,7 @@ function AccountRow({
             title="Remove account"
             aria-label={`Remove account ${account.label}`}
           >
-            <TrashIcon className="w-4 h-4" />
+            <TrashIcon className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
@@ -259,14 +255,7 @@ export function ClaudeAccountsSection(): ReactElement {
   return (
     <SettingsSection
       title="Claude accounts"
-      description={
-        <>
-          Run sessions on more than one Claude subscription. Paste each account’s token once; pick
-          the account when you start a session, from the launcher’s menu, a session’s menu, or an
-          agent’s <code>clave_open_session</code>. The selected account is the one the keyboard
-          shortcuts use.
-        </>
-      }
+      description="Run sessions on more than one Claude subscription. The selected account is the one new sessions and the keyboard shortcuts use; any launcher menu can pick another."
     >
       <SettingsCard>
         {profiles.map((account) => (
