@@ -3,7 +3,8 @@ import {
   ArrowPathIcon,
   ArrowDownTrayIcon,
   DocumentTextIcon,
-  ArrowTopRightOnSquareIcon
+  ArrowTopRightOnSquareIcon,
+  FolderOpenIcon
 } from '@heroicons/react/24/outline'
 import { useUpdaterStore } from '../../store/updater-store'
 import {
@@ -11,9 +12,11 @@ import {
   SettingsSection,
   SettingsCard,
   SettingsRow,
-  SettingsCallout
+  SettingsCallout,
+  ToggleRow
 } from './primitives'
 import { ClaveMark } from '../ui/ClaveMark'
+import { PrereleaseMark } from '../ui/PrereleaseMark'
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -58,11 +61,18 @@ export function UpdatesTab(): React.JSX.Element {
     errorMessage,
     checkErrorMessage,
     lastCheckedAt,
+    channel,
+    availableIsPrerelease,
+    snapshotPath,
     check,
     startDownload,
-    cancelDownload
+    cancelDownload,
+    setPrereleaseUpdates
   } = useUpdaterStore()
   const [checking, setChecking] = useState(false)
+  // Turning pre-releases ON asks first; turning them off does not. The
+  // confirmation is the app's own callout, never a native dialog.
+  const [confirmPrerelease, setConfirmPrerelease] = useState(false)
   // Re-render so "2 min ago" keeps up while the pane is open.
   const [, setTick] = useState(0)
 
@@ -82,6 +92,20 @@ export function UpdatesTab(): React.JSX.Element {
 
   const busy = checking || phase === 'checking'
   const upToDate = supported && !availableVersion && phase !== 'error'
+  const prereleaseUpdates = channel === 'beta'
+
+  const handlePrereleaseToggle = (enabled: boolean): void => {
+    if (enabled) {
+      setConfirmPrerelease(true)
+      return
+    }
+    setConfirmPrerelease(false)
+    void setPrereleaseUpdates(false)
+  }
+
+  const availableLabel = availableIsPrerelease
+    ? `Pre-release ${availableVersion}`
+    : `Version ${availableVersion}`
 
   return (
     <SettingsPage
@@ -94,16 +118,19 @@ export function UpdatesTab(): React.JSX.Element {
             <div className="flex items-center gap-3 min-w-0">
               <ClaveMark className="w-10 h-10 flex-shrink-0" />
               <div className="min-w-0">
-                <p className="settings-row-title">Clave {currentVersion}</p>
+                <p className="settings-row-title flex items-center gap-2">
+                  <span>Clave {currentVersion}</span>
+                  <PrereleaseMark version={currentVersion} />
+                </p>
                 <p className="settings-row-description">
                   {!supported
                     ? 'Updates are disabled in development builds'
                     : phase === 'downloaded'
-                      ? `Version ${availableVersion} is ready to install`
+                      ? `${availableLabel} is ready to install`
                       : phase === 'downloading'
-                        ? `Downloading version ${availableVersion}…`
+                        ? `Downloading ${availableLabel.toLowerCase()}…`
                         : availableVersion
-                          ? `Version ${availableVersion} is available`
+                          ? `${availableLabel} is available`
                           : upToDate
                             ? 'Clave is up to date'
                             : 'Checking for updates…'}
@@ -191,6 +218,64 @@ export function UpdatesTab(): React.JSX.Element {
               <button onClick={() => startDownload('retry')} className="btn-primary">
                 Try Again
               </button>
+            }
+          />
+        )}
+      </SettingsSection>
+
+      <SettingsSection
+        title="Release channel"
+        description="Pre-release builds are the next version before it is finished: they arrive on the same prompt as an update, and turning them off again offers you the current stable release."
+      >
+        <SettingsCard>
+          <ToggleRow
+            label="Receive pre-release builds"
+            description="Betas arrive like updates and share your Clave data with the stable app."
+            checked={prereleaseUpdates}
+            onChange={handlePrereleaseToggle}
+          />
+          {snapshotPath && (
+            <SettingsRow
+              label="Stable data snapshot"
+              description={
+                <>
+                  Your settings and sessions were copied before this pre-release first ran on them,
+                  at <span className="break-all">{snapshotPath}</span>. Nothing is restored on its
+                  own.
+                </>
+              }
+            >
+              <button
+                onClick={() => window.electronAPI?.openPath(snapshotPath)}
+                className="btn-secondary"
+              >
+                <FolderOpenIcon className="w-3.5 h-3.5" />
+                Show Snapshot
+              </button>
+            </SettingsRow>
+          )}
+        </SettingsCard>
+
+        {confirmPrerelease && !prereleaseUpdates && (
+          <SettingsCallout
+            tone="accent"
+            title="Receive pre-release builds?"
+            text="You will be offered betas as soon as they are published, ahead of the stable release. A beta uses the same data as the stable app; the first one to run copies your settings and sessions aside before it starts. Turn this off to be offered the current stable release again."
+            actions={
+              <>
+                <button onClick={() => setConfirmPrerelease(false)} className="btn-dialog">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setConfirmPrerelease(false)
+                    void setPrereleaseUpdates(true)
+                  }}
+                  className="btn-primary"
+                >
+                  Receive Pre-releases
+                </button>
+              </>
             }
           />
         )}

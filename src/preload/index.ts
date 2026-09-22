@@ -381,6 +381,8 @@ const electronAPI = {
   cancelDownload: () => ipcRenderer.invoke('updater:cancel-download'),
   getUpdaterState: () => ipcRenderer.invoke('updater:get-state') as Promise<UpdaterState>,
   checkForUpdates: () => ipcRenderer.invoke('updater:check') as Promise<UpdaterState>,
+  setPrereleaseUpdates: (enabled: boolean) =>
+    ipcRenderer.invoke('updater:set-prerelease-updates', enabled) as Promise<UpdaterState>,
 
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   persistDroppedFile: (sourcePath: string) =>
