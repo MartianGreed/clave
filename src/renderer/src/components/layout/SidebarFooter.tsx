@@ -31,7 +31,6 @@ import { formatDuration } from '../work-tracker/utils'
 import { ReleaseNotesBadge } from '../help/ReleaseNotesBadge'
 import { UserIconDisplay } from '../ui/UserIconDisplay'
 import { BrandField } from '../ui/BrandField'
-import { PrereleaseMark } from '../ui/PrereleaseMark'
 import { fieldAccent } from '../../lib/brand-field'
 import { cn } from '@clave/ui/components'
 import { useShortcutLabel } from '../../store/keymap-store'
@@ -86,11 +85,11 @@ export function UpdateBanner(): React.ReactElement {
             data-testid="update-banner"
             className="px-2.5 py-2 rounded-xl bg-accent/8 border border-accent/15"
           >
-            {/* One row while it fits. A full pre-release version with its
-                mark does not fit beside both buttons at the sidebar's width,
-                so the buttons are allowed to wrap under it rather than the
-                version being cut to "v2.0…" — the whole point of showing it. */}
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+            {/* One row, always. A full pre-release version fits beside both
+                buttons only without a separate mark, so the prompt carries
+                none: `v2.0.0-beta.1` names the beta itself, and the mark
+                stays where there is room for it, in Software Update. */}
+            <div className="flex items-center gap-2">
               <div className="relative flex items-center justify-center w-6 h-6 rounded-md bg-accent/12 flex-shrink-0">
                 <ArrowDownTrayIcon className="w-3.5 h-3.5 text-accent" />
                 {/* A release published with an empty body normalises to null
@@ -103,9 +102,6 @@ export function UpdateBanner(): React.ReactElement {
               <p className="text-[12px] font-medium text-text-primary leading-tight whitespace-nowrap">
                 {version ? `v${version}` : 'Update'}
               </p>
-              {/* A beta is named as one: the user asked to see them, and the
-                  prompt must not read as a stable update. */}
-              <PrereleaseMark version={version} />
               <div className="flex items-center gap-1 ml-auto">
                 <button
                   onClick={dismiss}

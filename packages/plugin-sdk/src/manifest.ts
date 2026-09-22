@@ -236,5 +236,12 @@ export const pluginManifestSchema = z
 export type PluginManifest = z.infer<typeof pluginManifestSchema>
 export type PluginManifestInput = z.input<typeof pluginManifestSchema>
 export function isEngineCompatible(manifest: PluginManifest, version: string): boolean {
-  return valid(version) !== null && satisfies(version, manifest.engines.clave)
+  // A beta is judged as the version it is a beta of: semver excludes every
+  // pre-release from a plain range, so without this a `2.0.0-beta.1` host
+  // satisfied nothing, not even `>=1.90.2`, and every plugin refused the
+  // first beta of 2.0 the moment it was installed (2026-09-22).
+  return (
+    valid(version) !== null &&
+    satisfies(version, manifest.engines.clave, { includePrerelease: true })
+  )
 }

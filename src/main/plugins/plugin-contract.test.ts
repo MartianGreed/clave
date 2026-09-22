@@ -250,6 +250,11 @@ describe('plugin manifest v1', () => {
     const manifest = pluginManifestSchema.parse(input)
     expect(isEngineCompatible(manifest, '1.90.2')).toBe(true)
     expect(isEngineCompatible(manifest, '2.0.0')).toBe(false)
+    // A pre-release of a version in range is in range (a plain semver range
+    // would exclude every pre-release). The cap still holds: `<2` desugars
+    // to `<2.0.0-0`, so the betas of the next major are out with it.
+    expect(isEngineCompatible(manifest, '1.92.0-beta.1')).toBe(true)
+    expect(isEngineCompatible(manifest, '2.0.0-beta.1')).toBe(false)
     expect(isEngineCompatible(manifest, '1.89.9')).toBe(false)
     expect(isEngineCompatible(manifest, 'not-a-version')).toBe(false)
   })
