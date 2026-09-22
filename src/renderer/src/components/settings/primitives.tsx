@@ -62,26 +62,36 @@ export function SettingsSection({
   )
 }
 
-/** Grouped card: rows separated by hairline seams. */
+/** Grouped card: rows separated by hairline seams. Other div attributes
+ *  (a data-* hook for a test) pass through; they used to be dropped silently. */
 export function SettingsCard({
   children,
-  className
-}: {
+  className,
+  ...rest
+}: React.HTMLAttributes<HTMLDivElement> & {
   children: React.ReactNode
   className?: string
 }): React.JSX.Element {
-  return <div className={cn('settings-card', className)}>{children}</div>
+  return (
+    <div className={cn('settings-card', className)} {...rest}>
+      {children}
+    </div>
+  )
 }
 
-/** One row in a card: label + description left, control right. */
+/** One row in a card: label + description left, control right. `tags` is
+ *  the row's metadata as chips under the description (a plugin's
+ *  permissions), which is where metadata belongs: never a second row. */
 export function SettingsRow({
   label,
   description,
+  tags,
   disabled = false,
   children
 }: {
-  label: string
+  label: React.ReactNode
   description?: React.ReactNode
+  tags?: React.ReactNode
   disabled?: boolean
   children?: React.ReactNode
 }): React.JSX.Element {
@@ -90,32 +100,73 @@ export function SettingsRow({
       <div className="min-w-0">
         <p className="settings-row-title">{label}</p>
         {description && <p className="settings-row-description">{description}</p>}
+        {tags && <div className="settings-row-tags">{tags}</div>}
       </div>
-      {children && <div className="flex items-center gap-1.5 flex-shrink-0">{children}</div>}
+      {children && <div className="settings-row-controls">{children}</div>}
     </div>
   )
 }
 
-/** A callout under a card: a confirmation, a picker, an error. */
+/** A callout under a card: a confirmation, a picker, an error. `inset` puts
+ *  the same callout INSIDE a card, as a row of it, for a confirmation that
+ *  belongs to the row above (a plugin's enable review): no second outline.
+ *  `actions` is the Cancel / primary pair, right-aligned on the control ramp. */
 export function SettingsCallout({
   tone,
   title,
   text,
+  inset = false,
+  actions,
   children,
-  className
+  className,
+  role
 }: {
   tone?: 'accent' | 'danger'
   title?: React.ReactNode
   text?: React.ReactNode
+  inset?: boolean
+  actions?: React.ReactNode
   children?: React.ReactNode
   className?: string
+  role?: string
 }): React.JSX.Element {
   return (
-    <div className={cn('settings-callout', className)} data-tone={tone}>
+    <div
+      className={cn('settings-callout', inset && 'settings-callout--inset', className)}
+      data-tone={tone}
+      role={role}
+    >
       {title && <p className="settings-callout-title">{title}</p>}
       {text && <p className="settings-callout-text">{text}</p>}
       {children}
+      {actions && <div className="settings-callout-actions">{actions}</div>}
     </div>
+  )
+}
+
+/** One of a set: the default account, the profile file to adopt. */
+export function Radio({
+  checked,
+  onSelect,
+  ariaLabel,
+  title
+}: {
+  checked: boolean
+  onSelect: () => void
+  ariaLabel: string
+  title?: string
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      title={title}
+      className="radio"
+      data-checked={checked ? 'true' : undefined}
+      onClick={onSelect}
+    />
   )
 }
 

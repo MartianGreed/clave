@@ -152,6 +152,8 @@ body,
 .segmented-item:focus-visible,
 .select-trigger:focus-visible,
 .switch:focus-visible,
+.radio:focus-visible,
+.theme-swatch:focus-visible,
 .settings-row-action:focus-visible,
 .git-tree-row:focus-visible,
 .git-sync-badge:focus-visible,
@@ -1723,6 +1725,13 @@ body,
   letter-spacing: 0.12em;
   font-weight: 600;
 }
+/* The quiet badge: a fact beside a title ("Built in", "Local", "Active", how
+   an account signs in). One class instead of the same two colour utilities
+   repeated at every call site. */
+.badge-muted {
+  background-color: var(--surface-200);
+  color: var(--text-tertiary);
+}
 
 /* ── Settings ──
    The settings pages, on the same material as the sidebars and the side
@@ -1822,7 +1831,8 @@ body,
   background-color: var(--surface-50);
   overflow: hidden;
 }
-.settings-card > * + * {
+.settings-card > * + *,
+.settings-card-group > * + * {
   border-top: 1px solid var(--border-subtle-color);
 }
 
@@ -1890,6 +1900,104 @@ body,
   font-size: 12px;
   line-height: 1.5;
   color: var(--text-secondary);
+}
+/* A callout or a second card that follows a card sits one row-gap step under
+   it, owned here so no call site decides the distance (they used to: mt-2
+   on two of them, mt-3 on a third, nothing on the fourth). */
+.settings-card + .settings-callout,
+.settings-card + .settings-card {
+  margin-top: 0.5rem;
+}
+/* The callout's actions: Cancel then the primary, right-aligned, on the
+   control ramp with the control's gap. The modal footer pair (.btn-dialog,
+   two halves of a card) never appears here: a callout is a row-shaped
+   surface, and half-width text buttons inside it collide with each other. */
+.settings-callout-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--control-gap);
+  margin-top: 0.75rem;
+}
+/* The same callout INSIDE a card — a confirmation attached to the row it
+   guards, a notice a plugin left, a form the row opened. It loses the outline
+   and the corner (the card already has both; two stacked was the defect that
+   started this block) and keeps the seam it inherits as a row of the card. The
+   tone goes on the ground instead of the border, a wash of the tone over the
+   card's own surface, so it holds on every theme without a second colour. */
+.settings-callout--inset {
+  border: 0;
+  border-radius: 0;
+  padding: 0.75rem 0.875rem;
+  background-color: color-mix(in srgb, var(--surface-100) 55%, transparent);
+}
+.settings-callout--inset[data-tone="danger"] {
+  background-color: color-mix(in srgb, var(--color-destructive) 6%, transparent);
+}
+.settings-callout--inset[data-tone="accent"] {
+  background-color: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+/* The control slot at the end of a row: the switch, a select, the row's icon
+   buttons. One gap, the control's, for every row in every page. */
+.settings-row-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--control-gap);
+  flex-shrink: 0;
+}
+/* A value the row only states (the density stop, a token count, "repos"):
+   the control's label size in secondary ink, tabular so a column of them
+   lines up. */
+.settings-row-value {
+  font-size: var(--control-text);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* Metadata under a row's title as chips (a plugin's permissions): a line of
+   .badge, never a second row pretending to be a second setting. */
+.settings-row-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.375rem;
+}
+
+/* A form field's label above its input, in a dialog or a form row. */
+.field-label {
+  display: block;
+  margin-bottom: 0.375rem;
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+}
+
+/* The radio: one of a set (the default Claude account, the profile file to
+   adopt). A 14px ring on the field fill, the accent on the ring and a dot
+   inside when chosen; state is data-checked like the switch. */
+.radio {
+  position: relative;
+  flex-shrink: 0;
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background-color: var(--surface-100);
+  transition: border-color 150ms, background-color 150ms;
+}
+.radio:hover {
+  border-color: var(--text-tertiary);
+}
+.radio[data-checked="true"] {
+  border-color: var(--color-accent);
+}
+.radio[data-checked="true"]::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 999px;
+  background-color: var(--color-accent);
 }
 
 /* A status said in words at the end of a row (a location's connection). */

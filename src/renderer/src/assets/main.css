@@ -1174,19 +1174,6 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
 }
-.keymap-message {
-  padding: 0.625rem 0.75rem;
-  border: 1px solid var(--border-subtle-color);
-  border-radius: var(--radius-lg);
-  background-color: var(--surface-100);
-  color: var(--text-secondary);
-  font-size: 12px;
-  white-space: pre-wrap;
-}
-.keymap-message[data-tone="error"] {
-  color: var(--color-destructive);
-}
-
 /* The avatar picker's cells: an icon or a field, 24px, selected by the accent. */
 .avatar-cell {
   position: relative;
@@ -1212,6 +1199,12 @@
 }
 .avatar-cell:active {
   scale: 0.97;
+}
+/* The system's one focus ring (the "── Keyboard focus ──" block), restated
+   here because the cell is an app-only class. */
+.avatar-cell:focus-visible {
+  outline: 1.5px solid var(--color-accent);
+  outline-offset: -1.5px;
 }
 
 /* A usage window's bar on the Usage page: the foot's meter, at page width. */

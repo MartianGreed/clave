@@ -131,10 +131,17 @@ block of `packages/ui/src/system.css`, and from nothing else: a page never style
 | The page | `SettingsPage` (`.settings-page-header`, `-title`, `-description`, `-actions`) | one width for every page (`max-w-3xl`), an 18px title, a 13px description, the page's actions on the right |
 | A section | `SettingsSection` (`.settings-section-title`, `-description`) | 13px primary title with room for a glyph (the agent families' logos), 12px secondary description |
 | A card | `SettingsCard` (`.settings-card`) | the panel material: radius-xl, `--color-border`, `--surface-50`, rows seamed by `--border-subtle` |
-| A row | `SettingsRow` (`.settings-row`, `-title`, `-description`) | text left, control right; `.settings-row-action` is the full-width add row |
+| A row | `SettingsRow` (`.settings-row`, `-title`, `-description`) | text left, the controls right in `.settings-row-controls` (one gap, the control's); `.settings-row-action` is the full-width add row |
+| A row's metadata | `tags` on `SettingsRow` (`.settings-row-tags` of `.badge badge-muted`) | chips under the description (a plugin's permissions): never a second row pretending to be a second setting |
+| A value a row only states | `.settings-row-value` | the density stop, a token count, "Never": control label size, secondary ink, tabular |
+| A quiet fact beside a title | `.badge badge-muted` | "Built in", "Active", "This Mac", how an account signs in; never the two colour utilities by hand |
+| One of a set | `Radio` (`.radio`, `data-checked`) | 14px ring on the field fill, the accent when chosen; never a hand-rolled circle or a native radio |
+| A form field's label | `.field-label` | above an `.input-compact` in a dialog or a form row |
 | A select | `SettingsSelect` (`.select-trigger`, `.select-menu`, `.select-option`) | a 28px trigger cut like `.input-compact` with the caret held off the edge, the options on `.menu-surface` / `.menu-item`; never a native `<select>` |
 | A switch | `Toggle` / `ToggleRow` (`.switch`, `.switch-knob`) | 28×16, `data-checked`, the knob on `--color-switch-knob` |
-| A callout | `SettingsCallout` (`.settings-callout[data-tone]`) | a confirmation or a picker under a card, the tone on the border only |
+| A callout | `SettingsCallout` (`.settings-callout[data-tone]`) | a confirmation or a picker under a card, the tone on the border only; `.settings-card + .settings-callout` owns the gap, never an `mt-*` |
+| A callout inside a card | `SettingsCallout inset` (`.settings-callout--inset`) | the confirmation attached to the row it guards (a plugin's enable review), a notice, a form the row opened: no outline of its own, the tone as a wash on the ground. A callout with its border INSIDE a card is a card in a card, the defect that earned this row |
+| A callout's actions | `actions` on `SettingsCallout` (`.settings-callout-actions`) | Cancel then the primary, right-aligned on the control ramp with the control's gap. `.btn-dialog` is the modal footer pair and never appears in a callout |
 | The sidebar's groups | `.settings-nav-label` over `.sidebar-item` rows | regular case, 11px tertiary, like `.menu-label` |
 
 Status in words uses `.status-text[data-status]`; a destructive icon button takes
