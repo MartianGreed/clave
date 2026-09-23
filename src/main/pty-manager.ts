@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { ptyBackend, type PtySession, type PtySpawnOptions } from './sessions/adapters/pty-backend'
 import { ptyAdapter } from './sessions/adapters/pty-adapter'
-import { ClaudeAdapter } from './sessions/adapters/claude-adapter'
+import { ClaudeAdapter, findTranscript } from './sessions/adapters/claude-adapter'
 import { CodexAdapter } from './sessions/adapters/codex-adapter'
 import { EchoAdapter } from './sessions/adapters/echo-adapter'
 import { sessionManager } from './sessions/session-manager'
@@ -22,6 +22,8 @@ sessionManager.registerAdapter(ptyAdapter)
 sessionManager.registerAdapter(echoAdapter)
 sessionManager.registerAdapter(claudeAdapter)
 sessionManager.registerAdapter(new CodexAdapter())
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 class PtyManager {
   private eventSessions = new Map<string, PtySession>()
@@ -54,7 +56,12 @@ class PtyManager {
     const isEvents = !!events || echo
     const session: PtySession = isEvents
       ? {
-          id: randomUUID(),
+          // A restored chat tab keeps its id, as a restored terminal does: the
+          // sidebar layout, MCP addressing and capture all key on it.
+          id:
+            options?.adoptSessionId && UUID_RE.test(options.adoptSessionId)
+              ? options.adoptSessionId
+              : randomUUID(),
           cwd,
           folderName: cwd.split('/').pop() || cwd,
           alive: true,
@@ -90,6 +97,15 @@ class PtyManager {
       // overwrites it on the record from there on.
       viewId: defaultViewFor(profileId)
     }
+    // A restored chat tab that never got a message has an id but no
+    // transcript, and `--resume` of it fails: it relaunches fresh under the
+    // same id instead.
+    const resume =
+      adapter.id === 'claude-chat' &&
+      options?.resumeSessionId &&
+      !findTranscript(options.resumeSessionId, cwd, options.configDir)
+        ? undefined
+        : options?.resumeSessionId
     if (isEvents && adapter.id === 'claude-chat') {
       session.claudeSessionId = options?.resumeSessionId ?? options?.claudeSessionId ?? randomUUID()
       claudeAdapter.configure(session.id, { ...options, claudeSessionId: session.claudeSessionId })
@@ -98,7 +114,7 @@ class PtyManager {
       ? await adapter.spawn({
           ...record,
           options: {
-            resume: options?.resumeSessionId,
+            resume,
             model: options?.model,
             permissionMode: options?.dangerousMode
               ? adapter.provider === 'codex'
@@ -117,7 +133,39 @@ class PtyManager {
       throw error
     }
     if (isEvents) this.eventSessions.set(session.id, session)
+    if (isEvents && adapter.id === 'claude-chat') this.writeChatRecord(session, profileId, options)
     return session
+  }
+
+  /** A Claude chat tab's session record: what brings it back after a quit, an
+   *  update or a crash. Only Claude's: the restore relaunches with
+   *  `--resume <claudeSessionId>`, and no other events adapter resumes yet. */
+  private writeChatRecord(
+    session: PtySession,
+    profileId: string | undefined,
+    options: PtySpawnOptions | undefined
+  ): void {
+    ptyBackend.writeEventSessionRecord({
+      adapterId: 'claude-chat',
+      transport: 'events',
+      id: session.id,
+      claudeSessionId: session.claudeSessionId,
+      cwd: session.cwd,
+      folderName: session.folderName,
+      claudeMode: true,
+      antigravityMode: false,
+      codexMode: false,
+      piMode: false,
+      claudeAgentsMode: false,
+      dangerousMode: options?.dangerousMode === true,
+      model: options?.model,
+      launchProfileId: profileId,
+      configDir: options?.configDir,
+      claudeProfileId: options?.claudeProfileId,
+      claudeProfileLabel: options?.claudeProfileLabel,
+      workspaceId: options?.workspaceId,
+      windowKey: options?.windowKey
+    })
   }
 
   attachListeners(
@@ -160,6 +208,10 @@ class PtyManager {
   }
   async kill(id: string, killTmuxSession = true): Promise<void> {
     if (!sessionManager.get(id)) return
+    // A chat tab closed for good takes its record with it, first, so a kill
+    // that throws cannot leave a closed tab to be offered back at the next
+    // launch. On quit (killTmuxSession false) the record stays for the restore.
+    if (killTmuxSession && this.eventSessions.has(id)) ptyBackend.discardSessionRecord(id)
     if (!killTmuxSession && !this.eventSessions.has(id)) ptyAdapter.detach({ id })
     else await sessionManager.kill(id)
     this.listeners.get(id)?.()

@@ -1217,8 +1217,19 @@ export class PtyBackend {
   /** The persisted record key for an in-memory session (tmux name or id). */
   private recordKeyForSession(id: string): string | null {
     const session = this.sessions.get(id)
-    if (!session) return null
-    return session.tmuxName ?? id
+    if (session) return session.tmuxName ?? id
+    // An events session (a chat tab) has no PTY here, only its record, keyed
+    // by its id: the renames, moves and re-stamps below reach it through that.
+    return UUID_RE.test(id) && readSessionRecord(id) ? id : null
+  }
+
+  /** Persist an events session's record (a chat tab). It has no process this
+   *  backend owns, so nothing else writes one, and without it the tab is gone
+   *  at the next launch. The restore path relaunches it with --resume, like a
+   *  plain terminal record. Returns false when it could not be written. */
+  writeEventSessionRecord(meta: SessionRecord): boolean {
+    if (meta.tmuxName || !UUID_RE.test(meta.id)) return false
+    return writeSessionRecord(meta)
   }
 
   /** The backing tmux session's name, or null for plain (non-tmux) tabs —
