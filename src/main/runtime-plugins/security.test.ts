@@ -474,3 +474,59 @@ describe('durable jobs', () => {
     expect(() => jobs.execute({ ...input, requestId: 'new' })).toThrow('closed')
   })
 })
+
+it('scopes exchange history to the lease and rejects injected session/group scope', async () => {
+  const { views, deps } = broker()
+  const exchanges = vi.fn(async () => ({ messages: [], before: null, skippedLines: 0 }))
+  deps.exchanges = exchanges
+  vi.mocked(deps.resolveView).mockResolvedValue({
+    descriptor: { ...descriptor, capabilities: ['conversation.exchanges'] },
+    html: '<p>Exos</p>'
+  })
+  const lease = await views.open(1, 'lane-session', 'a', descriptor)
+  await views.request(1, lease.id, {
+    id: 'history',
+    method: 'conversation.exchanges',
+    params: { before: 123 }
+  })
+  expect(exchanges).toHaveBeenCalledWith('lane-session', 123)
+  for (const params of [{ sessionId: 'other' }, { groupId: 'private' }, { before: -1 }]) {
+    await expect(
+      views.request(1, lease.id, {
+        id: JSON.stringify(params),
+        method: 'conversation.exchanges',
+        params
+      })
+    ).rejects.toThrow()
+  }
+  const raw = await views.open(1, 'lane-session', 'a')
+  await expect(
+    views.request(1, raw.id, { id: 'no-authority', method: 'conversation.exchanges' })
+  ).rejects.toThrow('Capability denied')
+  expect(exchanges).toHaveBeenCalledTimes(1)
+})
+
+it('passes session navigation through the declared capability with the lease as caller', async () => {
+  const { views, deps } = broker()
+  deps.openSession = vi.fn(async () => ({ focused: 'peer' }))
+  vi.mocked(deps.resolveView).mockResolvedValue({
+    descriptor: { ...descriptor, capabilities: ['ui.openSession'] },
+    html: '<p>Links</p>'
+  })
+  const lease = await views.open(1, 'lane', 'a', descriptor)
+  expect(
+    await views.request(1, lease.id, {
+      id: 'jump',
+      method: 'ui.openSession',
+      params: { sessionId: 'peer' }
+    })
+  ).toEqual({ focused: 'peer' })
+  expect(deps.openSession).toHaveBeenCalledWith('lane', 'peer')
+  await expect(
+    views.request(1, lease.id, {
+      id: 'spoof',
+      method: 'ui.openSession',
+      params: { sessionId: 'peer', callerSessionId: 'wave' }
+    })
+  ).rejects.toThrow()
+})

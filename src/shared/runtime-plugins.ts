@@ -5,12 +5,14 @@ export const RUNTIME_PLUGIN_API_VERSION = 1
 export const RUNTIME_PLUGIN_ID_PATTERN = /^[a-z][a-z0-9.-]{0,127}$/
 export const PLUGIN_CAPABILITIES = [
   'conversation.read',
+  'conversation.exchanges',
   'composer.setDraft',
   'conversation.send',
   'workspace.readFile',
   'workspace.execute',
   'ui.openFile',
-  'ui.openArtifact'
+  'ui.openArtifact',
+  'ui.openSession'
 ] as const
 export type PluginCapability = (typeof PLUGIN_CAPABILITIES)[number]
 

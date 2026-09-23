@@ -36,6 +36,8 @@ import {
   buildProvenanceHeader
 } from '../../../shared/exchange-provenance'
 
+type CaptureEndpoint = ReturnType<typeof captureEndpointOf>
+
 /**
  * Renderer-side executor for the in-app MCP server. The sidebar state (groups,
  * tabs) lives in this process's Zustand store, so the main process forwards
@@ -1077,6 +1079,7 @@ function handleSelfCheckpoint(sessionId: string, message: string): unknown {
 }
 
 async function handleSendToSession(payload: {
+  senderEndpoint?: CaptureEndpoint
   sessionId: string
   message: string
   callerSessionId?: string
@@ -1112,7 +1115,15 @@ async function handleSendToSession(payload: {
   // from the shared module so the capture's transcript parser matches the same
   // string it stamps here (a drifted copy would silently relabel a sibling's
   // message as the human's).
-  const header = buildProvenanceHeader(sender)
+  const senderEndpoint =
+    sender && sessionMode(sender) !== 'pi'
+      ? captureEndpointOf(sender, useSessionStore.getState().groups)
+      : payload.senderEndpoint?.sessionId === payload.callerSessionId
+        ? payload.senderEndpoint
+        : undefined
+  const header = buildProvenanceHeader(
+    senderEndpoint ? { id: senderEndpoint.sessionId, name: senderEndpoint.name } : sender
+  )
   // Sanitize BOTH parts (header + message): a tab renamed to carry control
   // bytes must not be able to smuggle them in via the header either. Parts
   // are sanitized separately (the per-character filter distributes over
@@ -1126,7 +1137,19 @@ async function handleSendToSession(payload: {
 
   if (targetId.startsWith('conversation-')) {
     await window.electronAPI.conversations.send(targetId, text, crypto.randomUUID())
-    useSessionStore.getState().setSessionInjectedFrom(targetId, sender?.name ?? 'another tab')
+    if (senderEndpoint && sessionMode(target) !== 'pi') {
+      window.electronAPI.captureExchangeMessage({
+        ts: new Date().toISOString(),
+        sender: senderEndpoint,
+        target: captureEndpointOf(target, useSessionStore.getState().groups),
+        text: cleanMessage,
+        provenance: cleanHeader,
+        delivered: true
+      })
+    }
+    useSessionStore
+      .getState()
+      .setSessionInjectedFrom(targetId, senderEndpoint?.name ?? sender?.name ?? 'another tab')
     return { delivered: true, sessionId: targetId, name: target.name, mode, draftHandling: 'none' }
   }
 
@@ -1194,13 +1217,13 @@ async function handleSendToSession(payload: {
   // message, and the record must show that. Fire-and-forget IPC, off the
   // stash->restore critical path. `sender` is always set here: assertCanReach
   // refused identity-less callers above.
-  if (sender) {
+  if (senderEndpoint) {
     const recordDelivery = (): void => {
       if (!submitted) return
-      if (sessionMode(sender) === 'pi' || sessionMode(target) === 'pi') return
+      if (sessionMode(target) === 'pi') return
       window.electronAPI.captureExchangeMessage({
         ts: new Date().toISOString(),
-        sender: captureEndpointOf(sender, useSessionStore.getState().groups),
+        sender: senderEndpoint,
         target: captureEndpointOf(target, useSessionStore.getState().groups),
         text: cleanMessage,
         provenance: cleanHeader,
@@ -1222,7 +1245,7 @@ async function handleSendToSession(payload: {
     // marks the tab and names the sender, so a cross-tab message is never
     // silent even if the user isn't looking at the target tab.
     const store = useSessionStore.getState()
-    store.setSessionInjectedFrom(targetId, sender?.name ?? 'another tab')
+    store.setSessionInjectedFrom(targetId, senderEndpoint?.name ?? sender?.name ?? 'another tab')
     if (!store.selectedSessionIds.includes(targetId)) store.setSessionUnseenActivity(targetId, true)
   }
   // How the user's pending input draft was handled: 'none' (input believed
@@ -1323,6 +1346,13 @@ async function execute(command: string, payload: unknown): Promise<unknown> {
   switch (command) {
     case 'list':
       return handleList(payload as Parameters<typeof handleList>[0])
+    case 'exchangeEndpoint': {
+      const id = (payload as { sessionId: string }).sessionId
+      const state = useSessionStore.getState()
+      const session = state.sessions.find((s) => s.id === id)
+      if (!session) throw new Error('Source session is no longer open')
+      return captureEndpointOf(session, state.groups)
+    }
     case 'resolveSessionRef':
       return handleResolveSessionRef(payload as { ref: string })
     case 'createGroup':
@@ -1369,6 +1399,12 @@ async function execute(command: string, payload: unknown): Promise<unknown> {
     }
     case 'openFile':
       return handleOpenFile(payload as Parameters<typeof handleOpenFile>[0])
+    case 'pluginOpenSession': {
+      const p = payload as { sessionId: string; targetSessionId: string }
+      const target = resolveTargetSession(p.targetSessionId, p.sessionId)
+      assertCanReach(p.sessionId, target, 'read')
+      return handleFocus({ sessionId: target.id })
+    }
     case 'pluginSetDraft': {
       const p = payload as { sessionId: string; text: string }
       const state = conversationComposer.read(p.sessionId)

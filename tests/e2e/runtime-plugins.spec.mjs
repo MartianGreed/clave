@@ -27,7 +27,12 @@ export async function run(t) {
         name: 'Fixture enhancer',
         entry: 'view.html',
         mimeTypes: ['text/html'],
-        capabilities: ['conversation.read', 'composer.setDraft']
+        capabilities: [
+          'conversation.read',
+          'conversation.exchanges',
+          'ui.openSession',
+          'composer.setDraft'
+        ]
       },
       {
         id: 'operations',
@@ -164,6 +169,61 @@ window.clave.ready.then(() => document.querySelector('#ready').textContent='Enha
       iframe.evaluate(() => window.clave.request('conversation.read', { sessionId: 'spoof' }))
     )
     t.check('scoped RPC permits read and rejects capability and scope spoof', true)
+    await win.evaluate((sessionId) => {
+      const endpoint = {
+        sessionId,
+        name: 'Wave',
+        mode: 'claude',
+        cwd: '/tmp',
+        claudeSessionId: null,
+        groupId: 'exos',
+        groupName: 'Exos',
+        model: null
+      }
+      window.electronAPI.captureExchangeMessage({
+        ts: new Date().toISOString(),
+        sender: endpoint,
+        target: { ...endpoint, sessionId: 'lane-peer', name: 'Lane' },
+        text: 'QUESTION: Is the lane ready?',
+        provenance: '[Message from a Clave agent]',
+        delivered: true
+      })
+      window.electronAPI.captureExchangeMessage({
+        ts: new Date().toISOString(),
+        sender: { ...endpoint, sessionId: 'private' },
+        target: { ...endpoint, sessionId: 'another-private' },
+        text: 'Other project private message',
+        provenance: '[Message from a Clave agent]',
+        delivered: true
+      })
+    }, id)
+    const exchanges = await until(async () => {
+      const page = await iframe.evaluate(() => window.clave.request('conversation.exchanges'))
+      return page.messages.length ? page : null
+    })
+    assert.deepEqual(
+      exchanges.messages.map((m) => m.text),
+      ['QUESTION: Is the lane ready?']
+    )
+    await assert.rejects(() =>
+      iframe.evaluate(() =>
+        window.clave.request('conversation.exchanges', { sessionId: 'private' })
+      )
+    )
+    assert.equal(
+      (
+        await iframe.evaluate(
+          (sessionId) => window.clave.request('ui.openSession', { sessionId }),
+          id
+        )
+      ).focused,
+      id
+    )
+    await assert.rejects(() =>
+      iframe.evaluate(() => window.clave.request('ui.openSession', { sessionId: 'missing' }))
+    )
+    t.check('sandbox reads only its session exchanges and opens permitted session links', true)
+
     await iframe.evaluate(() => window.clave.request('composer.setDraft', { text: 'Plugin draft' }))
     await assert.rejects(() =>
       iframe.evaluate(() => window.clave.request('composer.setDraft', { text: 'Overwrite' }))

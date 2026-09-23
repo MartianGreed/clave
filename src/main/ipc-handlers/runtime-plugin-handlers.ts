@@ -26,6 +26,8 @@ import { setRuntimePluginViewHost } from '../runtime-plugins/host'
 import { getLoginShellEnv } from '../pty-manager'
 import { callRenderer } from '../mcp/mcp-bridge'
 import { windowRegistry } from '../window-registry'
+import { bringForward } from '../window-routing'
+import { exchangeHistory } from '../exchange-capture/service'
 
 function hostWindow(event: IpcMainInvokeEvent): BrowserWindow {
   const win = BrowserWindow.fromWebContents(event.sender)
@@ -116,6 +118,17 @@ export function registerRuntimePluginHandlers(): void {
     return registry.viewsFor(pins, entry)
   }
   const views = new RuntimePluginViews({
+    exchanges: (id, before) => exchangeHistory(id, before),
+    openSession: async (id, targetSessionId) => {
+      const win = sessionOwner(targetSessionId)
+      const result = await callRenderer(
+        'pluginOpenSession',
+        { sessionId: id, targetSessionId },
+        win
+      )
+      bringForward(win)
+      return result
+    },
     snapshot: async (id) => (await conversationClient()).snapshot(id),
     cwd: async (id) => (await (await conversationClient()).snapshot(id)).session.cwd,
     readFile: async (path) => {

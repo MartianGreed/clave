@@ -569,6 +569,12 @@ export interface ElectronAPI {
     result?: unknown
     error?: string
   }) => void
+  exchangeHistory: (request: {
+    sessionId: string
+    before?: number
+    groupId?: string
+  }) => Promise<import('../shared/exchange-history').ExchangeHistoryPage>
+  openExchangeSession: (id: string) => Promise<void>
   captureExchangeMessage: (payload: {
     ts: string
     sender: ExchangeEndpoint

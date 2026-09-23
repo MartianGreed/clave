@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Wave / Lane communications</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font:
+          14px system-ui,
+          sans-serif;
+      }
+      body {
+        margin: 1rem;
+      }
+      header,
+      .route {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      h2 {
+        flex: 1;
+        font-size: 1rem;
+      }
+      button {
+        font: inherit;
+        cursor: pointer;
+      }
+      article {
+        border-bottom: 1px solid GrayText;
+        padding-block: 1rem;
+      }
+      p {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      small {
+        display: block;
+        color: GrayText;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h2>Wave / Lane communications</h2>
+      <button id="refresh">Refresh</button>
+    </header>
+    <p>Messages and checkpoints for this session. Newest first.</p>
+    <p id="status" role="status"></p>
+    <div id="messages"></div>
+    <button id="older" hidden>Load older</button>
+    <script>
+      const messages = document.getElementById('messages')
+      const status = document.getElementById('status')
+      const refresh = document.getElementById('refresh')
+      const older = document.getElementById('older')
+      let before
+      function link(endpoint) {
+        const button = document.createElement('button')
+        button.textContent = endpoint.name
+        button.onclick = async () => {
+          try {
+            await window.clave.request('ui.openSession', { sessionId: endpoint.sessionId })
+          } catch {
+            status.textContent =
+              'This session is closed or is no longer related to this workstream.'
+          }
+        }
+        return button
+      }
+      async function load(reset) {
+        refresh.disabled = older.disabled = true
+        status.textContent = 'Loading communications…'
+        try {
+          const page = await window.clave.request('conversation.exchanges', reset ? {} : { before })
+          if (reset) messages.replaceChildren()
+          for (const message of page.messages) {
+            const article = document.createElement('article')
+            const route = document.createElement('div')
+            route.className = 'route'
+            route.append(
+              link(message.sender),
+              document.createTextNode(message.checkpoint ? ' checkpoint' : ' → ')
+            )
+            if (!message.checkpoint) route.append(link(message.target))
+            const detail = document.createElement('small')
+            detail.textContent =
+              new Date(message.ts).toLocaleString() +
+              ' · ' +
+              (message.checkpoint
+                ? 'Logged only'
+                : message.delivered
+                  ? 'Delivered'
+                  : 'Not delivered')
+            const body = document.createElement('p')
+            body.textContent = message.text
+            article.append(route, detail, body)
+            messages.append(article)
+          }
+          before = page.before
+          older.hidden = before === null
+          status.textContent = page.skippedLines
+            ? 'Some unreadable records were skipped.'
+            : messages.children.length
+              ? ''
+              : 'No communications recorded yet.'
+        } catch (error) {
+          status.textContent = 'Could not load communications: ' + error.message
+        } finally {
+          refresh.disabled = older.disabled = false
+        }
+      }
+      refresh.onclick = () => load(true)
+      older.onclick = () => load(false)
+      window.clave.ready.then(() => load(true))
+    </script>
+  </body>
+</html>

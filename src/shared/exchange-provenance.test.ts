@@ -10,7 +10,8 @@ import {
   ANONYMOUS_CHECKPOINT_HEADER,
   buildCheckpointProvenance,
   buildProvenanceHeader,
-  hasProvenanceHeader
+  hasProvenanceHeader,
+  parseProvenanceMessage
 } from './exchange-provenance'
 
 describe('buildCheckpointProvenance', () => {
@@ -26,5 +27,23 @@ describe('buildCheckpointProvenance', () => {
     expect(hasProvenanceHeader(buildCheckpointProvenance(undefined))).toBe(false)
     expect(hasProvenanceHeader(buildProvenanceHeader({ id: 'abc', name: 'Exos' }))).toBe(true)
     expect(hasProvenanceHeader(buildProvenanceHeader(undefined))).toBe(true)
+  })
+})
+
+// A prefix in ordinary prose is not a delivered message.
+it('does not classify an incomplete or embedded header as a cross-tab message', () => {
+  expect(hasProvenanceHeader('[Message from Clave tab "example')).toBe(false)
+  expect(hasProvenanceHeader('Example: [Message from a Clave agent]')).toBe(false)
+})
+
+it('extracts the source and preserves the message body including further headers', () => {
+  const header = buildProvenanceHeader({ id: 'conversation-abc', name: 'Lane "one"' })
+  expect(parseProvenanceMessage(`${header}\nQUESTION\n${header}`)).toEqual({
+    sender: { id: 'conversation-abc', name: 'Lane "one"' },
+    body: `QUESTION\n${header}`
+  })
+  expect(parseProvenanceMessage('[Message from a Clave agent]\nHello')).toEqual({
+    sender: null,
+    body: 'Hello'
   })
 })

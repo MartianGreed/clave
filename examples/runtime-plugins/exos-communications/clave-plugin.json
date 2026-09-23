@@ -1,0 +1,15 @@
+{
+  "apiVersion": 1,
+  "id": "example.exos-communications",
+  "name": "Exos communication history",
+  "version": "1.0.0",
+  "views": [
+    {
+      "id": "workstream",
+      "name": "Wave / Lane communications",
+      "entry": "workstream.html",
+      "mimeTypes": ["application/json"],
+      "capabilities": ["conversation.exchanges", "ui.openSession"]
+    }
+  ]
+}

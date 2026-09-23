@@ -212,6 +212,9 @@ const electronAPI = {
 
   // Exchange capture: fire-and-forget observability writes — the renderer
   // never waits on these, so a capture failure can't delay a delivery.
+  exchangeHistory: (request: { sessionId: string; before?: number; groupId?: string }) =>
+    ipcRenderer.invoke('exchange:history', request),
+  openExchangeSession: (id: string) => ipcRenderer.invoke('exchange:open-session', id),
   captureExchangeMessage: (payload: {
     ts: string
     sender: unknown

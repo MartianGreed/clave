@@ -6,6 +6,8 @@ import {
   type ConversationAttachment
 } from '../../../../shared/conversation-attachments'
 import { ConversationAttachments } from './ConversationAttachments'
+import { ExchangeHistory, ExchangeSessionLink } from './ExchangeHistory'
+import { parseProvenanceMessage, hasProvenanceHeader } from '../../../../shared/exchange-provenance'
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   ArrowDownIcon,
@@ -500,6 +502,7 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
               ? STATUS_LABELS[session.status]
               : 'Connecting'}
         </span>
+        <ExchangeHistory sessionId={sessionId} />
         {snapshot && <SessionDetails snapshot={snapshot} />}
       </div>
       {session?.provider === 'pi' && !session.capabilities.permissions && (
@@ -564,22 +567,40 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
             ) : (
               groupConversationEntries(snapshot.entries).map((entry) => {
                 switch (entry.kind) {
-                  case 'message':
+                  case 'message': {
+                    const exchange =
+                      entry.role === 'user' ? parseProvenanceMessage(entry.text) : null
                     return (
                       <article
                         key={entry.id}
-                        aria-label={`${entry.role} message`}
+                        aria-label={exchange ? 'Agent message' : `${entry.role} message`}
                         className="conversation-message"
-                        data-role={entry.role}
+                        data-role={exchange ? 'agent' : entry.role}
                       >
+                        {exchange && (
+                          <div className="exchange-message-source">
+                            <span>Message from</span>
+                            {exchange.sender ? (
+                              <ExchangeSessionLink
+                                id={exchange.sender.id}
+                                name={exchange.sender.name}
+                              />
+                            ) : (
+                              <span>another agent</span>
+                            )}
+                          </div>
+                        )}
                         <ConversationAttachments files={entry.attachments ?? []} />
                         {entry.role === 'user' ? (
-                          <p className="conversation-user-text">{entry.text}</p>
+                          <p className="conversation-user-text">
+                            {exchange ? exchange.body : entry.text}
+                          </p>
                         ) : (
                           <MarkdownRenderer content={entry.text} />
                         )}
                       </article>
                     )
+                  }
                   case 'artifact':
                     return <PluginEntryView key={entry.id} sessionId={sessionId} entry={entry} />
                   case 'tool-group':
@@ -660,7 +681,10 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
                 disabled={!canSend}
                 onClick={() => {
                   const previous = snapshot?.entries.findLast(
-                    (entry) => entry.kind === 'message' && entry.role === 'user'
+                    (entry) =>
+                      entry.kind === 'message' &&
+                      entry.role === 'user' &&
+                      !hasProvenanceHeader(entry.text)
                   )
                   if (previous?.kind === 'message')
                     prefill(previous.text, previous.attachments ?? [])
@@ -741,7 +765,9 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
                     sessionId,
                     direction,
                     snapshot?.entries.flatMap((entry) =>
-                      entry.kind === 'message' && entry.role === 'user'
+                      entry.kind === 'message' &&
+                      entry.role === 'user' &&
+                      !hasProvenanceHeader(entry.text)
                         ? [{ text: entry.text, attachments: entry.attachments }]
                         : []
                     ) ?? []
@@ -796,7 +822,10 @@ function ConversationView({ sessionId }: { sessionId: string }): React.JSX.Eleme
                           !composer.attachments.length &&
                           !composer.preparations.length &&
                           snapshot?.entries.some(
-                            (entry) => entry.kind === 'message' && entry.role === 'user'
+                            (entry) =>
+                              entry.kind === 'message' &&
+                              entry.role === 'user' &&
+                              !hasProvenanceHeader(entry.text)
                           )
                         ? 'Enter to send · ↑ for message history'
                         : 'Enter to send · Shift+Enter for a new line'}

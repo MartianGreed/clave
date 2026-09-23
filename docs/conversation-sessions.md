@@ -273,3 +273,18 @@ Migration checks include `npm test -- migration restart`,
 `npm run test:e2e -- provider-launch-profiles`. The service
 migration fixture uses a local fake CLI and inspects its actual argv and resume
 ID. It never calls a live model or stops a user's daemon.
+
+### Messages between sessions
+
+Messages delivered by `clave_send_to_session` appear as **Message from [session]**,
+with a source-session button and a separate accent border. The agent still receives
+the provenance header and reply instructions. These messages do not enter the
+human composer's Arrow Up history or Edit last message action. A source that has
+closed leaves its message readable and reports that navigation is unavailable.
+
+Open **Communication history** in the conversation header to see incoming and
+outgoing exchanges and logged-only checkpoints. Switch to the group tab to see
+communications involving that workstream's members, including messages to another
+group. Attached group web views have the same history control. History is persisted
+in the existing Exos transport log and supports refresh and older-page loading.
+For an embeddable runtime-plugin example, see [Runtime plugins](runtime-plugins.md#exos-wavelane-communications).

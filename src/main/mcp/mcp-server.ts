@@ -360,7 +360,16 @@ async function runCommand(command: string, payload: unknown, caller?: string): P
           return { content: [{ type: 'text', text: JSON.stringify(result ?? { ok: true }) }] }
         }
       }
-      result = await callRenderer<unknown>(command, payload, win)
+      if (command === 'sendToSession' && callerSessionId) {
+        const source = windowRegistry.getWindowForSession(callerSessionId)
+        const senderEndpoint =
+          source && source.id !== win?.id
+            ? await callRenderer('exchangeEndpoint', { sessionId: callerSessionId }, source)
+            : undefined
+        result = await callRenderer(command, { ...p, senderEndpoint }, win)
+      } else {
+        result = await callRenderer<unknown>(command, payload, win)
+      }
       // Focusing a tab that lives in another window means the user should
       // SEE it: bring that window forward (inert under --test-no-activate).
       if (command === 'focus' && win) bringForward(win)
@@ -727,9 +736,16 @@ function buildServer(callerSessionId: string | undefined): McpServer {
         title: z.string().min(1).max(200),
         mimeType: z.enum(['text/html', 'text/markdown', 'text/plain', 'application/json']),
         content: z.string().max(128 * 1024),
-        fallback: z.string().min(1).max(32 * 1024),
+        fallback: z
+          .string()
+          .min(1)
+          .max(32 * 1024),
         sourceUrl: z.string().url().optional(),
-        commandId: z.string().min(1).max(128).describe('Stable ID for this publication, such as test-report-1')
+        commandId: z
+          .string()
+          .min(1)
+          .max(128)
+          .describe('Stable ID for this publication, such as test-report-1')
       }
     },
     (args) => run('publishArtifact', { ...args, callerSessionId })

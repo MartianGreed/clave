@@ -16,6 +16,10 @@ import type { PluginJobScope } from './jobs'
 
 export interface PluginViewDependencies {
   snapshot(sessionId: string): Promise<ConversationSnapshot>
+  exchanges?(
+    sessionId: string,
+    before?: number
+  ): Promise<import('../../shared/exchange-history').ExchangeHistoryPage>
   resolveView(
     sessionId: string,
     entry: PluginViewEntry,
@@ -39,6 +43,7 @@ export interface PluginViewDependencies {
   send(scope: PluginJobScope, text: string, requestId: string): Promise<unknown>
   openFile(sessionId: string, path: string): Promise<unknown>
   openArtifact(sessionId: string, entryId: string): Promise<unknown>
+  openSession?(sessionId: string, targetSessionId: string): Promise<unknown>
 }
 
 const text = z.string().min(1).max(65_536)
@@ -51,6 +56,9 @@ const filePath = z
   )
 const schemas = {
   'conversation.read': z.object({}).strict(),
+  'conversation.exchanges': z
+    .object({ before: z.number().int().nonnegative().optional() })
+    .strict(),
   'composer.setDraft': z.object({ text }).strict(),
   'conversation.send': z.object({ text }).strict(),
   'workspace.readFile': z.object({ path: filePath }).strict(),
@@ -70,7 +78,8 @@ const schemas = {
   'workspace.jobRead': z.object({ jobId: z.string().min(1).max(200) }).strict(),
   'workspace.cancelJob': z.object({ jobId: z.string().min(1).max(200) }).strict(),
   'ui.openFile': z.object({ path: filePath }).strict(),
-  'ui.openArtifact': z.object({ entryId: z.string().min(1).max(200) }).strict()
+  'ui.openArtifact': z.object({ entryId: z.string().min(1).max(200) }).strict(),
+  'ui.openSession': z.object({ sessionId: z.string().min(1).max(200) }).strict()
 }
 const requestSchema = z
   .object({
@@ -245,6 +254,9 @@ export class RuntimePluginViews {
         if (expired) throw new Error('Request expired')
       }
       switch (request.method) {
+        case 'conversation.exchanges':
+          if (!this.deps.exchanges) throw new Error('Exchange history unavailable')
+          return this.deps.exchanges(scope.sessionId, (params as { before?: number }).before)
         case 'conversation.read':
           return this.deps.snapshot(scope.sessionId)
         case 'composer.setDraft':
@@ -282,6 +294,9 @@ export class RuntimePluginViews {
           if (expired) throw new Error('Request expired')
           return this.deps.openFile(scope.sessionId, path)
         }
+        case 'ui.openSession':
+          if (!this.deps.openSession) throw new Error('Session navigation unavailable')
+          return this.deps.openSession(scope.sessionId, (params as { sessionId: string }).sessionId)
         case 'ui.openArtifact': {
           const entryId = (params as { entryId: string }).entryId
           const snapshot = await this.deps.snapshot(scope.sessionId)

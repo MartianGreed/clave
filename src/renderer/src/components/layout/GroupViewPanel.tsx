@@ -1,6 +1,7 @@
 import { useSessionStore, type SessionGroup } from '../../store/session-store'
 import { ensureGroupTerminalRunning } from '../../lib/group-terminal'
 import { WebViewPane } from './WebViewPane'
+import { ExchangeHistory } from '../terminal/ExchangeHistory'
 
 /**
  * A group's attached web view (group.view) — shown in place of the tiled
@@ -37,6 +38,7 @@ export function GroupViewPanel({
 
   return (
     <WebViewPane
+      actions={<ExchangeHistory key={group.id} groupId={group.id} />}
       url={view.url}
       title={view.title || group.name}
       backLabel="Sessions"

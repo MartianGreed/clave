@@ -223,3 +223,48 @@ The directory is covered by the existing `.clave-ui-dev/` ignore rule. This
 changes app state, not provider logins or the machine's shared tmux socket.
 Custom provider sessions cannot yet be pinned/exported through the legacy
 `.clave` format; those operations fail explicitly instead of creating a terminal.
+
+## Exos Wave/Lane communications
+
+Install `examples/runtime-plugins/exos-communications` to try a view-only plugin.
+Publish a JSON artifact in a conversation, then select **Wave / Lane communications**
+on that artifact. The view displays the session's incoming and outgoing messages,
+including lane questions, wave answers and self-addressed checkpoints. Refresh
+reads new records; Load older pages backward. Source and destination buttons open
+related sessions. The example needs no localhost server or filesystem access.
+
+Two optional capabilities support this integration:
+
+| Method | Parameters | Policy |
+| --- | --- | --- |
+| `conversation.exchanges` | `{before?: number}` | Read only messages involving the lease's conversation. The host chooses the session. |
+| `ui.openSession` | `{sessionId: string}` | Focus a live session in its owning window. The existing parent/child/same-group reach rules apply. |
+
+`conversation.exchanges` returns `{messages, before, skippedLines}`. Messages are
+newest first and contain `ts`, `sender`, `target`, `text`, `delivered`, and
+`checkpoint`. Each endpoint contains `sessionId`, `name`, `groupId`, and
+`groupName`, captured when the message was sent. Pass the returned `before` byte
+cursor to read older records; `null` marks the beginning. A page can be empty
+with a non-null cursor when the scanned records belong to other sessions.
+The reader scans at most 8 MiB per call and returns at most 100 messages, stopping
+at roughly 512 KiB of matching log data. Malformed records are counted in
+`skippedLines`. Missing history returns an empty page; read failures return errors.
+
+The history comes from Clave's existing
+`<userData>/exchange-capture/events.jsonl` transport log. New conversation deliveries
+now enter this log, as terminal deliveries already did. Exos can continue tailing
+it without a contract change. This log retains its existing append-only retention;
+closing a tab does not erase its communication history. Messages sent before
+conversation capture was added cannot be reconstructed here. Pi exchange capture
+remains unsupported by the mirrored Exos contract.
+
+The native communication-history button is also available in conversation
+headers and attached group/workstream views. The native group view includes
+messages involving any endpoint recorded in that group, including exchanges with
+another group. Plugin reads deliberately stay bound to their own conversation;
+a plugin installed for a lane cannot read unrelated lanes through this capability.
+
+These are chronological communication records. Clave does not infer which answer
+resolves which question, or modify Exos's workstream state. Transcript provenance
+headers are presentation hints for historical compatibility, never authorization
+credentials. The transport record remains the source of captured sender identity.

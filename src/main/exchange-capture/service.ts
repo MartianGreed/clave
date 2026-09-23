@@ -2,6 +2,8 @@ import * as path from 'path'
 import { app } from 'electron'
 import { validateWorkstreamEvent } from './contract/workstream-events'
 import { CaptureStore } from './store'
+import { readExchangeHistory } from './history'
+import type { ExchangeHistoryPage } from '../../shared/exchange-history'
 import {
   computeSessionSnapshot,
   listSidecars,
@@ -41,6 +43,14 @@ let store: CaptureStore | null = null
 function getStore(): CaptureStore {
   if (!store) store = new CaptureStore(path.join(app.getPath('userData'), 'exchange-capture'))
   return store
+}
+
+export function exchangeHistory(
+  sessionId: string,
+  before?: number,
+  groupId?: string
+): Promise<ExchangeHistoryPage> {
+  return readExchangeHistory(getStore().filePath(), sessionId, before, groupId)
 }
 
 /** Validate, then append. The one place a line enters the store. */

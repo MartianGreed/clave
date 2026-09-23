@@ -2,14 +2,10 @@
  * The provenance header Clave stamps on every cross-tab message delivery, and
  * the matcher that recognizes it again in a session's transcript.
  *
- * ONE source of truth on purpose. The renderer BUILDS the header when
- * delivering (`mcp-dispatcher.handleSendToSession`), and `hasProvenanceHeader`
- * is the matcher any reader of a transcript uses to tell a sibling agent's
- * delivery from something the human typed (the in-app conversation view that
- * used it went with the clave_read_exchanges tool; the exos side reads the
- * record instead). A hand-typed second copy of this string would drift, and
- * the failure is silent in the worst direction: an unmatched header makes a
- * sibling agent's message read as something the human typed.
+ * The renderer builds the header when delivering a message; transcript cards
+ * and composer recall recognize it with the same module. Exos reads the
+ * transport record. Keep construction and recognition together so a header
+ * change cannot silently present a sibling agent's message as human input.
  */
 
 /** Sender identity as it appears in a named header. */
@@ -57,8 +53,22 @@ export function buildCheckpointProvenance(sender: ProvenanceSender | undefined):
  * side, not something the human wrote.
  */
 export function hasProvenanceHeader(text: string): boolean {
+  return parseProvenanceMessage(text) !== null
+}
+
+/** Presentation hint for existing transcripts, never an authorization credential. */
+export function parseProvenanceMessage(text: string): {
+  sender: ProvenanceSender | null
+  body: string
+} | null {
   const trimmed = text.trimStart()
-  return (
-    trimmed.startsWith(NAMED_PROVENANCE_PREFIX) || trimmed.startsWith(ANONYMOUS_PROVENANCE_HEADER)
-  )
+  const newline = trimmed.indexOf('\n')
+  const header = (newline < 0 ? trimmed : trimmed.slice(0, newline)).trimEnd()
+  const body = newline < 0 ? '' : trimmed.slice(newline + 1)
+  if (header === ANONYMOUS_PROVENANCE_HEADER) return { sender: null, body }
+  const match =
+    /^\[Message from Clave tab "(.*)" — reply with clave_(?:send_to_session|message) sessionId="([^"\r\n]+)"\]$/.exec(
+      header
+    )
+  return match ? { sender: { name: match[1], id: match[2] }, body } : null
 }

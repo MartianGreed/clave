@@ -45,6 +45,7 @@ export interface WebViewPaneStart {
 }
 
 export interface WebViewPaneProps {
+  actions?: React.ReactNode
   /** http(s) URL (probed) or an absolute .html path (served from disk, no probe). */
   url: string
   title: string
@@ -95,7 +96,8 @@ export function WebViewPane({
   backLabel,
   onBack,
   start,
-  active = true
+  active = true,
+  actions
 }: WebViewPaneProps): React.JSX.Element {
   const isFile = url.startsWith('/')
   const [probe, setProbe] = useState<ProbeState>(isFile ? 'up' : 'unknown')
@@ -342,6 +344,7 @@ export function WebViewPane({
           </button>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
+          {actions}
           <button onClick={handleRefresh} className="btn-icon" title="Reload">
             <ArrowPathIcon className="w-4 h-4" />
           </button>

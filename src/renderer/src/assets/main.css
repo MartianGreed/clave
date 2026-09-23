@@ -4386,3 +4386,29 @@ button.extension-card:hover {
 .conversation-attachment-content pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-xs); }
 
 .conversation-compose-files { max-height: 30vh; overflow-y: auto; }
+
+/* Cross-session communication, including Exos Wave/Lane exchanges. */
+.conversation-message[data-role='agent'] {
+  border-inline-start: 2px solid var(--color-accent);
+  background: var(--surface-50);
+  padding: calc(var(--spacing) * 3);
+}
+.exchange-message-source, .exchange-history-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: calc(var(--spacing) * 2);
+}
+.exchange-message-source { color: var(--color-text-secondary); margin-bottom: calc(var(--spacing) * 2); }
+.exchange-history { width: min(36rem, calc(100vw - 2rem)); padding: calc(var(--spacing) * 3); }
+.exchange-history-heading h3 { flex: 1; font-weight: 600; }
+.exchange-history-messages { max-height: 55vh; overflow: auto; overscroll-behavior: contain; }
+.exchange-history-message { padding-block: calc(var(--spacing) * 3); border-bottom: 1px solid var(--color-border); }
+.exchange-history-message small, .exchange-history-note, .exchange-session-link small {
+  display: block;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+}
+.exchange-history-message .conversation-user-text { margin-top: calc(var(--spacing) * 2); }
+
+.exchange-session-link .panel-tab { color: var(--color-accent); }
