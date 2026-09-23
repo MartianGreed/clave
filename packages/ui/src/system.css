@@ -2759,6 +2759,42 @@ details[open] > .chat-tool-row .chat-tool-chevron,
 .chat-permission-input summary:hover { color: var(--text-secondary); }
 .chat-permission-input[open] summary { margin-bottom: calc(var(--spacing) * 1.5); }
 
+/* The /resume picker wears the dock: a search field over this folder's past
+   conversations, newest first, each its title over its last prompt and age. */
+.chat-resume-search { width: 100%; margin-top: 0; }
+.chat-resume-list {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(var(--spacing) * 72);
+  overflow-y: auto;
+}
+.chat-resume-option {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 0.5);
+  padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 2.5);
+  border-radius: var(--radius-lg);
+  text-align: left;
+  cursor: pointer;
+}
+.chat-resume-option + .chat-resume-option { margin-top: var(--row-gap); }
+.chat-resume-option[data-selected="true"] { background-color: var(--surface-100); }
+.chat-resume-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.chat-resume-meta {
+  display: flex;
+  gap: calc(var(--spacing) * 2);
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+.chat-resume-prompt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-resume-age { flex-shrink: 0; margin-left: auto; }
+
 /* The transcript's record of a request: one muted row, like a tool call. */
 .chat-permission-row {
   display: flex;

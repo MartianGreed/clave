@@ -1,6 +1,9 @@
 import { EventEmitter } from 'node:events'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { z } from 'zod'
 import {
   SessionInputSchema,
@@ -54,9 +57,47 @@ const lastCommandsByCwd = new Map<string, string[]>()
 let lastCommandsAnywhere: string[] = []
 const toCommands = (names: string[]): CommandOption[] =>
   names.map((name) => ({ name, insert: `/${name} ` }))
-type ModelListRequest = { resolve: (models: ModelOption[]) => void; reject: (error: Error) => void }
-/** How long the model menu waits on the CLI's answer before calling it unavailable. */
-const MODEL_LIST_TIMEOUT_MS = 20_000
+type InitializeRequest = {
+  resolve: (response: Record<string, unknown>) => void
+  reject: (error: Error) => void
+}
+/** How long a menu waits on the CLI's initialize answer before calling it unavailable. */
+const INITIALIZE_TIMEOUT_MS = 20_000
+/** The host's own commands, offered before the CLI's: the chat view acts on
+ *  them itself rather than sending them to the agent. */
+export const HOST_COMMANDS: CommandOption[] = [
+  { name: 'resume', description: 'Resume a past conversation from this folder', insert: '/resume' }
+]
+/** What a transcript's human line says, the way the reader typed it: a slash
+ *  command as "/name args", the CLI's own wrappers (command output, caveats,
+ *  reminders) as nothing. */
+function spokenText(text: string): string {
+  const command = /<command-name>([^<]*)<\/command-name>/.exec(text)
+  if (command) {
+    const args = /<command-args>([^<]*)<\/command-args>/.exec(text)?.[1] ?? ''
+    return `${command[1].trim()} ${args.trim()}`.trim()
+  }
+  if (text.trimStart().startsWith('<') || text.startsWith('Caveat:')) return ''
+  return text
+}
+/** Where Claude Code keeps a conversation: `<root>/<cwd, dashed>/<id>.jsonl`,
+ *  else wherever in the root a file of that id is (the cwd may have moved). */
+export function findTranscript(id: string, cwd: string, configDir?: string): string | null {
+  const root = configDir
+    ? join(configDir, 'projects')
+    : process.env.CLAVE_TRANSCRIPTS_ROOT || join(homedir(), '.claude', 'projects')
+  const direct = join(root, cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${id}.jsonl`)
+  if (existsSync(direct)) return direct
+  try {
+    for (const dir of readdirSync(root)) {
+      const candidate = join(root, dir, `${id}.jsonl`)
+      if (existsSync(candidate)) return candidate
+    }
+  } catch {
+    // No transcript store at all: nothing to replay.
+  }
+  return null
+}
 export class ClaudeStreamTranslator {
   readonly permissions = new Map<string, Permission>()
   /** The pending requests that are AskUserQuestion, answered with `answers`. */
@@ -65,8 +106,8 @@ export class ClaudeStreamTranslator {
   commands: string[] | null = null
   /** request_id → the model a set_model control request asked for. */
   readonly modelRequests = new Map<string, string | null>()
-  /** request_id → the caller waiting on an initialize control request's models. */
-  readonly listRequests = new Map<string, ModelListRequest>()
+  /** request_id → the caller waiting on an initialize control request's answer. */
+  readonly listRequests = new Map<string, InitializeRequest>()
   private streamed = false
   private finished = false
   private tools = new Set<string>()
@@ -85,26 +126,9 @@ export class ClaudeStreamTranslator {
     const request = this.listRequests.get(response.data.request_id)
     if (!request) return false
     this.listRequests.delete(response.data.request_id)
-    const models = z
-      .array(
-        z.object({
-          value: z.string(),
-          displayName: z.string(),
-          description: z.string().optional(),
-          resolvedModel: z.string().optional()
-        })
-      )
-      .safeParse(response.data.response?.models)
-    if (response.data.subtype === 'success' && models.success)
-      request.resolve(
-        models.data.map((model) => ({
-          id: model.value,
-          label: model.displayName,
-          ...(model.description ? { hint: model.description } : {}),
-          ...(model.resolvedModel ? { resolved: model.resolvedModel } : {})
-        }))
-      )
-    else request.reject(new Error(response.data.error ?? 'Claude did not list its models'))
+    if (response.data.subtype === 'success' && response.data.response)
+      request.resolve(response.data.response)
+    else request.reject(new Error(response.data.error ?? 'Claude did not answer initialize'))
     return true
   }
   /** A control_response answering one of our set_model requests; false for any other. */
@@ -129,6 +153,66 @@ export class ClaudeStreamTranslator {
         fatal: false
       })
     return true
+  }
+  /** A resumed conversation's past, replayed from its transcript as the events
+   *  a live turn would have produced: the CLI resumes it without repeating it,
+   *  so a view would otherwise open on an empty page. Subagent lines, meta
+   *  lines and the CLI's own wrappers stay out; a call the transcript never
+   *  answered is closed, not left spinning. */
+  replay(lines: Iterable<string>): void {
+    const open = new Set<string>()
+    const block = z.object({ type: z.string() }).passthrough()
+    for (const line of lines) {
+      let frame: Record<string, unknown>
+      try {
+        frame = object.parse(JSON.parse(line))
+      } catch {
+        continue
+      }
+      if (frame.isSidechain === true || frame.isMeta === true) continue
+      const content = object.safeParse(frame.message).data?.content
+      if (frame.type === 'user') {
+        if (typeof content === 'string') {
+          const text = spokenText(content)
+          if (text) this.emit({ type: 'user_message', text })
+          continue
+        }
+        for (const item of z.array(block).catch([]).parse(content)) {
+          if (item.type === 'tool_result' && typeof item.tool_use_id === 'string') {
+            open.delete(item.tool_use_id)
+            this.emit({
+              type: 'tool_result',
+              id: item.tool_use_id,
+              output: item.content,
+              ...(item.is_error === true ? { error: true } : {})
+            })
+          } else if (item.type === 'text' && typeof item.text === 'string') {
+            const text = spokenText(item.text)
+            if (text) this.emit({ type: 'user_message', text })
+          }
+        }
+      } else if (frame.type === 'assistant') {
+        for (const item of z.array(block).catch([]).parse(content)) {
+          if (item.type === 'text' && typeof item.text === 'string' && item.text.trim())
+            this.emit({ type: 'assistant_text', delta: item.text, final: true })
+          else if (
+            item.type === 'tool_use' &&
+            typeof item.id === 'string' &&
+            !this.tools.has(item.id)
+          ) {
+            this.tools.add(item.id)
+            open.add(item.id)
+            this.emit({
+              type: 'tool_call',
+              id: item.id,
+              name: typeof item.name === 'string' ? item.name : 'Tool',
+              input: item.input
+            })
+          }
+        }
+      }
+    }
+    for (const id of open) this.emit({ type: 'tool_result', id, output: undefined })
   }
   line(line: string): void {
     try {
@@ -356,6 +440,8 @@ interface Live {
   ready: boolean
   initialPrompt?: string
   commandError?: string
+  /** The conversation this session resumes, replayed into the view once. */
+  resume?: { id: string; cwd: string; configDir?: string; replayed: boolean }
   /** The model the session was launched on; the CLI's init frame refines it. */
   model: string | null
   emit: (event: SessionEvent) => void
@@ -421,6 +507,9 @@ export class ClaudeAdapter implements SessionAdapter {
       ready: false,
       initialPrompt: context.initialPrompt,
       model: options.model ?? null,
+      resume: options.resume
+        ? { id: options.resume, cwd: spec.cwd, configDir: context.configDir, replayed: false }
+        : undefined,
       commandError:
         context.initialCommand !== undefined || context.autoExecute === true
           ? 'initialCommand and autoExecute are not supported by Claude chat sessions; use a terminal session for shell commands.'
@@ -541,6 +630,19 @@ export class ClaudeAdapter implements SessionAdapter {
       kind: 'event',
       event: { type: 'session_meta', model: live.model, providerSessionId: null }
     })
+    if (live.resume && !live.resume.replayed) {
+      live.resume.replayed = true
+      const path = findTranscript(live.resume.id, live.resume.cwd, live.resume.configDir)
+      try {
+        if (path) live.translator.replay(readFileSync(path, 'utf8').split('\n'))
+      } catch (error) {
+        live.emit({
+          type: 'error',
+          message: `Could not replay the conversation: ${String(error)}`,
+          fatal: false
+        })
+      }
+    }
     const initialPrompt = live.initialPrompt
     if (initialPrompt !== undefined)
       this.write(handle, { type: 'user_message', text: initialPrompt })
@@ -591,27 +693,68 @@ export class ClaudeAdapter implements SessionAdapter {
     } else
       send({ type: 'control_request', request_id: randomUUID(), request: { subtype: 'interrupt' } })
   }
+  /** The commands the CLI offers this folder (skills included, with what each
+   *  does), asked of the session's own process like the models, so a first
+   *  message can be a command. The host's own come first. Should the CLI not
+   *  answer, the last list an init frame named stands in. */
   async commands(handle: SessionHandle): Promise<CommandOption[]> {
     const live = this.live(handle)
     const cwd = this.cwds.get(handle.id) ?? ''
-    return toCommands(
-      live.translator.commands ?? lastCommandsByCwd.get(cwd) ?? lastCommandsAnywhere
-    )
+    const fallback = (): CommandOption[] =>
+      toCommands(live.translator.commands ?? lastCommandsByCwd.get(cwd) ?? lastCommandsAnywhere)
+    let listed: CommandOption[]
+    try {
+      const commands = z
+        .array(z.object({ name: z.string(), description: z.string().optional() }))
+        .parse((await this.initialize(live)).commands)
+      listed = commands.map((command) => ({
+        name: command.name,
+        ...(command.description ? { description: command.description } : {}),
+        insert: `/${command.name} `
+      }))
+    } catch {
+      listed = fallback()
+    }
+    return [
+      ...HOST_COMMANDS,
+      ...listed.filter((c) => !HOST_COMMANDS.some((h) => h.name === c.name))
+    ]
   }
   /** The models the CLI itself offers this account, asked of the session's own
    *  process (started if the session has not spoken yet): no list is kept here,
    *  so a new or retired model shows the moment the CLI knows of it. */
   async models(handle: SessionHandle): Promise<ModelOption[]> {
-    const live = this.live(handle)
-    if (live.ended) throw new Error('Claude session has ended')
+    const models = z
+      .array(
+        z.object({
+          value: z.string(),
+          displayName: z.string(),
+          description: z.string().optional(),
+          resolvedModel: z.string().optional()
+        })
+      )
+      .safeParse((await this.initialize(this.live(handle))).models)
+    if (!models.success) throw new Error('Claude did not list its models')
+    return models.data.map((model) => ({
+      id: model.value,
+      label: model.displayName,
+      ...(model.description ? { hint: model.description } : {}),
+      ...(model.resolvedModel ? { resolved: model.resolvedModel } : {})
+    }))
+  }
+  /** The CLI's initialize answer (commands, models, account), asked of the
+   *  session's own process, started if the session has not spoken yet. No turn
+   *  is sent and no token spent; the CLI answers it any number of times. */
+  private initialize(live: Live): Promise<Record<string, unknown>> {
+    if (live.ended) return Promise.reject(new Error('Claude session has ended'))
     live.process ??= live.start()
     const requestId = randomUUID()
     const { translator } = live
-    const list = new Promise<ModelOption[]>((resolve, reject) => {
+    const answer = new Promise<Record<string, unknown>>((resolve, reject) => {
       const timer = setTimeout(() => {
         translator.listRequests.delete(requestId)
-        reject(new Error('Claude did not list its models in time'))
-      }, MODEL_LIST_TIMEOUT_MS)
+        reject(new Error('Claude did not answer initialize in time'))
+      }, INITIALIZE_TIMEOUT_MS)
       const settle =
         <T>(done: (value: T) => void) =>
         (value: T): void => {
@@ -623,7 +766,7 @@ export class ClaudeAdapter implements SessionAdapter {
     live.process.stdin.write(
       `${JSON.stringify({ type: 'control_request', request_id: requestId, request: { subtype: 'initialize' } })}\n`
     )
-    return list
+    return answer
   }
   async kill(handle: SessionHandle): Promise<void> {
     const live = this.handles.get(handle.id)

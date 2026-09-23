@@ -34,7 +34,7 @@ vi.mock('./pty-backend', () => ({
   isValidClaudeSessionId: (s) => /^[\w-]+$/.test(s),
   isValidModelName: (s) => !s.startsWith('-')
 }))
-import { ClaudeAdapter, ClaudeStreamTranslator } from './claude-adapter'
+import { ClaudeAdapter, ClaudeStreamTranslator, HOST_COMMANDS } from './claude-adapter'
 import { NdjsonLines } from './ndjson'
 const spec = {
   id: 'test-session',
@@ -778,4 +778,94 @@ it('asks AskUserQuestion as questions and answers with the reader choices', () =
   })
   expect(events.at(-2)).not.toHaveProperty('questions')
   expect(() => translator.response('p1', 'answer', { a: 'b' })).toThrow(/Invalid/)
+})
+
+it('replays a resumed transcript as the events a live turn would have produced', () => {
+  const lines = [
+    { type: 'permission-mode', permissionMode: 'default' },
+    { type: 'user', isMeta: true, message: { role: 'user', content: 'Caveat: local commands' } },
+    {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: '<command-name>/exos:lane</command-name><command-args>clave 2527</command-args>'
+      }
+    },
+    {
+      type: 'user',
+      message: { role: 'user', content: '<local-command-stdout>ok</local-command-stdout>' }
+    },
+    { type: 'user', message: { role: 'user', content: 'Fix the capture scan' } },
+    {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'thinking', thinking: 'hmm' },
+          { type: 'text', text: 'Looking.' },
+          { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls' } },
+          { type: 'tool_use', id: 't2', name: 'Read', input: { file_path: '/x' } }
+        ]
+      }
+    },
+    {
+      type: 'user',
+      message: {
+        content: [{ type: 'tool_result', tool_use_id: 't1', content: 'a\nb', is_error: true }]
+      }
+    },
+    {
+      type: 'assistant',
+      isSidechain: true,
+      message: { content: [{ type: 'text', text: 'subagent' }] }
+    },
+    'not json',
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'Done.' }] } }
+  ].map((line) => (typeof line === 'string' ? line : JSON.stringify(line)))
+  translator.replay(lines)
+  expect(events).toEqual([
+    { type: 'user_message', text: '/exos:lane clave 2527' },
+    { type: 'user_message', text: 'Fix the capture scan' },
+    { type: 'assistant_text', delta: 'Looking.', final: true },
+    { type: 'tool_call', id: 't1', name: 'Bash', input: { command: 'ls' } },
+    { type: 'tool_call', id: 't2', name: 'Read', input: { file_path: '/x' } },
+    { type: 'tool_result', id: 't1', output: 'a\nb', error: true },
+    { type: 'assistant_text', delta: 'Done.', final: true },
+    // Never answered in the transcript: closed rather than left running.
+    { type: 'tool_result', id: 't2', output: undefined }
+  ])
+  for (const event of events) expect(SessionEventSchema.safeParse(event).success).toBe(true)
+})
+it('offers the host /resume before the commands the CLI lists at initialize', async () => {
+  const child = Object.assign(new EventEmitter(), {
+    stdin: new PassThrough(),
+    stdout: new PassThrough(),
+    stderr: new PassThrough()
+  })
+  mock.spawn.mockReturnValue(child)
+  const adapter = new ClaudeAdapter()
+  const handle = await adapter.spawn(spec)
+  const listed = adapter.commands(handle)
+  expect(mock.spawn).toHaveBeenCalledTimes(1)
+  const request = JSON.parse(child.stdin.read().toString())
+  child.stdout.write(
+    JSON.stringify({
+      type: 'control_response',
+      response: {
+        subtype: 'success',
+        request_id: request.request_id,
+        response: {
+          commands: [
+            { name: 'review', description: 'Review a PR', argumentHint: '' },
+            { name: 'resume', description: 'the CLI one' }
+          ]
+        }
+      }
+    }) + '\n'
+  )
+  expect(await listed).toEqual([
+    ...HOST_COMMANDS,
+    { name: 'review', description: 'Review a PR', insert: '/review ' }
+  ])
+  child.emit('close', 0)
+  await adapter.kill(handle)
 })

@@ -21,6 +21,11 @@ import { emptyConversation, reduceConversation, type Entry } from './reducer'
 import { groupEntries, visibleEntries } from './tools'
 import { ToolGroup } from './ToolGroup'
 import { PermissionRow, PromptDock } from './PromptDock'
+import { ResumePicker } from './ResumePicker'
+import { resumeHistoryEntry } from '../../../src/renderer/src/lib/session-history'
+import { emitTabClosed } from '../../../src/renderer/src/lib/exchange-capture'
+import { useViewSessionStore } from '../../../src/renderer/src/views/session-store'
+import type { HistoryListEntry } from '../../../src/preload/index.d'
 import { ChatCode } from './code'
 import { pathsFromDataTransfer, pathForMessage } from '../../../src/renderer/src/lib/dropped-paths'
 import { ClaudeLogo, CodexLogo, PiLogo } from '../../../src/renderer/src/components/icons/cli-logos'
@@ -165,7 +170,7 @@ function SlashMenu({
       {commands === null && !failure && <div className="chat-model-empty">Loading…</div>}
       {failure && <div className="chat-model-empty">Commands unavailable</div>}
       {commands?.length === 0 && (
-        <div className="chat-model-empty">Commands load after the first message</div>
+        <div className="chat-model-empty">This session offers no commands</div>
       )}
       {commands && commands.length > 0 && shown.length === 0 && (
         <div className="chat-model-empty">No command matches “/{query}”</div>
@@ -314,6 +319,8 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
   const [sending, setSending] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [pending, setPending] = useState<string[]>([])
+  // The /resume picker, open in the dock above the composer.
+  const [resuming, setResuming] = useState(false)
   const scroll = useRef<HTMLDivElement>(null)
   const stuck = useRef(true)
   const textarea = useRef<HTMLTextAreaElement>(null)
@@ -366,8 +373,16 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
   }
   const report = (error: unknown): void =>
     dispatch({ event: { type: 'error', message: String(error), fatal: false } })
+  // /resume is the host's, as in the TUI: it opens the picker rather than
+  // reaching the agent, typed whole or taken from the slash menu.
+  const canResume = session.provider === 'claude'
+  const openResume = (): void => {
+    setDraft('')
+    setResuming(true)
+  }
   const send = async (): Promise<void> => {
     if (!ready || sending || state === 'ended' || !draft.trim()) return
+    if (canResume && /^\/resume\s*$/.test(draft.trim())) return openResume()
     const text = draft
     setSending(true)
     stuck.current = true
@@ -482,11 +497,42 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
   )
   const query = closed ? null : slashQuery(draft)
   const slashOpen = query !== null && slashDismissed !== draft
-  const pickCommand = useCallback((command: CommandOption): void => {
-    setDraft(command.insert)
-    setSlashDismissed(command.insert)
-    textarea.current?.focus()
-  }, [])
+  const pickCommand = useCallback(
+    (command: CommandOption): void => {
+      if (canResume && command.name === 'resume') {
+        setSlashDismissed('')
+        setDraft('')
+        setResuming(true)
+        return
+      }
+      setDraft(command.insert)
+      setSlashDismissed(command.insert)
+      textarea.current?.focus()
+    },
+    [canResume]
+  )
+  /* A picked conversation opens as a chat tab of its own, on this tab's launch
+     profile and beside it; a tab that has said nothing yet gives its place to
+     it (closed the way the header's Close does), so a /resume in a fresh tab
+     reads as resuming right here. */
+  const resumeConversation = async (entry: HistoryListEntry): Promise<void> => {
+    const store = useViewSessionStore.getState()
+    const me = store.sessions.find((s) => s.id === session.id)
+    const group = store.groups.find((g) => g.sessionIds.includes(session.id))
+    const opened = await resumeHistoryEntry(entry, {
+      groupId: group?.id ?? null,
+      dangerousMode: me?.dangerousMode ?? false,
+      launchProfileId: me?.launchProfileId
+    })
+    setResuming(false)
+    if (!opened) return report('Could not resume that conversation')
+    if (opened === session.id || conversation.entries.length > 0) return
+    const current = useViewSessionStore.getState()
+    const closing = current.sessions.find((s) => s.id === session.id)
+    if (closing) emitTabClosed(closing, current.groups, 'user', null)
+    await window.electronAPI.killSession(session.id).catch(() => {})
+    useViewSessionStore.getState().removeSession(session.id)
+  }
   const closeSlash = useCallback((): void => setSlashDismissed(draft), [draft])
   // Empty assistant turns (a closing frame that opened nothing) do not render;
   // consecutive tool calls fold into one row. Both views filter and group
@@ -545,8 +591,22 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
         </div>
       </div>
       <div className="chat-composer-wrap">
+        {resuming && (
+          <ResumePicker
+            cwd={session.cwd}
+            exclude={
+              useViewSessionStore.getState().sessions.find((s) => s.id === session.id)
+                ?.claudeSessionId ?? null
+            }
+            onPick={(entry) => void resumeConversation(entry)}
+            onClose={() => {
+              setResuming(false)
+              textarea.current?.focus()
+            }}
+          />
+        )}
         <PromptDock
-          requests={waitingOn}
+          requests={resuming ? [] : waitingOn}
           agent={AGENT_NAMES[session.provider] ?? 'the agent'}
           busy={(id) => !ready || state === 'ended' || pending.includes(id)}
           onAnswer={(id, optionId, answers) => void answer(id, optionId, answers)}
