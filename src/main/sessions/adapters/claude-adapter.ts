@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import {
   SessionInputSchema,
+  AgentQuestionSchema,
   type SessionInput,
   type SessionEvent,
   type ModelOption,
@@ -58,6 +59,8 @@ type ModelListRequest = { resolve: (models: ModelOption[]) => void; reject: (err
 const MODEL_LIST_TIMEOUT_MS = 20_000
 export class ClaudeStreamTranslator {
   readonly permissions = new Map<string, Permission>()
+  /** The pending requests that are AskUserQuestion, answered with `answers`. */
+  readonly questionRequests = new Set<string>()
   /** The slash commands (skills included) the CLI named at init. */
   commands: string[] | null = null
   /** request_id → the model a set_model control request asked for. */
@@ -219,6 +222,33 @@ export class ClaudeStreamTranslator {
           : []
       })
       this.permissions.set(id, { input: r.input, suggestions })
+      // AskUserQuestion reaches the host as a permission, but allowing it
+      // unanswered hands the model an empty answer: the reply must carry the
+      // reader's choices (`answers`, question → label) in its updated input.
+      const questions =
+        r.tool_name === 'AskUserQuestion'
+          ? z.object({ questions: z.array(AgentQuestionSchema) }).safeParse(r.input)
+          : undefined
+      if (questions?.success) {
+        this.questionRequests.add(id)
+        this.emit({
+          type: 'permission_request',
+          id,
+          description:
+            questions.data.questions.length === 1
+              ? questions.data.questions[0].question
+              : `Claude asks ${questions.data.questions.length} questions`,
+          toolName: r.tool_name,
+          input: r.input,
+          questions: questions.data.questions,
+          options: [
+            { id: 'answer', label: 'Submit' },
+            { id: 'deny', label: 'Skip' }
+          ]
+        })
+        this.emit({ type: 'state_change', state: 'blocked' })
+        return
+      }
       this.emit({
         type: 'permission_request',
         id,
@@ -227,6 +257,7 @@ export class ClaudeStreamTranslator {
           : `Allow ${r.tool_name}?`,
         toolName: r.tool_name,
         input: r.input,
+        ...(r.description ? { detail: r.description } : {}),
         options: [
           { id: 'allow-once', label: 'Allow once' },
           ...(suggestions.length
@@ -243,11 +274,13 @@ export class ClaudeStreamTranslator {
       this.emit({ type: 'state_change', state: 'blocked' })
     } else if (p.type === 'control_cancel_request') {
       this.permissions.delete(z.string().parse(p.request_id))
+      this.questionRequests.delete(z.string().parse(p.request_id))
       fallback()
       if (!this.permissions.size) this.emit({ type: 'state_change', state: 'working' })
     } else if (p.type === 'result') {
       this.finish()
       this.permissions.clear()
+      this.questionRequests.clear()
       this.tools.clear()
       if (p.is_error)
         this.emit({
@@ -266,15 +299,31 @@ export class ClaudeStreamTranslator {
     this.finished = true
     this.emit({ type: 'assistant_text', delta: '', final: true })
   }
-  response(id: string, optionId: string): unknown {
+  response(id: string, optionId: string, answers?: Record<string, string>): unknown {
     const pending = this.permissions.get(id)
     if (!pending) throw new Error(`Unknown Claude permission request: ${id}`)
+    const question = this.questionRequests.has(id)
     if (
-      !['allow-once', 'allow-always', 'deny'].includes(optionId) ||
-      (optionId === 'allow-always' && !pending.suggestions.length)
+      question
+        ? !['answer', 'deny'].includes(optionId)
+        : !['allow-once', 'allow-always', 'deny'].includes(optionId)
     )
       throw new Error('Invalid Claude permission option')
+    if (optionId === 'allow-always' && !pending.suggestions.length)
+      throw new Error('Invalid Claude permission option')
+    if (optionId === 'answer' && (!answers || !Object.keys(answers).length))
+      throw new Error('An answer needs at least one choice')
     this.permissions.delete(id)
+    this.questionRequests.delete(id)
+    if (optionId === 'answer')
+      return {
+        type: 'control_response',
+        response: {
+          subtype: 'success',
+          request_id: id,
+          response: { behavior: 'allow', updatedInput: { ...object.parse(pending.input), answers } }
+        }
+      }
     return {
       type: 'control_response',
       response: {
@@ -282,7 +331,10 @@ export class ClaudeStreamTranslator {
         request_id: id,
         response:
           optionId === 'deny'
-            ? { behavior: 'deny', message: 'Denied by user' }
+            ? {
+                behavior: 'deny',
+                message: question ? 'The user skipped the question' : 'Denied by user'
+              }
             : {
                 behavior: 'allow',
                 updatedInput: pending.input,
@@ -520,7 +572,7 @@ export class ClaudeAdapter implements SessionAdapter {
         })
       send({ type: 'user', message: { role: 'user', content: input.text } })
     } else if (input.type === 'permission_response') {
-      send(live.translator.response(input.id, input.optionId))
+      send(live.translator.response(input.id, input.optionId, input.answers))
       if (!live.translator.permissions.size)
         live.emitter.emit('stream', {
           kind: 'event',

@@ -49,7 +49,7 @@ export function groupEntries(entries: Entry[]): Block[] {
   return blocks
 }
 
-export type ToolKind = 'read' | 'search' | 'edit' | 'command' | 'other'
+export type ToolKind = 'read' | 'search' | 'edit' | 'command' | 'skill' | 'web' | 'agent' | 'other'
 export interface Section {
   label: string
   text: string
@@ -63,9 +63,14 @@ export interface ToolDescription {
 }
 
 const READ = ['read', 'readfile']
-const SEARCH = ['grep', 'glob', 'search', 'searchfiles', 'find', 'websearch', 'ripgrep']
+const SEARCH = ['grep', 'glob', 'search', 'searchfiles', 'find', 'ripgrep']
 const EDIT = ['edit', 'write', 'writefile', 'applypatch', 'filechange', 'multiedit']
 const COMMAND = ['bash', 'shell', 'commandexecution', 'execcommand', 'runcommand']
+const SKILL = ['skill']
+const WEB = ['webfetch', 'websearch']
+const AGENT = ['task', 'agent']
+/** An MCP tool arrives as `mcp__<server>__<tool>`: the reader knows it by the tool. */
+const MCP = /^mcp__(.+?)__(.+)$/
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -159,13 +164,22 @@ export function describeTool(tool: ToolEntry, withSections = true): ToolDescript
         ? 'edit'
         : COMMAND.includes(name)
           ? 'command'
-          : 'other'
+          : SKILL.includes(name)
+            ? 'skill'
+            : WEB.includes(name)
+              ? 'web'
+              : AGENT.includes(name)
+                ? 'agent'
+                : 'other'
   const labels: Record<ToolKind, string> = {
     read: 'Read',
     search: 'Search',
     edit: 'Edit',
     command: 'Shell',
-    other: tool.name ?? 'Tool'
+    skill: 'Skill',
+    web: name === 'websearch' ? 'Web search' : 'Fetch',
+    agent: 'Agent',
+    other: MCP.exec(tool.name ?? '')?.[2] ?? tool.name ?? 'Tool'
   }
   const input = tool.input
   const data = record(input)
@@ -178,7 +192,11 @@ export function describeTool(tool: ToolEntry, withSections = true): ToolDescript
       ? query || literal || path
       : kind === 'command'
         ? command || literal
-        : path || literal
+        : kind === 'skill'
+          ? field(data, 'skill', 'name') || literal
+          : kind === 'web'
+            ? field(data, 'url', 'query') || literal
+            : path || literal
   const target = byKind || anyTarget(data)
   const sections: Section[] = []
   if (withSections && (target.includes('\n') || target.length > 200))
@@ -268,6 +286,12 @@ export function toolGroupSummary(tools: ToolEntry[]): string {
       if (kind === 'edit') return files('Edited')
       if (kind === 'command') return `Ran ${count} ${count === 1 ? 'command' : 'commands'}`
       if (kind === 'search') return `Searched ${times(count)}`
+      if (kind === 'skill')
+        return count === 1 && targets.size === 1
+          ? `Loaded the ${[...targets][0]} skill`
+          : `Loaded ${count} skills`
+      if (kind === 'web') return `Browsed the web ${times(count)}`
+      if (kind === 'agent') return `Ran ${count} ${count === 1 ? 'subagent' : 'subagents'}`
       return `${label} × ${count}`
     })
     .join(' · ')
@@ -294,4 +318,69 @@ export function toolPreview(text: string): { text: string; truncated: boolean } 
   const last = preview.charCodeAt(preview.length - 1)
   if (last >= 0xd800 && last <= 0xdbff) preview = preview.slice(0, -1)
   return { text: preview, truncated: preview.length < text.length }
+}
+
+/** The verb a row opens with, the way Codex writes it: "Ran npm test". */
+export function toolVerb(kind: ToolKind, label: string): string {
+  const verbs: Partial<Record<ToolKind, string>> = {
+    read: 'Read',
+    search: 'Searched',
+    edit: 'Edited',
+    command: 'Ran',
+    skill: 'Loaded skill',
+    web: label === 'Web search' ? 'Searched the web for' : 'Fetched',
+    agent: 'Ran agent'
+  }
+  return verbs[kind] ?? label
+}
+/** The few words a row says on hover: what kind of external call it was. */
+export function toolHint(tool: ToolEntry): string {
+  const hints: Record<ToolKind, string> = {
+    read: 'File read',
+    search: 'Search',
+    edit: 'File edit',
+    command: 'Command run',
+    skill: 'Skill loaded',
+    web: 'Web request',
+    agent: 'Subagent run',
+    other: 'Tool call'
+  }
+  const { kind } = describeToolHead(tool)
+  const server = kind === 'other' ? MCP.exec(tool.name ?? '')?.[1] : undefined
+  return server ? `Tool call · ${server} MCP` : hints[kind]
+}
+/** The kind a whole run shows by: its own when every call shares it, a plain
+ *  tool call when they differ. */
+export function groupKind(tools: ToolEntry[]): ToolKind {
+  const kinds = new Set(tools.map((tool) => describeToolHead(tool).kind))
+  return kinds.size === 1 ? [...kinds][0] : 'other'
+}
+export function groupHint(tools: ToolEntry[]): string {
+  if (tools.length === 1) return toolHint(tools[0])
+  const kind = groupKind(tools)
+  const plural: Partial<Record<ToolKind, string>> = {
+    read: 'file reads',
+    search: 'searches',
+    edit: 'file edits',
+    command: 'commands run',
+    skill: 'skills loaded',
+    web: 'web requests',
+    agent: 'subagent runs'
+  }
+  return `${tools.length} ${plural[kind] ?? 'external calls'}`
+}
+/** The language a section highlights as: a shell line as shell, a change as a
+ *  diff, a file by its extension (an unknown one stays plain text). */
+export function sectionLanguage(
+  kind: ToolKind,
+  section: Section,
+  path: string
+): string | undefined {
+  if (kind === 'command') return section.label === 'Command' ? 'bash' : undefined
+  if (kind === 'edit') return /^[-+] /m.test(section.text) ? 'diff' : extension(section.label)
+  if (kind === 'read' && section.label === 'Content') return extension(path)
+  return undefined
+}
+function extension(path: string): string | undefined {
+  return /\.([a-z0-9]+)$/i.exec(path)?.[1]?.toLowerCase()
 }

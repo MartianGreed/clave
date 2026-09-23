@@ -35,7 +35,7 @@ try {
       ]
     }
   ])
-  await win.locator('.chat-permission-card').waitFor()
+  await win.locator('.chat-prompt').waitFor()
   await win.locator('code.language-typescript span[style]').first().waitFor()
   // One run row per step since PRDCT-2613, and its items carry summaries of
   // their own — so open the RUN, not any summary under it.
@@ -57,12 +57,10 @@ try {
       const style = getComputedStyle(el)
       const user = getComputedStyle(el.querySelector('[data-role="user"]'))
       const header = getComputedStyle(el.closest('.chat-host').querySelector('.chat-header'))
-      const frames = ['.chat-tool-card', '.chat-permission-card', '.chat-card-body'].map(
-        (selector) => {
-          const frame = getComputedStyle(el.querySelector(selector))
-          return { width: parseFloat(frame.borderTopWidth), style: frame.borderTopStyle }
-        }
-      )
+      const frames = ['.chat-tool-panel', '.chat-prompt'].map((selector) => {
+        const frame = getComputedStyle(el.querySelector(selector))
+        return { width: parseFloat(frame.borderTopWidth), style: frame.borderTopStyle }
+      })
       return {
         headerBorder: {
           width: parseFloat(header.borderBottomWidth),
@@ -90,7 +88,9 @@ try {
         .innerText(),
       TOOL_RESULT
     )
-    assert.ok(await win.getByRole('button', { name: 'Allow', exact: true }).isVisible())
+    // A request naming no tool is a question (the plugin contract): its options
+    // are choices in the dock, not permission buttons.
+    assert.ok(await win.getByRole('radio', { name: 'Allow', exact: true }).isVisible())
     // Screenshot bytes remain in memory, never in the project or baseline tree.
     const screenshot = await win.locator('.chat-host').screenshot()
     assert.ok(screenshot.length > 1000, `${theme}: rendered screenshot is not empty`)

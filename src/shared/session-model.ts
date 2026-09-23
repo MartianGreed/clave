@@ -28,12 +28,26 @@ export type UserMessage = z.infer<typeof UserMessageSchema>
 export const PermissionResponseSchema = z.object({
   type: z.literal('permission_response'),
   id: z.string(),
-  optionId: z.string()
+  optionId: z.string(),
+  /** A request carrying `questions`: question text → the chosen label(s),
+   *  several joined by ", ", or the reader's own words. */
+  answers: z.record(z.string(), z.string()).optional()
 })
 export const InterruptSchema = z.object({ type: z.literal('interrupt') })
 /** Switch the session's model; null asks the provider for its own default. */
-export const SetModelSchema = z.object({ type: z.literal('set_model'), model: z.string().nullable() })
+export const SetModelSchema = z.object({
+  type: z.literal('set_model'),
+  model: z.string().nullable()
+})
 export type SetModel = z.infer<typeof SetModelSchema>
+/** One question an agent asks the reader mid-turn (Claude's AskUserQuestion). */
+export const AgentQuestionSchema = z.object({
+  question: z.string(),
+  header: z.string().optional(),
+  options: z.array(z.object({ label: z.string(), description: z.string().optional() })),
+  multiSelect: z.boolean().optional()
+})
+export type AgentQuestion = z.infer<typeof AgentQuestionSchema>
 export const SessionInputSchema = z.discriminatedUnion('type', [
   UserMessageSchema,
   PermissionResponseSchema,
@@ -79,7 +93,12 @@ export const SessionEventSchema = z.discriminatedUnion('type', [
     description: z.string(),
     options: z.array(z.object({ id: z.string(), label: z.string() })),
     toolName: z.string().optional(),
-    input: z.unknown().optional()
+    input: z.unknown().optional(),
+    /** Why the agent needs the approval, in the provider's own words. */
+    detail: z.string().optional(),
+    /** Present when the request is questions to answer rather than a tool to
+     *  allow; the reply is a permission_response carrying `answers`. */
+    questions: z.array(AgentQuestionSchema).optional()
   }),
   z.object({ type: z.literal('state_change'), state: AgentStateSchema }),
   z.object({

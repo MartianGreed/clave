@@ -38,7 +38,7 @@ export async function run(t) {
       await run1.locator('.chat-tool-run-summary').innerText(),
       'Read 3 files · Ran 1 command'
     )
-    await run1.locator('summary [aria-label="Running"]').waitFor()
+    await run1.locator('> summary [aria-label="Running"]').waitFor()
     t.check('four consecutive tools render as one row, counted by kind, with a loader', true)
 
     // The run is closed until the reader says otherwise, and while closed it
@@ -51,8 +51,30 @@ export async function run(t) {
     await until(async () => (await run1.locator('.chat-tool-item').count()) === 4)
     const first = run1.locator('.chat-tool-item').first()
     assert.equal(await first.locator('.chat-tool-name').innerText(), 'Read')
-    assert.match(await first.innerText(), /first file/)
-    t.check('the row opens to one item per call, each with its own preview', true)
+    assert.equal(await first.locator('.chat-tool-summary').innerText(), '/one.ts')
+    // Each call is a row of its own, closed, with no panel until it is opened.
+    assert.equal(await first.evaluate((el) => el.open), false)
+    assert.equal(await first.locator('.chat-tool-panel').count(), 0)
+    await first.locator('> summary').click()
+    await first.locator('.chat-tool-panel').waitFor()
+    assert.match(await first.locator('.chat-tool-panel').innerText(), /first file/)
+    // The command row reads as Codex writes it, and opens to the command as code.
+    const shell = run1.locator('.chat-tool-item').nth(2)
+    assert.equal(await shell.locator('.chat-tool-name').innerText(), 'Ran')
+    await shell.locator('> summary').click()
+    await shell.locator('.chat-tool-section[data-label="Command"] code.language-bash').waitFor()
+    assert.match(
+      await shell.locator('.chat-tool-section[data-label="Command"] pre').innerText(),
+      /^\$ npm test$/
+    )
+    t.check('the row opens to one row per call, each opening to its own panel', true)
+
+    // Hovering a row names the kind of call in a few words.
+    await first.locator('> summary').hover()
+    await win.getByRole('tooltip').filter({ hasText: 'File read' }).waitFor()
+    await run1.locator('> summary').hover()
+    await win.getByRole('tooltip').filter({ hasText: '4 external calls' }).waitFor()
+    t.check('hovering a row names what kind of call it was', true)
 
     // The raw input and output the task brief asks for. Nothing covered this:
     // the base asserted the raw input through `.chat-tool-card pre`, and this
@@ -87,7 +109,7 @@ export async function run(t) {
       { type: 'tool_result', id: 'g5', output: 'one match' },
       { type: 'tool_result', id: 'g4', output: 'third file' }
     ])
-    await run1.locator('summary [aria-label="Complete"]').waitFor()
+    await run1.locator('> summary [aria-label="Complete"]').waitFor()
     assert.equal(await run1.getAttribute('data-state'), 'complete')
     assert.equal(await run1.evaluate((el) => el.open), true)
     assert.equal(await run1.locator('.chat-tool-item').count(), 5)
@@ -110,7 +132,7 @@ export async function run(t) {
     await until(async () => (await view.locator('.chat-tool-run').count()) === 2)
     const run2 = view.locator('.chat-tool-run').nth(1)
     assert.equal(await run2.getAttribute('data-tools'), '2')
-    assert.equal(await view.locator('.chat-permission-card').count(), 1)
+    assert.equal(await view.locator('.chat-permission-row').count(), 1)
     t.check('a message breaks the run into two rows; a permission card inside one does not', true)
 
     // A failure is counted, shown, and NEVER opens the row by itself.
@@ -124,7 +146,7 @@ export async function run(t) {
     ])
     await until(async () => (await view.locator('.chat-tool-run').count()) === 3)
     const failed = view.locator('.chat-tool-run').nth(2)
-    await failed.locator('summary [aria-label="Failed"]').waitFor()
+    await failed.locator('> summary [aria-label="Failed"]').waitFor()
     assert.equal(await failed.getAttribute('data-state'), 'failed')
     assert.equal(await failed.getAttribute('data-failures'), '1')
     assert.equal(await failed.locator('.chat-tool-failures').innerText(), '1 failed')

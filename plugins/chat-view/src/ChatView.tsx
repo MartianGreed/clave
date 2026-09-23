@@ -7,9 +7,7 @@ import {
   ChatBubbleLeftRightIcon,
   CheckIcon,
   ChevronDownIcon,
-  ChevronRightIcon,
   ClipboardDocumentIcon,
-  ShieldCheckIcon,
   StopIcon
 } from '@heroicons/react/24/outline'
 import type {
@@ -22,6 +20,7 @@ import type {
 import { emptyConversation, reduceConversation, type Entry } from './reducer'
 import { groupEntries, visibleEntries } from './tools'
 import { ToolGroup } from './ToolGroup'
+import { PermissionRow, PromptDock } from './PromptDock'
 import { ChatCode } from './code'
 import { pathsFromDataTransfer, pathForMessage } from '../../../src/renderer/src/lib/dropped-paths'
 import { ClaudeLogo, CodexLogo, PiLogo } from '../../../src/renderer/src/components/icons/cli-logos'
@@ -30,8 +29,6 @@ export interface ChatViewProps {
   session: Session
   onState: (state: AgentState, model: string | null) => void
 }
-const stringify = (value: unknown): string =>
-  typeof value === 'string' ? value : (JSON.stringify(value, null, 2) ?? '')
 /** When a turn happened, the way a reader wants it: relative while fresh,
  *  clock time today, the date once it is older. */
 function whenLabel(at: number, now = Date.now()): string {
@@ -197,6 +194,7 @@ function SlashMenu({
 // Only keep the transcript pinned to its end while the reader is already
 // there; a reader who scrolled up to re-read is never yanked back down.
 const STICK_THRESHOLD = 80
+const AGENT_NAMES: Record<string, string> = { claude: 'Claude', codex: 'Codex', pi: 'Pi' }
 // The provider reports a full id (claude-opus-5-20260301); the menu lists the
 // family (claude-opus-5). Either being a prefix of the other is the same model.
 const sameId = (reported: string, id: string): boolean =>
@@ -384,11 +382,16 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
       textarea.current?.focus()
     }
   }
-  const answer = async (id: string, optionId: string): Promise<void> => {
+  const answer = async (
+    id: string,
+    optionId: string,
+    answers?: Record<string, string>
+  ): Promise<void> => {
     setPending((current) => [...current, id])
     try {
-      await write({ type: 'permission_response', id, optionId })
-      dispatch({ answer: id, optionId })
+      await write({ type: 'permission_response', id, optionId, ...(answers ? { answers } : {}) })
+      dispatch({ answer: id, optionId, answers })
+      textarea.current?.focus()
     } catch (error) {
       report(error)
     } finally {
@@ -435,61 +438,7 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
           <TurnMeta at={entry.at} text={entry.text} />
         </div>
       )
-    if (entry.kind === 'permission') {
-      const chosen = entry.answer
-        ? (entry.request.options.find((option) => option.id === entry.answer)?.label ??
-          entry.answer)
-        : null
-      const elsewhere = !chosen && entry.answeredElsewhere === true
-      return (
-        <section key={index} className="chat-permission-card" aria-label="Permission request">
-          <div className="chat-permission-title">
-            <ShieldCheckIcon />
-            <span>Permission</span>
-            {entry.request.toolName && <span className="badge">{entry.request.toolName}</span>}
-          </div>
-          <p>{entry.request.description}</p>
-          {entry.request.input !== undefined && (
-            <details className="chat-permission-input">
-              <summary>
-                <ChevronRightIcon className="chat-tool-chevron" />
-                Input
-              </summary>
-              <pre>{stringify(entry.request.input)}</pre>
-            </details>
-          )}
-          {chosen ? (
-            <p className="chat-permission-answer" role="status">
-              <CheckIcon />
-              {chosen}
-            </p>
-          ) : (
-            <>
-              {elsewhere && (
-                <p className="chat-permission-answer" role="status" data-answered="elsewhere">
-                  <CheckIcon />
-                  No longer awaiting an answer
-                </p>
-              )}
-              <div className="chat-actions">
-                {entry.request.options.map((option, i) => (
-                  <button
-                    key={option.id}
-                    className={i === 0 ? 'btn-primary' : 'btn-secondary'}
-                    disabled={
-                      !ready || pending.includes(entry.request.id) || state === 'ended' || elsewhere
-                    }
-                    onClick={() => void answer(entry.request.id, option.id)}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </section>
-      )
-    }
+    if (entry.kind === 'permission') return <PermissionRow key={index} entry={entry} />
     if (entry.kind === 'error')
       return (
         <div key={index} className="chat-notice" data-tone="error" role="alert">
@@ -527,6 +476,10 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
     })
   }
   const closed = !ready || state === 'ended'
+  // What the agent waits on, oldest first: the dock shows the head of it.
+  const waitingOn = conversation.entries.flatMap((e) =>
+    e.kind === 'permission' && !e.answer && !e.answeredElsewhere ? [e.request] : []
+  )
   const query = closed ? null : slashQuery(draft)
   const slashOpen = query !== null && slashDismissed !== draft
   const pickCommand = useCallback((command: CommandOption): void => {
@@ -592,6 +545,12 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
         </div>
       </div>
       <div className="chat-composer-wrap">
+        <PromptDock
+          requests={waitingOn}
+          agent={AGENT_NAMES[session.provider] ?? 'the agent'}
+          busy={(id) => !ready || state === 'ended' || pending.includes(id)}
+          onAnswer={(id, optionId, answers) => void answer(id, optionId, answers)}
+        />
         {slashOpen && (
           <div className="chat-slash-anchor">
             <SlashMenu

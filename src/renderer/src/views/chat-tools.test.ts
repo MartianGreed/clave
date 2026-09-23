@@ -5,6 +5,11 @@ import {
   describeToolHead,
   failureCount,
   groupEntries,
+  groupHint,
+  groupKind,
+  sectionLanguage,
+  toolHint,
+  toolVerb,
   groupStatus,
   PREVIEW_CHARS,
   PREVIEW_LINES,
@@ -327,5 +332,44 @@ describe('toolPreview', () => {
   })
   it('reports nothing truncated when the text already fits', () => {
     expect(toolPreview('short')).toEqual({ text: 'short', truncated: false })
+  })
+})
+
+describe('every external call says what kind it was', () => {
+  it('tells a skill, a web call and a subagent apart from a plain tool', () => {
+    const skill = tool({ id: 'a', name: 'Skill', input: { skill: 'nextjs' } })
+    expect(describeTool(skill)).toMatchObject({ kind: 'skill', target: 'nextjs' })
+    expect(toolHint(skill)).toBe('Skill loaded')
+    expect(describeTool(tool({ id: 'b', name: 'WebSearch', input: { query: 'q' } })).kind).toBe(
+      'web'
+    )
+    expect(describeTool(tool({ id: 'c', name: 'Task', input: {} })).kind).toBe('agent')
+    expect(toolHint(tool({ id: 'd', name: 'Bash', input: { command: 'ls' } }))).toBe('Command run')
+  })
+  it('names an MCP tool by the tool and says which server on hover', () => {
+    const mcp = tool({ id: 'a', name: 'mcp__linear__list_issues', input: {} })
+    expect(describeTool(mcp).label).toBe('list_issues')
+    expect(toolHint(mcp)).toBe('Tool call · linear MCP')
+  })
+  it('shows a run by its shared kind, or as tool calls when the kinds differ', () => {
+    const shell = tool({ id: 'a', name: 'Bash', input: { command: 'ls' } })
+    const read = tool({ id: 'b', name: 'Read', input: { file_path: '/x' } })
+    expect(groupKind([shell, { ...shell, id: 'c' }])).toBe('command')
+    expect(groupHint([shell, { ...shell, id: 'c' }])).toBe('2 commands run')
+    expect(groupKind([shell, read])).toBe('other')
+    expect(groupHint([shell, read])).toBe('2 external calls')
+    expect(toolGroupSummary([tool({ id: 'a', name: 'Skill', input: { skill: 'x' } }), read])).toBe(
+      'Loaded the x skill · Read 1 file'
+    )
+  })
+  it('opens a row with the verb Codex uses', () => {
+    expect(toolVerb('command', 'Shell')).toBe('Ran')
+    expect(toolVerb('edit', 'Edit')).toBe('Edited')
+    expect(toolVerb('other', 'list_issues')).toBe('list_issues')
+  })
+  it('highlights a change as a diff and a read by its file extension', () => {
+    expect(sectionLanguage('edit', { label: 'a.ts', text: '- a\n+ b' }, '')).toBe('diff')
+    expect(sectionLanguage('read', { label: 'Content', text: 'x' }, '/src/a.tsx')).toBe('tsx')
+    expect(sectionLanguage('read', { label: 'Content', text: 'x' }, '/Makefile')).toBeUndefined()
   })
 })

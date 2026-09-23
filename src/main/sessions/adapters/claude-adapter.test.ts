@@ -710,3 +710,72 @@ it('switches the model before the first message, as /model does in the TUI', asy
   child.emit('close', 0)
   await adapter.kill(handle)
 })
+it('asks AskUserQuestion as questions and answers with the reader choices', () => {
+  const input = {
+    questions: [
+      {
+        question: 'Which color do you prefer?',
+        header: 'Color',
+        options: [{ label: 'Red', description: 'The color red' }, { label: 'Blue' }],
+        multiSelect: false
+      }
+    ]
+  }
+  feed({
+    type: 'control_request',
+    request_id: 'q1',
+    request: { subtype: 'can_use_tool', tool_name: 'AskUserQuestion', input }
+  })
+  expect(events[0]).toMatchObject({
+    type: 'permission_request',
+    id: 'q1',
+    description: 'Which color do you prefer?',
+    questions: input.questions,
+    options: [
+      { id: 'answer', label: 'Submit' },
+      { id: 'deny', label: 'Skip' }
+    ]
+  })
+  expect(events[1]).toEqual({ type: 'state_change', state: 'blocked' })
+  // An answer without a choice would hand the model nothing: refused.
+  expect(() => translator.response('q1', 'answer', {})).toThrow(/at least one/)
+  expect(() => translator.response('q1', 'allow-once')).toThrow(/Invalid/)
+  // The shape the real CLI turns into "…"Which color do you prefer?"="Blue"".
+  expect(translator.response('q1', 'answer', { 'Which color do you prefer?': 'Blue' })).toEqual({
+    type: 'control_response',
+    response: {
+      subtype: 'success',
+      request_id: 'q1',
+      response: {
+        behavior: 'allow',
+        updatedInput: { ...input, answers: { 'Which color do you prefer?': 'Blue' } }
+      }
+    }
+  })
+  // Skipping tells the model the reader chose not to answer.
+  feed({
+    type: 'control_request',
+    request_id: 'q2',
+    request: { subtype: 'can_use_tool', tool_name: 'AskUserQuestion', input }
+  })
+  expect(translator.response('q2', 'deny')).toMatchObject({
+    response: { response: { behavior: 'deny', message: 'The user skipped the question' } }
+  })
+  // A tool permission is unchanged, and carries the CLI's reason as detail.
+  feed({
+    type: 'control_request',
+    request_id: 'p1',
+    request: {
+      subtype: 'can_use_tool',
+      tool_name: 'Write',
+      input: { file_path: '/x' },
+      description: 'Path is outside allowed working directories'
+    }
+  })
+  expect(events.at(-2)).toMatchObject({
+    id: 'p1',
+    detail: 'Path is outside allowed working directories'
+  })
+  expect(events.at(-2)).not.toHaveProperty('questions')
+  expect(() => translator.response('p1', 'answer', { a: 'b' })).toThrow(/Invalid/)
+})

@@ -193,8 +193,12 @@ export async function run(t) {
       id: 'permit',
       optionId: 'allow'
     })
-    // An answered card shows the choice it recorded and no longer offers the others.
-    await win.locator('.chat-permission-answer').filter({ hasText: 'Allow once' }).waitFor()
+    // The dock leaves once answered; the transcript's row records the choice.
+    await win
+      .locator('.chat-permission-row[data-state="answered"]')
+      .filter({ hasText: 'Allow once' })
+      .waitFor()
+    assert.equal(await win.locator('.chat-prompt').count(), 0, 'nothing is waiting any more')
     assert.equal(await win.getByRole('button', { name: 'Deny', exact: true }).count(), 0)
     t.check('permission choice crosses the real write IPC with correlated id and option', true)
     // A second request the adapter stops holding — answered by another consumer
@@ -216,8 +220,10 @@ export async function run(t) {
         ]
       }
     ])
-    const outside = win.locator('.chat-permission-card').filter({ hasText: 'Delete this file?' })
+    // Waiting requests dock above the composer, in the reader's words.
+    const outside = win.locator('.chat-prompt').filter({ hasText: 'rm /tmp/example' })
     await outside.waitFor()
+    assert.match(await outside.innerText(), /Allow the agent to run a command\?/)
     await win.locator('.chat-state[data-state="blocked"]').waitFor()
     assert.equal(
       await outside.getByRole('button', { name: 'Deny', exact: true }).isDisabled(),
@@ -226,20 +232,17 @@ export async function run(t) {
     )
     await inject(app, record.id, [{ type: 'state_change', state: 'working' }])
     await win.locator('.chat-state[data-state="working"]').waitFor()
-    await outside.locator('.chat-permission-answer[data-answered="elsewhere"]').waitFor()
-    assert.match(
-      await outside.locator('.chat-permission-answer').innerText(),
-      /No longer awaiting an answer/
-    )
+    const elsewhere = win.locator('.chat-permission-row[data-state="elsewhere"]')
+    await elsewhere.waitFor()
+    assert.match(await elsewhere.innerText(), /No longer awaiting an answer/)
+    // The dock leaves with it: no button is left that could answer the request.
+    await until(async () => (await win.locator('.chat-prompt').count()) === 0)
     for (const label of ['Allow once', 'Deny'])
       assert.equal(
-        await outside.getByRole('button', { name: label, exact: true }).isDisabled(),
-        true,
-        `${label} must be dead once the kernel says the request was answered`
+        await win.getByRole('button', { name: label, exact: true }).count(),
+        0,
+        `${label} must be gone once the kernel says the request was answered`
       )
-    // Forced through the actionability checks: a disabled button fires nothing,
-    // so no answer crosses the write IPC and no error card lands.
-    await outside.getByRole('button', { name: 'Deny', exact: true }).click({ force: true })
     assert.equal(
       await app.evaluate(
         () =>
@@ -304,10 +307,15 @@ export async function run(t) {
     await win.locator('.chat-composer').evaluate((form) => {
       const dt = new DataTransfer()
       dt.setData('text/plain', '/Users/example/notes/a b.txt\n/Users/example/src/c.ts')
-      form.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }))
+      form.dispatchEvent(
+        new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt })
+      )
     })
     await until(async () => (await input.inputValue()) !== '')
-    assert.equal(await input.inputValue(), "'/Users/example/notes/a b.txt' /Users/example/src/c.ts ")
+    assert.equal(
+      await input.inputValue(),
+      "'/Users/example/notes/a b.txt' /Users/example/src/c.ts "
+    )
     await input.fill('')
     t.check('dropping paths from the file and git panels pastes them into the composer', true)
     const sentBefore = await app.evaluate(
@@ -331,9 +339,7 @@ export async function run(t) {
     )
     await input.fill('')
     t.check('a slash lists the session commands, filters as typed, completes on Enter', true)
-    assert.ok(
-      true
-    )
+    assert.ok(true)
     await inject(app, record.id, [{ type: 'error', message: 'Fixture error', fatal: false }])
     assert.equal(await win.getByRole('alert').innerText(), 'Fixture error')
     await app.evaluate(

@@ -181,22 +181,19 @@ setInterval(()=>{},1000);
     // The chat pane is the same record. Its header leaves blocked, the card says
     // the request was answered outside this view, and its buttons go dead: a
     // click would reach an adapter that has already dropped the id (PRDCT-2549).
-    const card = win.locator('.chat-permission-card').first()
-    await card.locator('.chat-permission-answer[data-answered="elsewhere"]').waitFor()
+    const row = win.locator('.chat-permission-row[data-state="elsewhere"]').first()
+    await row.waitFor()
     assert.ok(
       await until(
         async () => (await win.locator('.chat-state[data-state="blocked"]').count()) === 0
       ),
       'the pane header leaves blocked when the kernel does'
     )
-    const buttons = await card.getByRole('button').all()
-    assert.ok(buttons.length > 0, 'the permission card still shows the options it offered')
-    for (const button of buttons)
-      assert.equal(
-        await button.isDisabled(),
-        true,
-        'a request answered outside the view offers no live button'
-      )
+    assert.equal(
+      await win.locator('.chat-prompt').count(),
+      0,
+      'a request answered outside the view offers no live button'
+    )
     assert.equal(
       await win.getByRole('alert').count(),
       0,
@@ -307,8 +304,7 @@ setInterval(()=>{},1000);
     )
     t.check('configured prompt starts once after listeners; shell commands report an error', true)
     assert.equal(
-      secondEvents.find((e) => e.type === 'session_meta' && e.providerSessionId)
-        .providerSessionId,
+      secondEvents.find((e) => e.type === 'session_meta' && e.providerSessionId).providerSessionId,
       'provider-diverged'
     )
     assert.ok(

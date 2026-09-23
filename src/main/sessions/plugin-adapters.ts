@@ -42,7 +42,11 @@ export interface PluginAdapterInstance {
   start(): void | Promise<void>
   send(text: string): void | Promise<void>
   interrupt(): void | Promise<void>
-  respond(response: { id: string; optionId: string }): void | Promise<void>
+  respond(response: {
+    id: string
+    optionId: string
+    answers?: Record<string, string>
+  }): void | Promise<void>
   dispose(): void | Promise<void>
   models?(): ModelOption[] | Promise<ModelOption[]>
   commands?(): CommandOption[] | Promise<CommandOption[]>
@@ -209,7 +213,13 @@ class PluginSessionAdapter implements SessionAdapter {
           throw new Error(`${this.id} does not ask for permission`)
         // The prefix was added on the way out; the plugin only knows its own id.
         const id = stripPrefix(value.id, live.pluginId)
-        this.call(live, () => instance.respond({ id, optionId: value.optionId }))
+        this.call(live, () =>
+          instance.respond({
+            id,
+            optionId: value.optionId,
+            ...(value.answers ? { answers: value.answers } : {})
+          })
+        )
         return
       }
       case 'set_model':
