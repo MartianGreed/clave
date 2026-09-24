@@ -34,7 +34,10 @@ describe('skin terminal mapping', () => {
       ...bundledSkins[0].tokens,
       '--terminal-cursor': 'var( --color-accent, rgb(1, 2, 3))'
     }
-    expect(skinToXterm(tokens).cursor).toBe(tokens['--color-accent'])
+    // --color-accent is itself an alias of the per-theme --accent, so this also
+    // proves a reference is followed through more than one hop.
+    expect(tokens['--color-accent']).toBe('var(--accent)')
+    expect(skinToXterm(tokens).cursor).toBe(tokens['--accent'])
   })
   it('refuses missing and cyclic terminal tokens', () => {
     expect(() => skinToXterm({})).toThrow('Missing')

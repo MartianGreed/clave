@@ -323,7 +323,7 @@ function PluginActionBar({ plugin, actions }: { plugin: PluginInfo; actions: Ext
         <button
           onClick={() => actions.toggle(plugin)}
           disabled={busy}
-          className="btn-secondary btn-compact border border-border-subtle disabled:opacity-40"
+          className="btn-secondary btn-compact disabled:opacity-40"
         >
           {toggling && <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" />}
           {plugin.enabled ? 'Disable' : 'Enable'}
@@ -648,7 +648,7 @@ export function ExtensionsPanel() {
               <button
                 onClick={() => setAddOpen(true)}
                 disabled={pending !== null}
-                className="btn-secondary btn-compact border border-border-subtle disabled:opacity-40"
+                className="btn-secondary btn-compact disabled:opacity-40"
               >
                 <PlusIcon className="w-3.5 h-3.5" />
                 Add marketplace
@@ -657,7 +657,7 @@ export function ExtensionsPanel() {
             {multiProfile && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="btn-secondary btn-compact border border-border-subtle">
+                  <button className="btn-secondary btn-compact">
                     {activeProfile.label}
                     {activeProfile.id === DEFAULT_CLAUDE_PROFILE_ID && (
                       <span className="text-text-tertiary"> · default</span>

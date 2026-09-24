@@ -35,7 +35,7 @@ export function SettingsPage({
         </div>
         {actions && <div className="settings-page-actions">{actions}</div>}
       </header>
-      <div className="space-y-7">{children}</div>
+      <div className="settings-page-sections">{children}</div>
     </div>
   )
 }

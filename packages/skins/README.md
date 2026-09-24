@@ -33,7 +33,10 @@ traverse directories. Bundled ids cannot be replaced or removed.
 { "--color-accent": "#bd89e5", "--surface-0": "#201c25" }
 ```
 
-The accent token is **`--color-accent`**, not `--accent`. Unknown names are errors.
+Set the accent through **`--color-accent`**: it is the alias every rule and the
+focus ring read, and the bundled skins point it at their per-theme `--accent`. The
+verb colour is its own role, `--color-action` (with `-hover` and `-foreground`),
+because the accent is for state only. Unknown names are errors.
 `token-names.json` is generated from the design system with the explicit
 `excluded-token-names.json` list. Skins change colour and material only: metrics,
 radii, fonts, animation and easing remain owned by the stylesheet.

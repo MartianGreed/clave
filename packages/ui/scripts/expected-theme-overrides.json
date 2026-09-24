@@ -1,5 +1,10 @@
 {
   "dark": [
+    "--accent",
+    "--accent-hover",
+    "--action",
+    "--action-foreground",
+    "--action-hover",
     "--border-color",
     "--border-subtle-color",
     "--claude-toggle-active",
@@ -31,6 +36,7 @@
     "--heatmap-4",
     "--overlay-shadow",
     "--overlay-shadow-lg",
+    "--raised-control-shadow",
     "--rule-alpha",
     "--rule-color",
     "--rule-intensity",
@@ -54,6 +60,11 @@
     "--tree-guide-color"
   ],
   "light": [
+    "--accent",
+    "--accent-hover",
+    "--action",
+    "--action-foreground",
+    "--action-hover",
     "--border-color",
     "--border-subtle-color",
     "--claude-toggle-active",
@@ -91,6 +102,7 @@
     "--heatmap-4",
     "--overlay-shadow",
     "--overlay-shadow-lg",
+    "--raised-control-shadow",
     "--rule-alpha",
     "--rule-rgb",
     "--scrim-color",
@@ -110,6 +122,11 @@
     "--text-tertiary"
   ],
   "coffee": [
+    "--accent",
+    "--accent-hover",
+    "--action",
+    "--action-foreground",
+    "--action-hover",
     "--border-color",
     "--border-subtle-color",
     "--claude-toggle-active",
@@ -147,6 +164,7 @@
     "--heatmap-4",
     "--overlay-shadow",
     "--overlay-shadow-lg",
+    "--raised-control-shadow",
     "--rule-alpha",
     "--rule-rgb",
     "--scrim-color",
@@ -166,6 +184,11 @@
     "--text-tertiary"
   ],
   "charcoal": [
+    "--accent",
+    "--accent-hover",
+    "--action",
+    "--action-foreground",
+    "--action-hover",
     "--border-color",
     "--border-subtle-color",
     "--claude-toggle-active",
@@ -203,6 +226,7 @@
     "--heatmap-4",
     "--overlay-shadow",
     "--overlay-shadow-lg",
+    "--raised-control-shadow",
     "--rule-alpha",
     "--rule-rgb",
     "--scrim-color",

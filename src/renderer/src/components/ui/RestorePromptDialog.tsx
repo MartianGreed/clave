@@ -68,7 +68,7 @@ export function RestorePromptDialog(): React.JSX.Element | null {
                     ref={restoreRef}
                     type="button"
                     onClick={() => resolver(true)}
-                    className="btn-dialog text-accent hover:brightness-110 outline-none"
+                    className="btn-dialog text-action hover:brightness-110 outline-none"
                   >
                     Restore
                   </button>

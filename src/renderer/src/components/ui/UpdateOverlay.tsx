@@ -184,7 +184,7 @@ export function UpdateOverlay() {
                   </button>
                   <button
                     onClick={handleRetry}
-                    className="px-4 py-2 text-control font-medium text-white bg-accent hover:bg-accent-hover rounded-lg transition-colors"
+                    className="px-4 py-2 text-control font-medium text-action-foreground bg-action hover:bg-action-hover rounded-lg transition-colors"
                   >
                     Retry
                   </button>

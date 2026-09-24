@@ -169,7 +169,7 @@ export function FilePreview(): React.JSX.Element | null {
             <button
               onClick={save}
               disabled={saving || !isDirty}
-              className="px-2.5 py-1 rounded text-xs font-medium bg-accent text-white hover:bg-accent/90 transition-colors disabled:opacity-40"
+              className="px-2.5 py-1 rounded text-xs font-medium bg-action text-action-foreground hover:bg-action-hover transition-colors disabled:opacity-40"
             >
               {saving ? 'Saving…' : 'Save'}
             </button>
