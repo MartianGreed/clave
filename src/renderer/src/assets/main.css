@@ -2054,9 +2054,12 @@
   background-color: color-mix(in srgb, var(--color-success) 18%, transparent);
   color: var(--color-success);
 }
+/* Merged is GitHub's violet, borrowed from the git panel's own per-theme
+   violet. It rode the accent while the accent was indigo; once the accent
+   became the "on" blue, a merged pull request read as a selected one. */
 .pr-state[data-state='merged'] {
-  background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
-  color: var(--color-accent);
+  background-color: color-mix(in srgb, var(--color-git-worktree) 18%, transparent);
+  color: var(--color-git-worktree);
 }
 .pr-state[data-state='closed'] {
   background-color: color-mix(in srgb, var(--color-destructive) 18%, transparent);
