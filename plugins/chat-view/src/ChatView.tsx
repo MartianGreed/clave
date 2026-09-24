@@ -85,6 +85,7 @@ function TurnMeta({ at, text }: { at: number; text: string }): React.JSX.Element
       <button
         type="button"
         className="chat-turn-copy"
+        data-copied={copied ? 'true' : undefined}
         aria-label="Copy message"
         title="Copy message"
         onClick={() => {
@@ -846,28 +847,26 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
               }
             }}
           />
-          {state === 'working' ? (
-            <button
-              type="button"
-              className="chat-send"
-              data-kind="stop"
-              aria-label="Interrupt"
-              title="Interrupt"
-              onClick={() => void write({ type: 'interrupt' }).catch(report)}
-            >
-              <StopIcon />
-            </button>
-          ) : (
-            <button
-              type="submit"
-              className="chat-send"
-              aria-label="Send message"
-              title="Send (Enter)"
-              disabled={closed || sending || !hasDraft || filesBlocked}
-            >
-              <ArrowUpIcon />
-            </button>
-          )}
+          {/* One button that turns from send to stop and back, never two
+              swapped: the same element keeps its place and its transitions,
+              so the change of kind is a crossfade, not a pop. Both glyphs are
+              in it; the stylesheet shows the one the kind calls for. */}
+          <button
+            type={state === 'working' ? 'button' : 'submit'}
+            className="chat-send"
+            data-kind={state === 'working' ? 'stop' : 'send'}
+            aria-label={state === 'working' ? 'Interrupt' : 'Send message'}
+            title={state === 'working' ? 'Interrupt' : 'Send (Enter)'}
+            disabled={state !== 'working' && (closed || sending || !hasDraft || filesBlocked)}
+            onClick={
+              state === 'working'
+                ? () => void write({ type: 'interrupt' }).catch(report)
+                : undefined
+            }
+          >
+            <ArrowUpIcon data-glyph="send" />
+            <StopIcon data-glyph="stop" />
+          </button>
         </form>
         <div className="chat-composer-footer">
           <span className="chat-composer-hint">

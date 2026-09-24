@@ -6,7 +6,7 @@ export function JumpToEnd({ onClick }: { onClick: () => void }): React.JSX.Eleme
   return (
     <button
       type="button"
-      className="chat-jump-end menu-pop-mount"
+      className="chat-jump-end"
       aria-label="Scroll to end"
       title="Scroll to end"
       onClick={onClick}

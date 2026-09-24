@@ -2458,8 +2458,11 @@ button.extension-card:hover {
    there, and this control sits over the transcript's foot for as long as the
    end is out of view. Absolute to .chat-transcript, not to the scroller, so
    it stays put while the text moves under it; centred by its margins rather
-   than a transform, which the entrance animation would own. The composer's
-   material at a control's size, and a pill because it carries one glyph. */
+   than a transform, which the entrance owns: it rises from the foot it sits
+   over (translate, not the overlay's scale — nothing anchors it to a trigger)
+   and leaves without ceremony, since reaching the end is the reader's own
+   scroll. The composer's material at a control's size, and a pill because it
+   carries one glyph. */
 .chat-jump-end {
   position: absolute;
   bottom: calc(var(--spacing) * 3);
@@ -2477,13 +2480,24 @@ button.extension-card:hover {
   background-color: var(--surface-raised);
   box-shadow: var(--overlay-shadow);
   color: var(--text-secondary);
+  animation: chat-rise var(--default-transition-duration) var(--ease-out-expo);
   transition:
     color var(--default-transition-duration),
-    background-color var(--default-transition-duration);
+    background-color var(--default-transition-duration),
+    scale var(--default-transition-duration) var(--ease-out-expo);
 }
 .chat-jump-end:hover {
   color: var(--text-primary);
   background-color: var(--surface-100);
+}
+.chat-jump-end:active {
+  scale: 0.97;
+}
+@keyframes chat-rise {
+  from {
+    opacity: 0;
+    translate: 0 calc(var(--spacing) * 2);
+  }
 }
 .chat-jump-end svg {
   width: var(--chat-glyph);
@@ -2499,6 +2513,22 @@ button.extension-card:hover {
   min-height: 100%;
   margin: 0 auto;
   padding: calc(var(--spacing) * 6) calc(var(--spacing) * 6) calc(var(--spacing) * 3);
+}
+/* Arrival. A block the column gains — a turn, a run of tools, the mark, a
+   notice — settles in over one transition from a hair below its place, so a
+   stream never pops. Opacity and translate only: neither touches layout, so
+   the scroller's pin to the end (`useTranscriptEnd`) measures the same
+   heights it always did. The same rule fades a transcript back in when its
+   view returns from hidden, as a main-pane view does. A streaming answer is
+   one element: it arrives once and then grows in place, untouched. */
+.chat-column > * {
+  transition:
+    opacity var(--default-transition-duration) var(--ease-out-expo),
+    translate var(--default-transition-duration) var(--ease-out-expo);
+  @starting-style {
+    opacity: 0;
+    translate: 0 var(--spacing);
+  }
 }
 .chat-turn-wrap {
   position: relative;
@@ -2579,15 +2609,30 @@ button.extension-card:hover {
   color: var(--text-tertiary);
   transition:
     color var(--default-transition-duration),
-    background-color var(--default-transition-duration);
+    background-color var(--default-transition-duration),
+    scale var(--default-transition-duration) var(--ease-out-expo);
 }
 .chat-turn-copy:hover {
   color: var(--text-primary);
   background-color: var(--surface-100);
 }
+.chat-turn-copy:active:not(:disabled) {
+  scale: 0.97;
+}
 .chat-turn-copy svg {
   width: var(--chat-glyph);
   height: var(--chat-glyph);
+}
+/* The check that stands in for the clipboard after a copy pops in, so the
+   confirmation is seen to happen rather than found already there. */
+.chat-turn-copy[data-copied='true'] svg {
+  animation: chat-pop var(--default-transition-duration) var(--ease-out-expo);
+}
+@keyframes chat-pop {
+  from {
+    opacity: 0;
+    scale: 0.5;
+  }
 }
 
 /* The provider's mark: the agent at work, at the end of the transcript. It
@@ -2748,6 +2793,21 @@ button.extension-card:hover {
   display: flex;
   flex-direction: column;
   padding-top: calc(var(--spacing) * 0.5);
+}
+/* What a row opens to settles down from under its summary. The animation is
+   declared on the open state, so it runs on every opening — a rule that
+   stops matching ends it, one that matches again restarts it — and never on
+   a row the reader has not touched. */
+details[open] > .chat-tool-items,
+details[open] > .chat-tool-item[data-lone],
+details[open] > .chat-tool-panel {
+  animation: chat-reveal var(--default-transition-duration) var(--ease-out-expo);
+}
+@keyframes chat-reveal {
+  from {
+    opacity: 0;
+    translate: 0 calc(var(--spacing) * -0.5);
+  }
 }
 .chat-tool-item[data-lone] {
   padding-top: var(--spacing);
@@ -2944,7 +3004,9 @@ details[open] > .chat-tool-row .chat-tool-chevron,
 /* The prompt dock: what the agent waits on, a tool to allow or questions to
    answer, docked above the composer so it is always in the same place. It
    wears the composer's own raised white and keeps colour for what means
-   something: the code, the selection, the primary action. */
+   something: the code, the selection, the primary action. It rises from the
+   composer as it arrives, a change the reader did not make and should see
+   land; it leaves at once, since an answer is a key the reader pressed. */
 .chat-prompt {
   display: flex;
   flex-direction: column;
@@ -2956,6 +3018,14 @@ details[open] > .chat-tool-row .chat-tool-chevron,
   background-color: var(--surface-raised);
   box-shadow: var(--raised-shadow);
   font-size: var(--chat-code-size);
+  transition:
+    border-color var(--default-transition-duration),
+    opacity var(--default-transition-duration) var(--ease-out-expo),
+    translate var(--default-transition-duration) var(--ease-out-expo);
+  @starting-style {
+    opacity: 0;
+    translate: 0 calc(var(--spacing) * 1.5);
+  }
 }
 .chat-prompt-body:focus {
   outline: none;
@@ -3351,10 +3421,13 @@ details[open] > .chat-tool-row .chat-tool-chevron,
   opacity: 0.4;
   cursor: not-allowed;
 }
+/* One button, two kinds. Send and stop are the same element turning, not two
+   taking turns: its colour crosses over and the arrow gives way to the square
+   in place, both glyphs stacked in one cell, so the state change is seen to
+   happen where the finger already is. */
 .chat-send {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-grid;
+  place-items: center;
   flex-shrink: 0;
   width: var(--control-h-sm);
   height: var(--control-h-sm);
@@ -3369,8 +3442,21 @@ details[open] > .chat-tool-row .chat-tool-chevron,
     scale var(--default-transition-duration) var(--ease-out-expo);
 }
 .chat-send svg {
+  grid-area: 1 / 1;
   width: var(--chat-glyph);
   height: var(--chat-glyph);
+  transition:
+    opacity var(--default-transition-duration) var(--ease-out-expo),
+    scale var(--default-transition-duration) var(--ease-out-expo);
+}
+.chat-send svg[data-glyph='stop'],
+.chat-send[data-kind='stop'] svg[data-glyph='send'] {
+  opacity: 0;
+  scale: 0.5;
+}
+.chat-send[data-kind='stop'] svg[data-glyph='stop'] {
+  opacity: 1;
+  scale: 1;
 }
 .chat-send:hover {
   background-color: var(--color-accent-hover);
@@ -3401,11 +3487,19 @@ details[open] > .chat-tool-row .chat-tool-chevron,
   align-items: center;
   justify-content: center;
   gap: calc(var(--spacing) * 2);
-  border: 2px dashed var(--color-accent);
+  border: calc(var(--spacing) / 2) dashed var(--color-accent);
   border-radius: var(--radius-2xl);
   background-color: color-mix(in oklch, var(--surface-raised) 92%, var(--color-accent));
   color: var(--text-primary);
   font-size: var(--text-sm);
+  /* It comes up as the drag comes in; it goes as the drag goes, at once. */
+  transition:
+    opacity var(--default-transition-duration) var(--ease-out-expo),
+    scale var(--default-transition-duration) var(--ease-out-expo);
+  @starting-style {
+    opacity: 0;
+    scale: 0.98;
+  }
 }
 .chat-drop-overlay svg {
   width: calc(var(--spacing) * 6);
@@ -3435,6 +3529,15 @@ details[open] > .chat-tool-row .chat-tool-chevron,
 }
 .chat-composer-files .chat-attachments + .chat-attachments {
   margin-top: calc(var(--spacing) * 1.5);
+}
+.chat-composer-files .chat-attachment {
+  transition:
+    opacity var(--default-transition-duration) var(--ease-out-expo),
+    scale var(--default-transition-duration) var(--ease-out-expo);
+  @starting-style {
+    opacity: 0;
+    scale: 0.96;
+  }
 }
 .chat-turn-wrap[data-side='end'] .chat-attachments {
   justify-content: flex-end;
@@ -3510,7 +3613,7 @@ details[open] > .chat-tool-row .chat-tool-chevron,
   color: var(--text-secondary);
 }
 .chat-attachment-dialog {
-  width: min(85vw, 60rem);
+  width: min(85vw, calc(var(--spacing) * 240));
   padding: calc(var(--spacing) * 4);
 }
 .chat-attachment-dialog-head {
@@ -3557,7 +3660,11 @@ details[open] > .chat-tool-row .chat-tool-chevron,
   color: var(--text-tertiary);
   transition:
     color var(--default-transition-duration),
-    background-color var(--default-transition-duration);
+    background-color var(--default-transition-duration),
+    scale var(--default-transition-duration) var(--ease-out-expo);
+}
+.chat-composer-tool:active:not(:disabled) {
+  scale: 0.97;
 }
 .chat-composer-tool:hover {
   color: var(--text-primary);
@@ -3610,7 +3717,11 @@ details[open] > .chat-tool-row .chat-tool-chevron,
   color: var(--text-tertiary);
   transition:
     color var(--default-transition-duration),
-    background-color var(--default-transition-duration);
+    background-color var(--default-transition-duration),
+    scale var(--default-transition-duration) var(--ease-out-expo);
+}
+.chat-model-trigger:active:not(:disabled) {
+  scale: 0.97;
 }
 .chat-model-trigger:hover,
 .chat-model-trigger[data-state='open'] {
@@ -3682,6 +3793,9 @@ details[open] > .chat-tool-row .chat-tool-chevron,
   max-width: calc(var(--spacing) * 110);
   margin-bottom: calc(var(--spacing) * 1.5);
   padding: var(--spacing);
+  /* It opens above the composer from the slash just typed at its left edge,
+     so that corner is where it grows from — not the surface's default top. */
+  transform-origin: 0% 100%;
 }
 .chat-slash-list {
   max-height: calc(var(--spacing) * 72);
@@ -3728,4 +3842,34 @@ details[open] > .chat-tool-row .chat-tool-chevron,
 .chat-view-badge svg {
   width: calc(var(--spacing) * 3);
   height: calc(var(--spacing) * 3);
+}
+
+/* Reduced motion, the conversation views: the fades stay, since a thing that
+   appears from nothing reads as broken either way; the travel goes. */
+@media (prefers-reduced-motion: reduce) {
+  .chat-column > *,
+  .chat-prompt,
+  .chat-composer-files .chat-attachment,
+  .chat-drop-overlay {
+    transition-property: opacity;
+    @starting-style {
+      translate: none;
+      scale: none;
+    }
+  }
+  .chat-jump-end,
+  details[open] > .chat-tool-items,
+  details[open] > .chat-tool-item[data-lone],
+  details[open] > .chat-tool-panel {
+    animation-name: scrim-in;
+  }
+  .chat-turn-copy[data-copied='true'] svg,
+  .chat-send svg {
+    animation: none;
+    transition-property: opacity;
+  }
+  .chat-send svg[data-glyph='stop'],
+  .chat-send[data-kind='stop'] svg[data-glyph='send'] {
+    scale: none;
+  }
 }

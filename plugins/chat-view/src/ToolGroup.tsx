@@ -102,6 +102,7 @@ function CopyButton({ text }: { text: string }): React.JSX.Element {
     <button
       type="button"
       className="chat-turn-copy"
+      data-copied={copied ? 'true' : undefined}
       aria-label="Copy"
       title="Copy"
       onClick={() => {
