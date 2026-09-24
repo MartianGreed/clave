@@ -1826,3 +1826,391 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── GitHub pull request panel (plugins/github) ──
+   A side-panel tab, on the panel's own material: the bar is a .panel-bar, the
+   rows are the git panel's height, the composer is the design system's
+   textarea and buttons. Every colour is a token; the three tones a pull
+   request speaks in (passing, failing, waiting) are the status tokens. */
+.pr-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.pr-panel .panel-bar {
+  flex-shrink: 0;
+}
+.pr-ref {
+  padding: 0 var(--control-px);
+  font-size: var(--control-text);
+  color: var(--text-secondary);
+}
+.pr-ref-number {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.pr-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3) calc(var(--spacing) * 3);
+}
+.pr-loading,
+.pr-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--spacing) * 2);
+  padding: calc(var(--spacing) * 4);
+  text-align: center;
+}
+.pr-empty-glyph {
+  width: 24px;
+  height: 24px;
+  color: var(--text-tertiary);
+}
+.pr-empty-title {
+  font-size: var(--control-text);
+  color: var(--text-primary);
+}
+.pr-empty-text,
+.pr-empty-refused {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.pr-empty-refused {
+  color: var(--color-destructive);
+}
+.pr-empty-form {
+  width: 100%;
+}
+.pr-empty-form .input-compact {
+  width: 100%;
+}
+.pr-empty-form .input-compact[aria-invalid='true'] {
+  border-color: var(--color-destructive);
+}
+.pr-recent {
+  width: 100%;
+  margin-top: calc(var(--spacing) * 2);
+  text-align: left;
+}
+.pr-recent .menu-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.pr-recent-ref {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.pr-recent-title {
+  max-width: 100%;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+/* A failure that stands in for the record: gh missing, not signed in, refused. */
+.pr-failure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--spacing) * 2);
+  margin: calc(var(--spacing) * 3);
+  padding: calc(var(--spacing) * 3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background-color: var(--surface-50);
+}
+.pr-failure-message {
+  font-size: 12px;
+  color: var(--color-destructive);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.pr-failure-hint,
+.pr-none {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.pr-stale {
+  margin-bottom: calc(var(--spacing) * 2);
+  font-size: 11px;
+  color: var(--color-warning);
+}
+
+.pr-head {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 2);
+  padding: 0 var(--spacing) calc(var(--spacing) * 3);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.pr-title {
+  font-size: 15px;
+  line-height: 1.35;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.pr-meta {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--spacing) * 2);
+}
+.pr-meta-text {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.pr-meta-text strong {
+  color: var(--text-primary);
+  font-weight: var(--font-weight-medium);
+}
+.pr-branch {
+  padding: 1px 4px;
+  border-radius: var(--radius-md);
+  background-color: var(--surface-100);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+.pr-state {
+  flex-shrink: 0;
+  margin-top: 1px;
+  background-color: var(--surface-200);
+  color: var(--text-secondary);
+}
+.pr-state[data-state='open'] {
+  background-color: color-mix(in srgb, var(--color-success) 18%, transparent);
+  color: var(--color-success);
+}
+.pr-state[data-state='merged'] {
+  background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  color: var(--color-accent);
+}
+.pr-state[data-state='closed'] {
+  background-color: color-mix(in srgb, var(--color-destructive) 18%, transparent);
+  color: var(--color-destructive);
+}
+.pr-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.pr-stat-add {
+  color: var(--color-success);
+}
+.pr-stat-del {
+  color: var(--color-destructive);
+}
+.pr-signals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing);
+}
+.pr-signal {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.pr-check-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--text-tertiary);
+}
+.pr-signal[data-tone='success'] .pr-check-icon,
+.pr-check[data-status='success'] .pr-check-icon {
+  color: var(--color-success);
+}
+.pr-signal[data-tone='failure'] .pr-check-icon,
+.pr-check[data-status='failure'] .pr-check-icon,
+.pr-check[data-status='cancelled'] .pr-check-icon {
+  color: var(--color-destructive);
+}
+.pr-signal[data-tone='pending'] .pr-check-icon,
+.pr-check[data-status='pending'] .pr-check-icon {
+  color: var(--color-warning);
+}
+
+/* Sections: a disclosure row the height of a git tree row, its content under it. */
+.pr-section {
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.pr-section-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing);
+  min-height: var(--git-tree-row-h);
+  padding: 0 var(--spacing);
+  font-size: var(--control-text);
+  color: var(--text-primary);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.pr-section-head::-webkit-details-marker {
+  display: none;
+}
+.pr-section-head::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  margin-right: var(--spacing);
+  border-right: 1.5px solid var(--text-tertiary);
+  border-bottom: 1.5px solid var(--text-tertiary);
+  transform: rotate(-45deg);
+  transition: transform 150ms;
+}
+.pr-section[open] > .pr-section-head::before {
+  transform: rotate(45deg);
+}
+.pr-section-count {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.pr-section-body {
+  padding: 0 var(--spacing) calc(var(--spacing) * 3);
+}
+.pr-markdown {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.pr-check {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  min-height: var(--panel-row-h);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.pr-check-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-primary);
+}
+.pr-check-workflow {
+  color: var(--text-tertiary);
+}
+
+.pr-file {
+  border-top: 1px solid var(--rule-color);
+}
+.pr-file:first-of-type {
+  border-top: none;
+}
+.pr-file-head {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  min-height: var(--panel-row-h);
+  font-size: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+.pr-file-head::-webkit-details-marker {
+  display: none;
+}
+.pr-file-path {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+.pr-file[data-change='added'] .pr-file-path {
+  color: var(--color-success);
+}
+.pr-file[data-change='deleted'] .pr-file-path {
+  color: var(--color-destructive);
+}
+.pr-file-stats {
+  display: flex;
+  gap: var(--spacing);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.pr-file-diff {
+  max-height: 320px;
+  margin-bottom: calc(var(--spacing) * 2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.pr-comment {
+  padding: calc(var(--spacing) * 2) 0;
+  border-top: 1px solid var(--rule-color);
+}
+.pr-comment:first-of-type {
+  border-top: none;
+}
+.pr-comment-head {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  margin-bottom: var(--spacing);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+.pr-comment-head strong {
+  font-weight: var(--font-weight-medium);
+}
+.pr-comment-when {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.pr-review-state {
+  background-color: var(--surface-200);
+  color: var(--text-secondary);
+}
+.pr-review-state[data-state='approved'] {
+  color: var(--color-success);
+}
+.pr-review-state[data-state='changes_requested'] {
+  color: var(--color-destructive);
+}
+
+/* The composer: the design system's textarea and the actions under it. */
+.pr-composer {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 2);
+  flex-shrink: 0;
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3) calc(var(--spacing) * 3);
+  border-top: 1px solid var(--color-border-subtle);
+}
+.pr-composer-input {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+}
+.pr-composer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--control-gap);
+}
+.pr-composer-actions .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--control-gap);
+}

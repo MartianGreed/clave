@@ -7,6 +7,14 @@ import type {
   CommandOption
 } from '../shared/session-model'
 import type { Attachment, AttachmentPreview, AttachmentSource } from '../shared/attachments'
+import type {
+  GithubResult,
+  MergeMethod,
+  PullDiffFile,
+  PullRef,
+  PullRequestView,
+  ReviewEvent
+} from '../shared/github-pull'
 
 /** Additive wire contract for adapter stream consumers. Existing PTY IPC is unchanged. */
 export interface SessionIPC {
@@ -726,6 +734,13 @@ export interface ElectronAPI {
     extras?: { sessionType?: string | null; locationId?: string | null }
   ) => Promise<{ success: boolean; error?: string }>
   openExternal: (url: string) => Promise<void>
+  /** The GitHub pull request panel's reads and writes, through the user's own
+   *  `gh`. A failure is a result, never a rejection: the panel names the kind. */
+  githubPull: (ref: PullRef) => Promise<GithubResult<PullRequestView>>
+  githubPullDiff: (ref: PullRef) => Promise<GithubResult<PullDiffFile[]>>
+  githubPullComment: (ref: PullRef, body: string) => Promise<GithubResult<void>>
+  githubPullReview: (ref: PullRef, event: ReviewEvent, body: string) => Promise<GithubResult<void>>
+  githubPullMerge: (ref: PullRef, method: MergeMethod) => Promise<GithubResult<void>>
   checkPort: (port: number) => Promise<boolean>
   /** HTTP liveness probe (any HTTP response = true). Stricter than checkPort:
    *  proves a server answers, not just that something bound the port. */
