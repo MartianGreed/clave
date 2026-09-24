@@ -1038,6 +1038,11 @@ export function Sidebar() {
             onClick: () => setRenamingId(sessionId)
           },
           {
+            label: 'Copy session ID',
+            icon: <ClipboardDocumentIcon className="w-3.5 h-3.5" />,
+            onClick: () => void navigator.clipboard.writeText(sessionId)
+          },
+          {
             label: 'Hide from sidebar',
             icon: <XMarkIcon className="w-3.5 h-3.5" />,
             onClick: () => hideAgentSession(sessionId)
@@ -1064,8 +1069,30 @@ export function Sidebar() {
           label: 'Duplicate',
           icon: <DocumentDuplicateIcon className="w-3.5 h-3.5" />,
           onClick: () => handleDuplicateSession(sessionId)
+        },
+        // The id Clave addresses the tab by — what an agent passes to a
+        // clave_* tool, what a `.clave` or a bug report names.
+        {
+          label: 'Copy session ID',
+          icon: <ClipboardDocumentIcon className="w-3.5 h-3.5" />,
+          onClick: () => void navigator.clipboard.writeText(sessionId)
         }
       ]
+      // The provider's own id is a different string (`claude --resume <id>`),
+      // so a tab that has one offers it as a second, named entry.
+      const providerSessionId = session?.claudeSessionId
+        ? { name: 'Claude', id: session.claudeSessionId }
+        : session?.piSessionId
+          ? { name: 'Pi', id: session.piSessionId }
+          : null
+      if (providerSessionId) {
+        const { name, id } = providerSessionId
+        items.push({
+          label: `Copy ${name} session ID`,
+          icon: <ClipboardDocumentIcon className="w-3.5 h-3.5" />,
+          onClick: () => void navigator.clipboard.writeText(id)
+        })
+      }
       // A Claude session says which account it runs on, and how much of that
       // account is left, at the top of its menu: the one place to look when a
       // window runs out and the question is "which subscription is this on".
