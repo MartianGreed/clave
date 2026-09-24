@@ -12,6 +12,7 @@ import type { UpdaterState } from '../shared/updater-types'
 import type { LaunchProfile, LauncherFamily } from '../shared/agent-launch'
 import type { GitBatchProgress } from '../shared/git-batch'
 import type { GitRangeDirection } from '../shared/git-range'
+import type { MergeMethod, PullRef, ReviewEvent } from '../shared/github-pull'
 
 /** Creates a typed IPC event listener with cleanup function. */
 function createIpcListener<T extends unknown[]>(
@@ -332,6 +333,17 @@ const electronAPI = {
   ) => ipcRenderer.invoke('session:save-plan', cwd, claudeSessionId, sessionName, extras),
 
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+  // The GitHub pull request panel (plugins/github). Main runs the user's own
+  // `gh`; every call answers with a GithubResult rather than throwing, so the
+  // panel can tell "gh is missing" from "not signed in" from "gh said no".
+  githubPull: (ref: PullRef) => ipcRenderer.invoke('github:pull', ref),
+  githubPullDiff: (ref: PullRef) => ipcRenderer.invoke('github:pull-diff', ref),
+  githubPullComment: (ref: PullRef, body: string) =>
+    ipcRenderer.invoke('github:pull-comment', ref, body),
+  githubPullReview: (ref: PullRef, event: ReviewEvent, body: string) =>
+    ipcRenderer.invoke('github:pull-review', ref, event, body),
+  githubPullMerge: (ref: PullRef, method: MergeMethod) =>
+    ipcRenderer.invoke('github:pull-merge', ref, method),
   checkPort: (port: number) => ipcRenderer.invoke('net:check-port', port) as Promise<boolean>,
   probeServerUrl: (url: string, timeoutMs?: number) =>
     ipcRenderer.invoke('net:probe-url', url, timeoutMs) as Promise<boolean>,

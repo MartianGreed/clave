@@ -32,6 +32,10 @@ export interface PluginToolbarEntry {
 interface PluginUIState {
   sidePanel: { pluginId: string; panelId: string } | null
   mainPanel: { pluginId: string; panelId: string } | null
+  /** The registry's records as of the host's last `plugins:changed`, so a
+   *  decision made outside React — a link click asking whether the plugin
+   *  that would take it is running — can be made without a round trip. */
+  records: PluginRecord[]
   openSidePanel: (entry: { pluginId: string; panelId: string } | null) => void
   openMainPanel: (entry: { pluginId: string; panelId: string } | null) => void
 }
@@ -39,6 +43,7 @@ interface PluginUIState {
 export const usePluginUIStore = create<PluginUIState>((set) => ({
   sidePanel: null,
   mainPanel: null,
+  records: [],
   openSidePanel: (entry) => set({ sidePanel: entry }),
   openMainPanel: (entry) => set({ mainPanel: entry })
 }))
@@ -61,7 +66,7 @@ export function initPluginUI(): void {
     const dropped = (selection: { pluginId: string } | null): boolean =>
       !!selection && !records.some((record) => record.id === selection.pluginId && record.enabled)
     const state = usePluginUIStore.getState()
-    const next: Partial<PluginUIState> = {}
+    const next: Partial<PluginUIState> = { records }
     if (dropped(state.sidePanel)) next.sidePanel = null
     if (dropped(state.mainPanel)) next.mainPanel = null
     if (Object.keys(next).length) usePluginUIStore.setState(next)

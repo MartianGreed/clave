@@ -42,6 +42,7 @@ import {
   type AttachmentSource
 } from '../../../src/shared/attachments'
 import { pathsFromDataTransfer, pathForMessage } from '../../../src/renderer/src/lib/dropped-paths'
+import { openLink, wantsExternal } from '../../../src/renderer/src/lib/open-link'
 import { ClaudeLogo, CodexLogo, PiLogo } from '../../../src/renderer/src/components/icons/cli-logos'
 
 export interface ChatViewProps {
@@ -502,7 +503,7 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
                       href={href}
                       onClick={(event) => {
                         event.preventDefault()
-                        void window.electronAPI.openExternal(href).catch(report)
+                        void openLink(href, { external: wantsExternal(event) }).catch(report)
                       }}
                     >
                       {children}

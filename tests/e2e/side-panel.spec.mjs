@@ -220,20 +220,23 @@ export async function run(t) {
         rightSlack: last ? barBox.right - last.right : null,
         barWidth: barBox.width,
         parentWidth: el.parentElement.getBoundingClientRect().width,
+        // The bundled GitHub panel's tab makes three; at the panel's default
+        // width they must still fit without the bar having to scroll.
+        overflow: el.scrollWidth - el.clientWidth,
         barLeftGap: barBox.left - el.parentElement.getBoundingClientRect().left,
         barRightGap: el.parentElement.getBoundingClientRect().right - barBox.right
       }
     })
     t.check('the panel has one tab bar', bar !== null, bar)
     t.check(
-      'it holds both tabs',
-      JSON.stringify(bar?.tabs) === JSON.stringify(['Files', 'Git']),
+      'it holds the app’s two tabs and the bundled GitHub panel’s',
+      JSON.stringify(bar?.tabs) === JSON.stringify(['Files', 'Git', 'GitHub']),
       bar?.tabs
     )
     t.check(
-      'the bar is the width of the two tabs, not the panel’s',
-      bar !== null && bar.barWidth < bar.parentWidth - 20,
-      { barWidth: bar?.barWidth, parentWidth: bar?.parentWidth }
+      'the bar is the width of its tabs, inside the panel and without scrolling',
+      bar !== null && bar.barWidth <= bar.parentWidth - 16 && bar.overflow <= 0,
+      { barWidth: bar?.barWidth, parentWidth: bar?.parentWidth, overflow: bar?.overflow }
     )
     t.check(
       'and it centres itself in the panel',

@@ -28,19 +28,21 @@ export async function run(t) {
         return last?.title === title ? last : null
       })
 
-    // A fresh profile shows the app's own panel and nothing else: the bundled demo ships
-    // disabled, so no plugin touches the chrome until the user says so in Settings.
+    // A fresh profile shows the app's own panel and its own plugins' tabs (the GitHub
+    // pull request panel ships enabled, being a feature) and nothing else: the bundled
+    // demo ships disabled, so it touches no chrome until the user says so in Settings.
     await win.click('button[title^="File tree"]')
     await win.waitForSelector('[data-panel-bar="tabs"]')
+    await win.waitForSelector('[data-plugin-tab="pull-request"]')
     t.equal(
-      'a fresh profile has no contributed tab',
-      await win.locator('[data-plugin-tab]').count(),
+      'a fresh profile has no tab from the demo',
+      await win.locator('[data-plugin-tab="hello"], [data-plugin-tab="hello-main"]').count(),
       0
     )
     t.equal(
-      'and the panel holds only the app’s own two tabs',
+      'and the panel holds the app’s own tabs and the bundled GitHub panel’s',
       (await win.locator('[data-panel-bar="tabs"] .panel-tab').allInnerTexts()).join(','),
-      'Files,Git'
+      'Files,Git,GitHub'
     )
     t.equal(
       'and nothing plugin-contributed is in the toolbar',
@@ -126,7 +128,7 @@ export async function run(t) {
     // between the two hosts, and reading it wrong shows up as an extra tab, nothing else.
     t.equal(
       'only the side-placement panel becomes a tab',
-      await win.locator('[data-plugin-tab]').count(),
+      await win.locator('[data-plugin-tab]:not([data-plugin-tab="pull-request"])').count(),
       1
     )
     t.equal(
@@ -243,8 +245,8 @@ export async function run(t) {
       'disabling removes the tab, the surface and the toolbar entries',
       await until(
         async () =>
-          (await win.locator('[data-plugin-tab]').count()) === 0 &&
-          (await win.locator('[data-plugin-side-panel]').count()) === 0 &&
+          (await win.locator('[data-plugin-tab="hello"]').count()) === 0 &&
+          (await win.locator('[data-plugin-side-panel="hello"]').count()) === 0 &&
           (await win.locator('[data-plugin-toolbar]').count()) === 0 &&
           (await win.locator('[data-plugin-main-toggle]').count()) === 0
       ),

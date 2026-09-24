@@ -66,12 +66,13 @@ export function pluginFile(root: string, entry: string): string {
 
 /** The bundled plugins that activate on first install. Clave ships plugins of two kinds:
  *  the ones that ARE a feature of the app (the chat view — without it a session has no
- *  chat), and the ones that demonstrate the contract (hello). The first start enabled,
+ *  chat; the GitHub panel — without it a pull request link in a chat is just a link to the
+ *  browser), and the ones that demonstrate the contract (hello). The first start enabled,
  *  because the app would be missing a feature otherwise; a demo must not, because it has
  *  no business putting a tab in someone's side panel or a button in their toolbar until
  *  they ask for it. The list lives in the host, never in a manifest: whether a plugin the
  *  app ships runs unasked is the host's call, not the plugin's own declaration. */
-export const BUNDLED_ON_FIRST_INSTALL: readonly string[] = ['clave.chat-view']
+export const BUNDLED_ON_FIRST_INSTALL: readonly string[] = ['clave.chat-view', 'clave.github']
 
 export class PluginStore {
   readonly records = new Map<string, PluginRecord>()
