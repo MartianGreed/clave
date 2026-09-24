@@ -275,6 +275,37 @@ interface SessionState {
   setTmuxMode: (enabled: boolean) => void
   setMessageTrailEnabled: (enabled: boolean) => void
   updateSessionAlive: (id: string, alive: boolean) => void
+  /** An account switch in flight (ADR 0002): the exit that follows is a
+   *  restart, not an end. */
+  setSessionRestarting: (id: string, restarting: boolean) => void
+  /** The session as it came back from `pty:restart`: alive again on the new
+   *  account, the conversation id it resumed with, its epoch bumped so the
+   *  pane remounts on the new process. */
+  applySessionRestart: (
+    id: string,
+    patch: Pick<Session, 'claudeSessionId'> &
+      Partial<
+        Pick<
+          Session,
+          | 'claudeProfileId'
+          | 'claudeProfileLabel'
+          | 'claudeConfigDir'
+          | 'codexAccountId'
+          | 'codexAccountLabel'
+          | 'launchProfileId'
+          | 'model'
+        >
+      >
+  ) => void
+  /** The policy's knobs and its proposal on a session (ADR 0002). */
+  setAccountPinned: (id: string, pinned: boolean) => void
+  setAccountSwitchMode: (id: string, mode: 'propose' | 'automatic' | null) => void
+  setAccountProposal: (
+    id: string,
+    proposal: { accountId: string; label: string; reason: 'limit' | 'reported' } | null
+  ) => void
+  setAccountProposalDismissed: (id: string, accountId: string | null) => void
+  setLimitReported: (id: string, reported: boolean) => void
   setSessionActivity: (id: string, status: ActivityStatus) => void
   setAgentState: (id: string, state: import('./session-types').AgentRunState) => void
   setBackgroundTaskCount: (id: string, count: number) => void
@@ -1175,15 +1206,14 @@ export const useSessionStore = create<SessionState>((set) => ({
       const snap = state.sidebarUndoStack[state.sidebarUndoStack.length - 1]
       const sidebarUndoStack = state.sidebarUndoStack.slice(0, -1)
       const validSessionIds = new Set(state.sessions.map((s) => s.id))
-      const restoredGroups = snap.groups
-        .map((g) => ({
-          ...g,
-          sessionIds: g.sessionIds.filter((sid) => validSessionIds.has(sid)),
-          terminals: g.terminals.map((t) => ({
-            ...t,
-            sessionId: t.sessionId && validSessionIds.has(t.sessionId) ? t.sessionId : null
-          }))
+      const restoredGroups = snap.groups.map((g) => ({
+        ...g,
+        sessionIds: g.sessionIds.filter((sid) => validSessionIds.has(sid)),
+        terminals: g.terminals.map((t) => ({
+          ...t,
+          sessionId: t.sessionId && validSessionIds.has(t.sessionId) ? t.sessionId : null
         }))
+      }))
       // A restored group whose members have since closed comes back empty —
       // an empty group is a normal state, exactly as closing its last tab
       // leaves it (see mergeLayoutForKeys).
@@ -1249,6 +1279,73 @@ export const useSessionStore = create<SessionState>((set) => ({
         s.id === id ? { ...s, alive, ...(!alive && { activityStatus: 'ended' as const }) } : s
       )
     })),
+
+  setSessionRestarting: (id, restarting) =>
+    set((state) => ({
+      sessions: state.sessions.map((s) => (s.id === id ? { ...s, restarting } : s))
+    })),
+
+  applySessionRestart: (id, patch) =>
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              ...patch,
+              alive: true,
+              restarting: false,
+              activityStatus: 'idle' as const,
+              agentState: undefined,
+              promptWaiting: null,
+              restartEpoch: (s.restartEpoch ?? 0) + 1
+            }
+          : s
+      )
+    })),
+
+  setAccountPinned: (id, pinned) =>
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === id ? { ...s, accountPinned: pinned, ...(pinned ? { accountProposal: null } : {}) } : s
+      )
+    })),
+
+  setAccountSwitchMode: (id, mode) =>
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === id ? { ...s, accountSwitchMode: mode ?? undefined } : s
+      )
+    })),
+
+  setAccountProposal: (id, proposal) =>
+    set((state) => {
+      const session = state.sessions.find((s) => s.id === id)
+      if (!session) return state
+      const same =
+        (session.accountProposal ?? null) === proposal ||
+        (session.accountProposal?.accountId === proposal?.accountId &&
+          session.accountProposal?.reason === proposal?.reason)
+      if (same) return state
+      return {
+        sessions: state.sessions.map((s) => (s.id === id ? { ...s, accountProposal: proposal } : s))
+      }
+    }),
+
+  setAccountProposalDismissed: (id, accountId) =>
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === id ? { ...s, accountProposalDismissed: accountId } : s
+      )
+    })),
+
+  setLimitReported: (id, reported) =>
+    set((state) => {
+      const session = state.sessions.find((s) => s.id === id)
+      if (!session || (session.limitReported ?? false) === reported) return state
+      return {
+        sessions: state.sessions.map((s) => (s.id === id ? { ...s, limitReported: reported } : s))
+      }
+    }),
 
   setSessionActivity: (id, status) =>
     set((state) => {

@@ -1,7 +1,5 @@
 import { execFile } from 'child_process'
-import fs from 'fs'
 import os from 'os'
-import path from 'path'
 import { promisify } from 'util'
 import {
   claudeAccountsManager,
@@ -91,6 +89,9 @@ export interface UsageLimits {
 // Distinguishes "we couldn't load it" from "it loaded and you're at 0%".
 export interface UsageError {
   error: string
+  /** The service refused the credential itself: the account is dead until a
+   *  new one lands, and the pool must not offer it. */
+  reason?: 'unauthorized'
 }
 
 // Legacy fallback only. The endpoint's flat `seven_day_<model>` keys are frozen in
@@ -138,7 +139,6 @@ interface RawUsageBody {
 /** Where an account's credential comes from, in the order a read tries them. */
 export type ClaudeCredential =
   | { kind: 'token'; token: string }
-  | { kind: 'config-dir'; dir: string }
   | { kind: 'keychain' }
   /** An account with nothing to read with yet: never the machine login. */
   | { kind: 'none' }
@@ -173,18 +173,6 @@ async function readKeychainItem(account: string[]): Promise<string | null> {
       { timeout: KEYCHAIN_TIMEOUT_MS }
     )
     return accessTokenOf(JSON.parse(stdout.trim()))
-  } catch {
-    return null
-  }
-}
-
-/** A custom `CLAUDE_CONFIG_DIR` keeps its login in `<dir>/.credentials.json`,
- *  the same JSON the keychain item holds. Claude Code refreshes it whenever a
- *  session on that account runs; an expired one reads as 401 below. */
-function readConfigDirAccessToken(dir: string): string | null {
-  try {
-    const raw = fs.readFileSync(path.join(dir, '.credentials.json'), 'utf-8')
-    return accessTokenOf(JSON.parse(raw))
   } catch {
     return null
   }
@@ -423,7 +411,10 @@ async function readFromEndpoint(token: string): Promise<UsageLimits | UsageError
   }
 
   if (res.status === 401) {
-    return { error: 'Your Claude Code session expired. Run a session to refresh it.' }
+    return {
+      error: 'Your Claude Code session expired. Run a session to refresh it.',
+      reason: 'unauthorized'
+    }
   }
   if (!res.ok) {
     return { error: `Usage service returned ${res.status}.` }
@@ -472,7 +463,10 @@ async function readFromProbe(token: string): Promise<UsageLimits | UsageError> {
     const windows = parseUnifiedRateLimitEntries(headerEntries(res.headers))
     if (windows.length > 0) return { windows, fetchedAt: Date.now() }
     if (res.status === 401 || res.status === 403) {
-      return { error: 'This token was refused. Generate a new one with `claude setup-token`.' }
+      return {
+        error: 'This token was refused. Sign in again to get a new one.',
+        reason: 'unauthorized'
+      }
     }
     last = res
   }
@@ -488,11 +482,10 @@ export function credentialFor(
   token: string | undefined
 ): ClaudeCredential {
   if (token) return { kind: 'token', token }
-  if (account?.configDir) return { kind: 'config-dir', dir: account.configDir }
   // Only the Default account is the machine login. Another account with no
-  // token and no directory has nothing to read with: reading the keychain
-  // for it would show the wrong subscription's quota under its name (and
-  // put up the keychain prompt for nothing).
+  // token has nothing to read with: reading the keychain for it would show
+  // the wrong subscription's quota under its name (and put up the keychain
+  // prompt for nothing).
   if (account && account.id !== DEFAULT_CLAUDE_ACCOUNT_ID) return { kind: 'none' }
   return { kind: 'keychain' }
 }
@@ -502,25 +495,26 @@ export async function readLimitsWith(
 ): Promise<UsageLimits | UsageError> {
   if (credential.kind === 'token') return readFromProbe(credential.token)
   if (credential.kind === 'none') {
-    return { error: 'No token for this account yet. Paste one in Settings → Usage.' }
+    return { error: 'No token for this account yet. Log in from Settings → Accounts.' }
   }
-  const token =
-    credential.kind === 'config-dir'
-      ? readConfigDirAccessToken(credential.dir)
-      : await readKeychainAccessToken()
-  if (!token) {
-    return {
-      error:
-        credential.kind === 'config-dir'
-          ? 'Sign in to Claude Code in this account to see its usage limits.'
-          : 'Sign in to Claude Code to see usage limits.'
-    }
-  }
+  const token = await readKeychainAccessToken()
+  if (!token) return { error: 'Sign in to Claude Code to see usage limits.' }
   return readFromEndpoint(token)
 }
 
 type CacheEntry = { result: UsageLimits | UsageError; at: number }
 type UpdateListener = (accountId: string, result: UsageLimits | UsageError) => void
+
+/** What a provider's manager needs to read its accounts: which ids exist,
+ *  and one read per id. Pure over the account store, so the two providers
+ *  share the cache, the clock and the ordering rules below. */
+export interface AccountUsageSource {
+  ids(): string[]
+  exists(id: string): boolean
+  read(id: string): Promise<UsageLimits | UsageError>
+  /** A read the service refused: the credential is dead. */
+  onUnauthorized?(id: string): void
+}
 
 /**
  * One cache per account, refreshed on a five-minute clock for EVERY account
@@ -529,7 +523,7 @@ type UpdateListener = (accountId: string, result: UsageLimits | UsageError) => v
  * different accounts run in parallel: the keychain's ten-second stall (a
  * prompt behind the app) costs one account's read, never N in a row.
  */
-class UsageManager {
+export class AccountUsageManager {
   private cache = new Map<string, CacheEntry>()
   private inFlight = new Map<string, Promise<UsageLimits | UsageError>>()
   // The number of the latest read started per account: a read that finishes
@@ -537,6 +531,11 @@ class UsageManager {
   private latest = new Map<string, number>()
   private listeners = new Set<UpdateListener>()
   private timer: ReturnType<typeof setInterval> | null = null
+
+  constructor(
+    private source: AccountUsageSource,
+    private defaultId: string
+  ) {}
 
   onUpdate(listener: UpdateListener): () => void {
     this.listeners.add(listener)
@@ -561,7 +560,7 @@ class UsageManager {
    *  starts its own, and the older read, finishing later, is discarded
    *  rather than allowed to overwrite the newer answer. */
   async getLimits(
-    accountId: string = DEFAULT_CLAUDE_ACCOUNT_ID,
+    accountId: string = this.defaultId,
     options: { force?: boolean } = {}
   ): Promise<UsageLimits | UsageError> {
     const cached = this.cache.get(accountId)
@@ -571,15 +570,15 @@ class UsageManager {
     const number = (this.latest.get(accountId) ?? 0) + 1
     this.latest.set(accountId, number)
     const read = (async () => {
-      const account = claudeAccountsManager.get(accountId)
-      if (accountId !== DEFAULT_CLAUDE_ACCOUNT_ID && !account) {
-        return { error: 'This Claude account no longer exists.' } as UsageError
+      if (accountId !== this.defaultId && !this.source.exists(accountId)) {
+        return { error: 'This account no longer exists.' } as UsageError
       }
-      const result = await readLimitsWith(
-        credentialFor(account, claudeAccountsManager.getToken(accountId))
-      )
+      const result = await this.source.read(accountId)
       if (this.latest.get(accountId) === number) {
         this.cache.set(accountId, { result, at: Date.now() })
+        if ('error' in result && result.reason === 'unauthorized') {
+          this.source.onUnauthorized?.(accountId)
+        }
         for (const listener of this.listeners) listener(accountId, result)
       }
       return result
@@ -594,8 +593,7 @@ class UsageManager {
 
   /** Every account, live, in parallel. */
   async refreshAll(): Promise<void> {
-    const ids = claudeAccountsManager.list().map((a) => a.id)
-    await Promise.all(ids.map((id) => this.getLimits(id, { force: true })))
+    await Promise.all(this.source.ids().map((id) => this.getLimits(id, { force: true })))
   }
 
   /** Drop what is known about an account (its token was cleared, or it was
@@ -626,4 +624,19 @@ class UsageManager {
   }
 }
 
-export const usageManager = new UsageManager()
+/** The Claude accounts: a token account reads through the probe, the Default
+ *  through the keychain, and a refused token marks its account dead. */
+export const usageManager = new AccountUsageManager(
+  {
+    ids: () => claudeAccountsManager.list().map((a) => a.id),
+    exists: (id) => !!claudeAccountsManager.get(id),
+    read: (id) =>
+      readLimitsWith(
+        credentialFor(claudeAccountsManager.get(id), claudeAccountsManager.getToken(id))
+      ),
+    onUnauthorized: (id) => {
+      if (claudeAccountsManager.hasToken(id)) claudeAccountsManager.markTokenInvalid(id)
+    }
+  },
+  DEFAULT_CLAUDE_ACCOUNT_ID
+)

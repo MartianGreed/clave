@@ -3,10 +3,12 @@ import { useCallback, useState, type ReactElement } from 'react'
 import { ArrowTopRightOnSquareIcon, PlayIcon, ArrowDownTrayIcon, DocumentTextIcon, ChatBubbleBottomCenterTextIcon, StopIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { useSessionStore } from '../../store/session-store'
 import { useClaudeProfileStore } from '../../store/claude-profile-store'
+import { useCodexAccountStore } from '../../store/codex-account-store'
 import { cn } from '@clave/ui/components'
 import { safePort } from '../../lib/utils'
 import { ConfirmDialog } from '@clave/ui/components'
 import { SessionCopyOffers } from './SessionCopyOffers'
+import { AccountProposal } from './AccountProposal'
 import { LinkedDocumentReopen } from '../files/LinkedDocumentReopen'
 
 interface TerminalHeaderProps {
@@ -16,6 +18,7 @@ interface TerminalHeaderProps {
 export function TerminalHeader({ sessionId }: TerminalHeaderProps): ReactElement | null {
   const session = useSessionStore((s) => s.sessions.find((sess) => sess.id === sessionId))
   const multiProfile = useClaudeProfileStore((s) => s.profiles.length > 1)
+  const multiCodex = useCodexAccountStore((s) => s.accounts.length > 1)
   const removeSession = useSessionStore((s) => s.removeSession)
   const setSessionServerStatus = useSessionStore((s) => s.setSessionServerStatus)
   const messageTrailEnabled = useSessionStore((s) => s.messageTrailEnabled)
@@ -82,6 +85,12 @@ export function TerminalHeader({ sessionId }: TerminalHeaderProps): ReactElement
               {session.claudeProfileLabel}
             </span>
           )}
+          {multiCodex && session.codexAccountLabel && session.codexMode && (
+            <span className="badge flex-shrink-0" title={`Codex account: ${session.codexAccountLabel}`}>
+              {session.codexAccountLabel}
+            </span>
+          )}
+          <AccountProposal sessionId={sessionId} />
           {hasServer && (
             <div className="flex items-center gap-0.5 flex-shrink-0">
               <button

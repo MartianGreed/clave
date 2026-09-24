@@ -189,27 +189,35 @@ export class CodexAppServer implements CodexConnection {
   }
 }
 
+/** The app-server's environment: the session's (a Codex account's
+ *  `CODEX_HOME`, ADR 0002), or the process's own when none was built. */
 export function spawnCodexAppServer(
   cwd: string,
   callbacks: CodexCallbacks,
-  profile?: LaunchProfile
+  profile?: LaunchProfile,
+  env?: Record<string, string>
 ): CodexConnection {
   const argv = [
     ...(profile?.command ?? ['codex']),
     ...(profile?.additionalArgs ?? []),
     'app-server'
   ]
+  const quote = (arg: string): string => "'" + arg.replace(/'/g, "'\\''") + "'"
   const windowsDefault = process.platform === 'win32' && argv[0] === 'codex'
+  // The account's home rides in the command, after the login profile has
+  // run, so a `CODEX_HOME` the user's profile exports cannot override it.
+  const assignment = env?.CODEX_HOME ? `env CODEX_HOME=${quote(env.CODEX_HOME)} ` : ''
   const launch =
     process.platform === 'win32'
       ? { file: windowsDefault ? 'codex.cmd' : argv[0], args: argv.slice(1) }
       : resolvePosixShellLaunch(
           process.env.SHELL || '/bin/zsh',
-          `exec ${argv.map((arg) => "'" + arg.replace(/'/g, "'\\''") + "'").join(' ')}`
+          `exec ${assignment}${argv.map(quote).join(' ')}`
         )
   return new CodexAppServer(
     spawn(launch.file, launch.args, {
       cwd,
+      ...(env ? { env } : {}),
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
       shell: windowsDefault

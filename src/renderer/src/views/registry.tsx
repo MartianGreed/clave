@@ -21,6 +21,7 @@ import { availableViews, resolveView, type AvailableView } from './resolution'
 import { emitTabClosed } from '../lib/exchange-capture'
 import { ConfirmDialog } from '@clave/ui/components'
 import { LinkedDocumentReopen } from '../components/files/LinkedDocumentReopen'
+import { AccountProposal } from '../components/terminal/AccountProposal'
 import { useBackgroundTasks } from './background-tasks'
 import { BackgroundTasksChip } from './BackgroundTasksChip'
 
@@ -253,6 +254,7 @@ export function RegisteredSessionView({
               {meta.model}
             </span>
           )}
+          <AccountProposal sessionId={sessionId} />
         </div>
         <div className="pane-header-actions">
           <LinkedDocumentReopen sessionId={sessionId} />

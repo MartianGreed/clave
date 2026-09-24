@@ -6,7 +6,8 @@ import {
   ChartBarIcon,
   CommandLineIcon,
   PuzzlePieceIcon,
-  CpuChipIcon
+  CpuChipIcon,
+  UserCircleIcon
 } from '@heroicons/react/24/outline'
 import { useUpdaterStore } from '../../store/updater-store'
 import { useSessionStore, type SettingsSection } from '../../store/session-store'
@@ -33,6 +34,7 @@ const GROUPS: { label: string; rows: Row[] }[] = [
     label: 'Agents',
     rows: [
       { id: 'agents', label: 'Agents', icon: CpuChipIcon },
+      { id: 'accounts', label: 'Accounts', icon: UserCircleIcon },
       { id: 'usage', label: 'Usage', icon: ChartBarIcon }
     ]
   },

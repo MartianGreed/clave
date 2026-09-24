@@ -29,6 +29,8 @@ import { registerHistoryHandlers } from './history-handlers'
 import { registerKeymapHandlers, type KeymapHandlerDeps } from './keymap-handlers'
 import { registerLaunchProfileHandlers } from './launch-profile-handlers'
 import { registerClaudeAccountHandlers } from './claude-accounts-handlers'
+import { registerCodexAccountHandlers } from './codex-accounts-handlers'
+import { registerAccountLoginHandlers } from './account-login-handlers'
 import { registerGithubHandlers } from './github-handlers'
 
 export function registerIpcHandlers(deps: KeymapHandlerDeps = {}): void {
@@ -36,6 +38,8 @@ export function registerIpcHandlers(deps: KeymapHandlerDeps = {}): void {
   registerPluginHandlers()
   registerSkinHandlers()
   registerClaudeAccountHandlers()
+  registerCodexAccountHandlers()
+  registerAccountLoginHandlers()
   registerUsageHandlers()
   registerGitHandlers()
   registerUpdaterHandlers()

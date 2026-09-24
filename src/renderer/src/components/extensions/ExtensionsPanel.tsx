@@ -508,16 +508,14 @@ export function ExtensionsPanel() {
 
   const multiProfile = profiles.length > 1
   const activeProfile = getClaudeProfile(profileId)
-  const configDir = activeProfile.configDir || undefined
+  // Every account shares `~/.claude` (ADR 0002): one inventory for all.
+  const configDir = undefined
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const profile = getClaudeProfile(profileId)
-      const inventory = await window.electronAPI?.extensionsGetInventory(
-        profile.configDir || undefined
-      )
+      const inventory = await window.electronAPI?.extensionsGetInventory(undefined)
       setInv(inventory ?? null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to read extensions.')

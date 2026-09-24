@@ -5,6 +5,31 @@ import { useLocationStore } from '../../store/location-store'
 import { CommandLineIcon, BoltIcon, RectangleGroupIcon } from '@heroicons/react/24/outline'
 import { ClaudeLogo, AntigravityLogo, CodexLogo, PiLogo, ClaudeVariantGlyph } from '../icons/cli-logos'
 import { SidebarTabItem } from './SidebarTabItem'
+import { useClaudeAccountsUsage, useCodexAccountsUsage } from '../../store/usage-store'
+import { isExhausted } from '../../lib/account-pool'
+import { accountProviderOf, sessionAccountId } from '../../lib/switch-account'
+
+/** "At limit" on a row whose account is about to stop it (ADR 0002): the
+ *  one word that says why the next turn will fail, before it does. Its own
+ *  component, subscribed to the usage mirror, because the row itself only
+ *  re-renders on its session object. */
+function AccountLimitBadge({ session }: { session: Session }): React.JSX.Element | null {
+  const provider = accountProviderOf(session)
+  const accountId = provider ? sessionAccountId(session, provider) : ''
+  const claude = useClaudeAccountsUsage((s) => s.byAccount[accountId])
+  const codex = useCodexAccountsUsage((s) => s.byAccount[accountId])
+  const summary = provider === 'codex' ? codex : provider === 'claude' ? claude : undefined
+  if (!provider || !session.alive || !isExhausted(summary)) return null
+  return (
+    <span
+      className="badge flex-shrink-0 bg-surface-100 text-status-waiting"
+      title="This account is about to hit its limit. Right-click to switch the tab to another."
+      data-account-limit={accountId}
+    >
+      At limit
+    </span>
+  )
+}
 
 function LocationBadge({ locationId }: { locationId: string }) {
   const location = useLocationStore((s) => s.locations.find((l) => l.id === locationId))
@@ -190,18 +215,15 @@ function SessionItemImpl({
       onDelete={onDelete}
       icon={<SessionIcon session={session} />}
       extraContent={
-        session.view || (session.locationId && session.sessionType !== 'local') || getClaudeVariant(session)
-          ? (
-              <>
-                {session.view ? <SessionViewIcon session={session} /> : null}
-                {session.locationId && session.sessionType !== 'local'
-                  ? <LocationBadge locationId={session.locationId} />
-                  : getClaudeVariant(session)
-                    ? <ClaudeVariantGlyph variant={getClaudeVariant(session)!} />
-                    : null}
-              </>
-            )
-          : undefined
+        <>
+          <AccountLimitBadge session={session} />
+          {session.view ? <SessionViewIcon session={session} /> : null}
+          {session.locationId && session.sessionType !== 'local'
+            ? <LocationBadge locationId={session.locationId} />
+            : getClaudeVariant(session)
+              ? <ClaudeVariantGlyph variant={getClaudeVariant(session)!} />
+              : null}
+        </>
       }
       grouped={grouped}
       groupSelected={groupSelected}

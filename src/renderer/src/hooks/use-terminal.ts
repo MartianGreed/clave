@@ -323,6 +323,9 @@ export function useTerminal(sessionId: string) {
       }
 
       const session = useSessionStore.getState().sessions.find((s) => s.id === sessionId)
+      // An account switch stops the process to start it again (ADR 0002):
+      // the exit is a restart, not an end, and is not announced as one.
+      if (session?.restarting) return
       const title = session?.name ?? session?.folderName ?? 'Clave'
       window.electronAPI.showNotification?.({
         title,

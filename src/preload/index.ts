@@ -215,6 +215,10 @@ const electronAPI = {
   onPlanDetected: (sessionId: string, callback: (planPath: string) => void) =>
     createIpcListener<[string]>(`session:plan-detected:${sessionId}`, callback),
 
+  // A chat session's CLI reported its account's limit (ADR 0002): the policy
+  // reads the account and proposes or makes the move.
+  onSessionLimitReported: (callback: (sessionId: string) => void) =>
+    createIpcListener<[string]>('session:limit-reported', callback),
   onClearDetected: (sessionId: string, callback: (newClaudeSessionId: string | null) => void) =>
     createIpcListener<[string | null]>(`session:clear-detected:${sessionId}`, callback),
 
@@ -500,17 +504,57 @@ const electronAPI = {
 
   // Claude accounts: the list crosses; a token goes in and never comes back.
   claudeAccountsList: () => ipcRenderer.invoke('claude-accounts:list'),
-  claudeAccountAdd: (input: { label: string; configDir?: string }) =>
-    ipcRenderer.invoke('claude-accounts:add', input),
-  claudeAccountUpdate: (id: string, updates: { label?: string; configDir?: string }) =>
+  claudeAccountsMigrated: () => ipcRenderer.invoke('claude-accounts:migrated'),
+  claudeAccountAdd: (input: { label: string }) => ipcRenderer.invoke('claude-accounts:add', input),
+  claudeAccountUpdate: (id: string, updates: { label?: string }) =>
     ipcRenderer.invoke('claude-accounts:update', id, updates),
+  claudeAccountReorder: (ids: string[]) => ipcRenderer.invoke('claude-accounts:reorder', ids),
   claudeAccountRemove: (id: string) => ipcRenderer.invoke('claude-accounts:remove', id),
   claudeAccountSetToken: (id: string, token: string) =>
     ipcRenderer.invoke('claude-accounts:set-token', id, token),
   claudeAccountClearToken: (id: string) => ipcRenderer.invoke('claude-accounts:clear-token', id),
   onClaudeAccountsChanged: (callback: (accounts: unknown[]) => void) =>
     createIpcListener<[unknown[]]>('claude-accounts:changed', callback),
-  getCodexUsageLimits: () => ipcRenderer.invoke('usage:get-codex-limits'),
+  // Codex accounts (ADR 0002): a home per account; no credential crosses.
+  codexAccountsList: () => ipcRenderer.invoke('codex-accounts:list'),
+  codexAccountAdd: (input: { label: string; kind?: 'chatgpt' | 'apiKey' }) =>
+    ipcRenderer.invoke('codex-accounts:add', input),
+  codexAccountUpdate: (id: string, updates: { label?: string }) =>
+    ipcRenderer.invoke('codex-accounts:update', id, updates),
+  codexAccountReorder: (ids: string[]) => ipcRenderer.invoke('codex-accounts:reorder', ids),
+  codexAccountRemove: (id: string) => ipcRenderer.invoke('codex-accounts:remove', id),
+  codexAccountClearCredential: (id: string) =>
+    ipcRenderer.invoke('codex-accounts:clear-credential', id),
+  onCodexAccountsChanged: (callback: (accounts: unknown[]) => void) =>
+    createIpcListener<[unknown[]]>('codex-accounts:changed', callback),
+  // The login flows: a job's status, link and reason cross; nothing else.
+  accountLoginStart: (provider: 'claude' | 'codex', accountId: string) =>
+    ipcRenderer.invoke('accounts:login-start', provider, accountId),
+  accountLoginApiKey: (accountId: string, apiKey: string) =>
+    ipcRenderer.invoke('accounts:login-api-key', accountId, apiKey),
+  accountLoginInput: (jobId: string, text: string) =>
+    ipcRenderer.invoke('accounts:login-input', jobId, text),
+  accountLoginCancel: (jobId: string) => ipcRenderer.invoke('accounts:login-cancel', jobId),
+  accountLoginList: () => ipcRenderer.invoke('accounts:login-list'),
+  onAccountLoginProgress: (callback: (job: unknown) => void) =>
+    createIpcListener<[unknown]>('accounts:login-progress', callback),
+  // Codex usage is per account like Claude's (the machine's home when omitted).
+  getCodexUsageLimits: (accountId?: string, options?: { force?: boolean }) =>
+    ipcRenderer.invoke('usage:get-codex-limits', accountId, options),
+  getCodexUsageSnapshot: () => ipcRenderer.invoke('usage:codex-snapshot'),
+  onCodexAccountUsage: (callback: (update: { accountId: string; result: unknown }) => void) =>
+    createIpcListener<[{ accountId: string; result: unknown }]>('usage:codex-account', callback),
+  // A session moved to another account: the same tab, its process restarted
+  // on the account with the conversation resumed (ADR 0002).
+  restartSession: (
+    id: string,
+    overrides: {
+      claudeProfileId?: string
+      claudeProfileLabel?: string
+      codexAccountId?: string
+      codexAccountLabel?: string
+    }
+  ) => ipcRenderer.invoke('pty:restart', id, overrides),
   getPiUsage: (range: 'today' | '7d' | '30d' | 'all') => ipcRenderer.invoke('usage:get-pi', range),
 
   // Git

@@ -251,7 +251,9 @@ function resolveGroup(raw: { name?: string; cwd?: string; color?: string | null;
       // Kept as the raw template; @-tokens are substituted at spawn, not here.
       ...(s.prompt ? { prompt: s.prompt } : {}),
       // cwd stays the project dir; the spawn-at-root override happens at spawn.
-      ...(s.rootSession ? { rootSession: true } : {})
+      ...(s.rootSession ? { rootSession: true } : {}),
+      // The account by label (or `any`), resolved at launch, never here.
+      ...(typeof s.account === 'string' && s.account.trim() ? { account: s.account.trim() } : {})
     })),
     terminals: (raw.terminals || []).map((t) => ({
       command: t.command || '',
@@ -380,7 +382,8 @@ export function registerClaveFileHandlers(): void {
             claudeAgentsMode: s.claudeAgentsMode,
             dangerousMode: s.dangerousMode,
             ...(s.prompt ? { prompt: s.prompt } : {}),
-            ...(s.rootSession ? { rootSession: true } : {})
+            ...(s.rootSession ? { rootSession: true } : {}),
+            ...(s.account ? { account: s.account } : {})
           })),
           terminals: g.terminals.map((t) => ({
             command: t.command,

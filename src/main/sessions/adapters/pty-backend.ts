@@ -12,6 +12,7 @@ import { workspaceManager } from '../../workspace-manager'
 import { dismissSessionOffers } from '../../copy-offer-manager'
 import { launchProfileManager } from '../../launch-profile-manager'
 import { claudeAccountsManager } from '../../claude-accounts'
+import { codexAccountsManager } from '../../codex-accounts'
 import { resolvePosixShellLaunch, shellSingleQuote } from '../../shell-launch'
 import { CODEX_TITLE_CONFIG } from '../../../shared/codex-state'
 import { isValidModelName } from '../../../shared/model-name'
@@ -261,7 +262,11 @@ export function scrollTmuxSessionToText(tmuxName: string, needle: string, fromBo
  * in the process list for the session's whole life; this keeps it in the
  * environment alone.
  */
-export const TMUX_SESSION_ENV_VARS = ['CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_OAUTH_TOKEN'] as const
+export const TMUX_SESSION_ENV_VARS = [
+  'CLAUDE_CONFIG_DIR',
+  'CLAUDE_CODE_OAUTH_TOKEN',
+  'CODEX_HOME'
+] as const
 
 /** The `set-option` calls that bring a live server's `update-environment` up
  *  to TMUX_SESSION_ENV_VARS; none when it already lists them. Pure, for the
@@ -419,6 +424,13 @@ export interface SessionRecord {
   configDir?: string
   claudeProfileId?: string
   claudeProfileLabel?: string
+  /** Codex account this session runs on (ADR 0002): the home its
+   *  `CODEX_HOME` points at. Absent = the machine's own `~/.codex`. */
+  codexAccountId?: string
+  codexAccountLabel?: string
+  /** When the process was first started, carried across adoption: what a
+   *  Codex terminal's thread is found by (the rollout it wrote after this). */
+  startedAt?: number
   /** Workspace this session belongs to. Stamped at spawn from the active
    *  workspace (or an explicit caller override) and carried forward across
    *  adoption rewrites. Legacy records without it are annotated at list time
@@ -647,6 +659,10 @@ export interface PtySpawnOptions {
   /** Profile metadata persisted for restore + the session-header badge. */
   claudeProfileId?: string
   claudeProfileLabel?: string
+  /** Codex account (ADR 0002): sets `CODEX_HOME` for a Codex session, and
+   *  only for one; every other kind ignores it. */
+  codexAccountId?: string
+  codexAccountLabel?: string
   /** Workspace to stamp on the session record. The pty:spawn handler defaults
    *  it to the active workspace; explicit values win (pin launches, MCP). */
   workspaceId?: string
@@ -695,6 +711,8 @@ interface PendingSpawn {
   /** CLAUDE_CODE_OAUTH_TOKEN for a token account: read from the encrypted
    *  store at spawn, held here until the PTY starts, never on the record. */
   oauthToken?: string
+  /** CODEX_HOME for a Codex account other than the Default. */
+  codexHome?: string
 }
 
 /**
@@ -715,6 +733,23 @@ export function accountTokenForSpawn(
 }
 
 /**
+ * The home a session starts on: the Codex account's, and ONLY for a Codex
+ * session. The same boundary as the token above: a Claude tab handed a Codex
+ * account id must not have its environment pointed at another home. The sync
+ * runs here, at spawn, so the home carries every entry the default one has
+ * today (ADR 0002).
+ */
+export function codexHomeForSpawn(
+  kind: AgentKind | null,
+  accountId: string | undefined,
+  syncHome: (id: string | undefined) => string | undefined = (id) =>
+    codexAccountsManager.syncHome(id, getLoginShellEnv())
+): string | undefined {
+  if (kind !== 'codex') return undefined
+  return syncHome(accountId)
+}
+
+/**
  * The environment a session's process starts with. Pure, so a test can prove
  * an account actually reaches the process: nothing here fails loudly, and a
  * dropped field spawns a session that looks right and runs on the wrong
@@ -727,7 +762,7 @@ export function accountTokenForSpawn(
  */
 export function buildSpawnEnv(
   base: Record<string, string>,
-  account: { configDir?: string; oauthToken?: string }
+  account: { configDir?: string; oauthToken?: string; codexHome?: string }
 ): Record<string, string> {
   const env: Record<string, string> = {
     ...base,
@@ -737,6 +772,7 @@ export function buildSpawnEnv(
   delete env.CLAUDECODE
   if (account.configDir) env.CLAUDE_CONFIG_DIR = account.configDir
   if (account.oauthToken) env.CLAUDE_CODE_OAUTH_TOKEN = account.oauthToken
+  if (account.codexHome) env.CODEX_HOME = account.codexHome
   return env
 }
 
@@ -754,6 +790,8 @@ export interface PtySession {
   piThinking?: PiThinkingLevel
   /** Set when this session is backed by a tmux session (the tmux session name). */
   tmuxName?: string
+  /** When the conversation started (see SessionRecord.startedAt). */
+  startedAt?: number
   pending?: PendingSpawn
   onData?: (data: string) => void
   onExit?: (exitCode: number) => void
@@ -805,6 +843,9 @@ export class PtyBackend {
           options?.launchProfileId
         )
       : undefined
+    // The Codex account's home, synced now so the process starts on a home
+    // that carries every entry of the machine's own (ADR 0002).
+    const codexHome = codexHomeForSpawn(kind, options?.codexAccountId)
     const model = options?.model ?? (usePiMode ? launchProfile?.pi?.model : undefined)
     const piProvider = usePiMode ? options?.piProvider ?? launchProfile?.pi?.provider : undefined
     const piThinking = usePiMode ? options?.piThinking ?? launchProfile?.pi?.thinking : undefined
@@ -832,9 +873,18 @@ export class PtyBackend {
         shellArgs = ['/c', 'agy']
       } else if (useCodexMode) {
         const parts = ['codex']
-        if (options?.dangerousMode) parts.push('--yolo')
+        if (options?.resumeSessionId) {
+          if (!isValidClaudeSessionId(options.resumeSessionId)) {
+            throw new Error('Invalid resume session id')
+          }
+          parts.push('resume')
+        }
+        if (options?.dangerousMode) {
+          parts.push(options?.resumeSessionId ? '--dangerously-bypass-approvals-and-sandbox' : '--yolo')
+        }
         if (model) parts.push('-m', model)
         parts.push('-c', CODEX_TITLE_CONFIG)
+        if (options?.resumeSessionId) parts.push(options.resumeSessionId)
         shellArgs = ['/c', ...parts]
       } else if (useAgentsMode) {
         // `claude agents` is an interactive subcommand and does not accept
@@ -864,7 +914,7 @@ export class PtyBackend {
       // rc-file chatter). Plain terminals open the user's login shell.
       if (kind) {
         const profile = launchProfile!
-        if ((kind === 'claude' || kind === 'pi') && options?.resumeSessionId && !isValidClaudeSessionId(options.resumeSessionId)) {
+        if ((kind === 'claude' || kind === 'pi' || kind === 'codex') && options?.resumeSessionId && !isValidClaudeSessionId(options.resumeSessionId)) {
           throw new Error('Invalid resume session id')
         }
         if (kind === 'claude') {
@@ -901,6 +951,10 @@ export class PtyBackend {
         })
         const assignments = [`CLAVE_SESSION_ID=${shellSingleQuote(id)}`]
         if (kind === 'pi') assignments.push(`CLAVE_AGENT_STATE_FILE=${shellSingleQuote(stateFilePath(id))}`)
+        // The account's home rides in the command, after the login profile
+        // has run: a `CODEX_HOME` the user's own profile exports would
+        // otherwise override the one in the environment.
+        if (codexHome) assignments.push(`CODEX_HOME=${shellSingleQuote(codexHome)}`)
         const rendered = `${assignments.join(' ')} ${argv.map(shellSingleQuote).join(' ')}`
         const failure = `__clave_status=$?; if [ $__clave_status -ne 0 ]; then printf '\\r\\n[Clave] Agent command exited with status %d\\r\\nCommand: %s\\r\\n' $__clave_status ${shellSingleQuote(argv.map(shellSingleQuote).join(' '))}; fi; exit $__clave_status`
         posixAgentCommand = `${rendered}; ${failure}`
@@ -954,6 +1008,14 @@ export class PtyBackend {
       configDir: options?.configDir,
       claudeProfileId: options?.claudeProfileId,
       claudeProfileLabel: options?.claudeProfileLabel,
+      codexAccountId: options?.codexAccountId,
+      codexAccountLabel: options?.codexAccountLabel,
+      // A restart on another account resumes the conversation: it keeps the
+      // start the conversation had. Everything else is a new start.
+      startedAt:
+        options?.resumeSessionId || options?.adoptTmuxName
+          ? (previous?.startedAt ?? Date.now())
+          : Date.now(),
       workspaceId: previous?.workspaceId ?? options?.workspaceId,
       // The asking window is the home from now on — an adoption or a move
       // re-stamps; only a windowless spawn keeps what the record had.
@@ -1036,9 +1098,11 @@ export class PtyBackend {
         // The token is looked up here, by account id, and only for a Claude
         // session: the renderer never holds it, and a terminal or another
         // agent never inherits it.
-        oauthToken: accountTokenForSpawn(kind, options?.claudeProfileId)
+        oauthToken: accountTokenForSpawn(kind, options?.claudeProfileId),
+        codexHome
       }
     }
+    session.startedAt = recordBase.startedAt
     if (claudeSessionId) session.claudeSessionId = claudeSessionId
     if (piSessionId) session.piSessionId = piSessionId
     if (launchProfile) session.launchProfileId = launchProfile.id
@@ -1097,7 +1161,8 @@ export class PtyBackend {
       return
     }
     if (!session.pending) return
-    const { file, args, cwd, initialCommand, autoExecute, configDir, oauthToken } = session.pending
+    const { file, args, cwd, initialCommand, autoExecute, configDir, oauthToken, codexHome } =
+      session.pending
     session.pending = undefined
 
     const ptyName = isWindows ? undefined : 'xterm-256color'
@@ -1111,7 +1176,7 @@ export class PtyBackend {
       cols: Math.max(1, cols),
       rows: Math.max(1, rows),
       cwd,
-      env: buildSpawnEnv(getLoginShellEnv(), { configDir, oauthToken })
+      env: buildSpawnEnv(getLoginShellEnv(), { configDir, oauthToken, codexHome })
     })
 
     session.ptyProcess = ptyProcess
@@ -1190,6 +1255,20 @@ export class PtyBackend {
   }
 
   /**
+   * Resolved once a tmux session is really gone (or after two seconds): a
+   * restart that respawns straight after a kill must not race
+   * `kill-session` against its own `new-session` (ADR 0002).
+   */
+  async waitForTmuxSessionGone(tmuxName: string): Promise<void> {
+    const tmuxPath = detectTmux()
+    if (!tmuxPath) return
+    for (let attempt = 0; attempt < 20; attempt++) {
+      if (!liveTmuxSessions(tmuxPath).has(tmuxName)) return
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+  }
+
+  /**
    * Record the tab's display name in the session's tmux sidecar so it survives
    * an app restart, a crash, or a reboot. Renames live in the renderer store,
    * which dies with the window — the sidecar is the only per-session record
@@ -1203,6 +1282,12 @@ export class PtyBackend {
     // An events session (a chat tab) has no PTY here, only its record, keyed
     // by its id: the renames, moves and re-stamps below reach it through that.
     return UUID_RE.test(id) && readSessionRecord(id) ? id : null
+  }
+
+  /** The record of a session this process knows, as persisted now. */
+  getSessionRecord(id: string): SessionRecord | null {
+    const key = this.recordKeyForSession(id)
+    return key ? readSessionRecord(key) : null
   }
 
   /** Persist an events session's record (a chat tab). It has no process this

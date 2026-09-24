@@ -221,13 +221,14 @@ describe('Codex adapter lifecycle', () => {
       expect.objectContaining({
         command: ['wrapper', 'codex'],
         additionalArgs: ['--profile', 'work']
-      })
+      }),
+      undefined
     )
     await adapter.kill(handle)
     const next = await adapter.spawn(spec)
     adapter.write(next, { type: 'user_message', text: 'hello' })
     await tick()
-    expect(connect).toHaveBeenLastCalledWith(spec.cwd, expect.any(Object), undefined)
+    expect(connect).toHaveBeenLastCalledWith(spec.cwd, expect.any(Object), undefined, undefined)
     await adapter.kill(next)
   })
 

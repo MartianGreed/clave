@@ -1,0 +1,101 @@
+import type { AccountUsageSummary } from '../store/usage-store'
+
+/**
+ * The pool (ADR 0002): which account a new session starts on, and which one
+ * a session about to hit its limit moves to. Pure over the ordered account
+ * list and each account's usage summary, so the rule has a test of its own
+ * and the two providers share it.
+ *
+ * An account is EXHAUSTED when its tightest window has about five percent or
+ * less left, or the service already calls it critical. It is USABLE when it
+ * can be started on at all (a token that works, a home with a credential).
+ * A FALLBACK account (a Codex API key) has no quota to read: it is never
+ * exhausted and never chosen while a subscription account has headroom.
+ *
+ * The order is the list's order, round robin: from the account just left,
+ * the next usable one with headroom, wrapping. When every account is
+ * exhausted the one that resets soonest is taken (the ADR's assumption,
+ * noted there), else the preferred one stays.
+ */
+export const EXHAUSTED_LEFT_PERCENT = 5
+
+export interface PoolAccount {
+  id: string
+  usable: boolean
+  fallback?: boolean
+}
+
+/** Whether a read says the account is about to stop. Unknown usage (no read
+ *  yet, a read that failed) is not exhaustion: the pool does not move a
+ *  session on a guess. */
+export function isExhausted(summary: AccountUsageSummary | undefined): boolean {
+  const tightest = summary?.tightest
+  if (!tightest) return false
+  if (tightest.severity === 'critical') return true
+  return 100 - tightest.usedPercentage <= EXHAUSTED_LEFT_PERCENT
+}
+
+/** "5% left · session", or null without a reading. */
+export function headroomOf(summary: AccountUsageSummary | undefined): number | null {
+  const tightest = summary?.tightest
+  return tightest ? Math.max(0, Math.round(100 - tightest.usedPercentage)) : null
+}
+
+export interface PickInput {
+  accounts: PoolAccount[]
+  usage: Record<string, AccountUsageSummary | undefined>
+  /** The account asked for: the one selected in settings, or the one a
+   *  session runs on. Kept when it has headroom. */
+  preferredId: string
+  /** The account being left, when the pick is a move: the search starts
+   *  after it. Absent, it starts after the preferred one. */
+  leavingId?: string
+  /** Accounts a pinned session may never land on (none today). */
+  excludeIds?: string[]
+}
+
+/**
+ * The account to start on. Returns the preferred id when it is usable and
+ * has headroom; otherwise walks the ring from the account being left.
+ */
+export function pickAccount(input: PickInput): string {
+  const { accounts, usage, preferredId } = input
+  const excluded = new Set(input.excludeIds ?? [])
+  const byId = new Map(accounts.map((a) => [a.id, a]))
+  const preferred = byId.get(preferredId)
+  const ok = (a: PoolAccount): boolean => a.usable && !excluded.has(a.id)
+  const open = (a: PoolAccount): boolean => ok(a) && !a.fallback && !isExhausted(usage[a.id])
+  if (preferred && open(preferred) && input.leavingId !== preferredId) return preferredId
+  const from = input.leavingId ?? preferredId
+  const start = Math.max(
+    0,
+    accounts.findIndex((a) => a.id === from)
+  )
+  const ring = [...accounts.slice(start + 1), ...accounts.slice(0, start + 1)]
+  const next = ring.find((a) => a.id !== from && open(a))
+  if (next) return next.id
+  // Nothing with headroom: a fallback that can run, else whichever
+  // subscription account comes back first, else stay where we are.
+  const fallback = ring.find((a) => a.id !== from && ok(a) && a.fallback)
+  if (fallback) return fallback.id
+  let soonest: { id: string; at: number } | null = null
+  for (const a of accounts) {
+    if (!ok(a) || a.fallback) continue
+    const at = usage[a.id]?.tightest?.resetsAt ?? Number.MAX_SAFE_INTEGER
+    if (!soonest || at < soonest.at) soonest = { id: a.id, at }
+  }
+  return soonest?.id ?? preferredId
+}
+
+/** The accounts a session could move to from the one it is on: every other
+ *  usable one, those with headroom first. For the menu. */
+export function switchTargets(
+  accounts: PoolAccount[],
+  usage: Record<string, AccountUsageSummary | undefined>,
+  currentId: string
+): { id: string; exhausted: boolean }[] {
+  return accounts
+    .filter((a) => a.id !== currentId && a.usable)
+    .map((a) => ({ id: a.id, exhausted: !a.fallback && isExhausted(usage[a.id]) }))
+    .sort((a, b) => Number(a.exhausted) - Number(b.exhausted))
+}

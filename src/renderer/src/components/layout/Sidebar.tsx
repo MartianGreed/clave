@@ -36,9 +36,13 @@ import { GroupPickerDialog } from '../session/GroupPickerDialog'
 import { useHistoryStore } from '../../store/history-store'
 import { useSidebarDnd } from '../../hooks/use-sidebar-dnd'
 import { SidebarFooter, UpdateBanner } from './SidebarFooter'
-import { ClaudeAccountMenuHeader } from './ClaudeAccountMenuHeader'
 import { accountSpawnFields, accountSessionFields } from '../../store/claude-profile-store'
-import { primeClaudeAccountsUsage } from '../../store/usage-store'
+import { primeClaudeAccountsUsage, primeCodexAccountsUsage } from '../../store/usage-store'
+import { codexAccountSessionFields } from '../../store/codex-account-store'
+import { sessionSwitchTargets, accountProviderOf, switchSessionAccount } from '../../lib/switch-account'
+import { AccountMenuHeader } from './AccountMenuHeader'
+import { effectiveSwitchMode, loadAccountPolicy } from '../../store/account-policy-store'
+import { startAccountPolicy } from '../../lib/account-policy'
 import { WordmarkStrip } from './Wordmark'
 import { ScrollArea } from '@clave/ui/components'
 import { shortcutLabel } from '../../store/keymap-store'
@@ -54,6 +58,9 @@ import {
   BookmarkIcon,
   ArrowDownTrayIcon,
   PlayIcon,
+  ArrowsRightLeftIcon,
+  MapPinIcon,
+  BoltIcon,
   FolderIcon,
   ShieldExclamationIcon,
   ClipboardDocumentIcon,
@@ -278,6 +285,12 @@ export function Sidebar() {
       // have a number the first time they open.
       void primeClaudeAccountsUsage(useClaudeProfileStore.getState().profiles.map((p) => p.id))
     })
+    import('../../store/codex-account-store').then(async ({ loadCodexAccounts, useCodexAccountStore }) => {
+      await loadCodexAccounts()
+      void primeCodexAccountsUsage(useCodexAccountStore.getState().accounts)
+    })
+    // The switching policy (ADR 0002): its knobs, then its watch on every tab.
+    void loadAccountPolicy().then(() => startAccountPolicy())
   }, [])
 
   // Detect file drag over window (for showing pinned section as drop target).
@@ -862,6 +875,7 @@ export function Sidebar() {
             // this id at spawn, so leaving it out would put the clone on the
             // machine login while every readout still named the account.
             ...(dupClaudeKind ? accountSpawnFields(session) : {}),
+            ...(session.codexMode ? codexAccountSessionFields(session) : {}),
             // A duplicate belongs where its source lives, not to the active view.
             workspaceId: session.workspaceId
           })
@@ -887,6 +901,7 @@ export function Sidebar() {
             piProvider: sessionInfo.piProvider,
             piThinking: sessionInfo.piThinking,
             ...(dupClaudeKind ? accountSessionFields(session) : {}),
+            ...(session.codexMode ? codexAccountSessionFields(session) : {}),
             // Persist so re-duplicating the clone also re-primes.
             initialPrompt,
             sessionType: 'local',
@@ -1097,9 +1112,36 @@ export function Sidebar() {
       // account is left, at the top of its menu: the one place to look when a
       // window runs out and the question is "which subscription is this on".
       const header =
-        session && (session.claudeMode || session.claudeAgentsMode) ? (
-          <ClaudeAccountMenuHeader session={session} />
-        ) : undefined
+        session && accountProviderOf(session) ? <AccountMenuHeader session={session} /> : undefined
+      // Every other account of the tab's provider, those with headroom first:
+      // picking one restarts the tab's agent on it with the conversation
+      // resumed (ADR 0002). Only for a live tab: a dead one has Resume.
+      if (session?.alive && accountProviderOf(session)) {
+        for (const target of sessionSwitchTargets(session)) {
+          items.push({
+            label: `Switch to ${target.label}${target.exhausted ? ' (at limit)' : ''}`,
+            icon: <ArrowsRightLeftIcon className="w-3.5 h-3.5" />,
+            onClick: () => void switchSessionAccount(sessionId, target.id)
+          })
+        }
+        // The policy's knobs on this tab: pinned to its account (never moved,
+        // never proposed), and its own mode over the workspace's.
+        const pinned = session.accountPinned === true
+        items.push({
+          label: pinned ? 'Unpin from this account' : 'Pin to this account',
+          icon: <MapPinIcon className="w-3.5 h-3.5" />,
+          onClick: () => useSessionStore.getState().setAccountPinned(sessionId, !pinned)
+        })
+        const automatic = effectiveSwitchMode(session) === 'automatic'
+        items.push({
+          label: automatic ? 'Propose switches, do not make them' : 'Switch automatically at limit',
+          icon: <BoltIcon className="w-3.5 h-3.5" />,
+          onClick: () =>
+            useSessionStore
+              .getState()
+              .setAccountSwitchMode(sessionId, automatic ? 'propose' : 'automatic')
+        })
+      }
       if (session && !session.alive && ((session.claudeMode && session.claudeSessionId) || (session.piMode && session.piSessionId))) {
         items.push(
           {
