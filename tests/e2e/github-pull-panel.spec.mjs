@@ -14,6 +14,8 @@ const BIN = '/tmp/clave-e2e-github-pull-bin'
 const CALLS = `${BIN}/gh-calls.jsonl`
 const POSTED = `${BIN}/gh-posted.json`
 const FAIL = `${BIN}/gh-fail`
+const NEEDS_TOKEN = `${BIN}/gh-needs-token`
+const SHELL_TOKEN = 'ghp_exported_by_the_login_shell'
 const PULL_URL = 'https://github.com/acme/widgets/pull/42'
 const ISSUE_URL = 'https://github.com/acme/widgets/issues/7'
 
@@ -33,8 +35,11 @@ function writeStubs() {
 const fs = require('node:fs');
 const args = process.argv.slice(2);
 const stdin = args.includes('--body-file') ? fs.readFileSync(0, 'utf8') : null;
-fs.appendFileSync(${JSON.stringify(CALLS)}, JSON.stringify({ args, stdin }) + '\\n');
-if (fs.existsSync(${JSON.stringify(FAIL)})) {
+// The token gh would read, if the environment still carried one.
+const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN ?? null;
+fs.appendFileSync(${JSON.stringify(CALLS)}, JSON.stringify({ args, stdin, token }) + '\\n');
+// A gh with no stored login: only the environment's token signs it in.
+if (fs.existsSync(${JSON.stringify(FAIL)}) || (fs.existsSync(${JSON.stringify(NEEDS_TOKEN)}) && !token)) {
   process.stderr.write('To get started with GitHub CLI, please run:  gh auth login\\n');
   process.exit(4);
 }
@@ -75,7 +80,10 @@ export async function run(t) {
   writeStubs()
   const fixture = await openChat('github-pull', [], undefined, {
     SHELL: `${BIN}/bash`,
-    PATH: `${BIN}:${process.env.PATH}`
+    PATH: `${BIN}:${process.env.PATH}`,
+    // The login shell exports a token, as a shell often does for something
+    // else; gh would prefer it to the stored login, so Clave must not pass it.
+    GITHUB_TOKEN: SHELL_TOKEN
   })
   const { app, win, record } = fixture
   try {
@@ -124,6 +132,7 @@ export async function run(t) {
     const viewCall = callWith(['pr', 'view', '42', '--repo', 'acme/widgets', '--json'])
     assert.ok(viewCall, JSON.stringify(calls()))
     assert.match(viewCall.args[6], /(^|,)statusCheckRollup(,|$)/)
+    assert.equal(viewCall.token, null, 'gh ran on the stored login, not the shell token')
     t.check('a pull request link opens the pull request in the side panel through gh', true)
 
     // 2. What the record says, drawn: the head and base, the checks, the conversation.
@@ -205,6 +214,24 @@ export async function run(t) {
     assert.match(await failure.innerText(), /Sign in with gh auth login/)
     unlinkSync(FAIL)
     t.check('a gh failure is shown as its own words, on refresh and on open', true)
+
+    // 7b. A gh with no stored login is signed in by the shell's token after
+    //     all: the run without it is refused, the one retry with it answers.
+    writeFileSync(NEEDS_TOKEN, '')
+    const viewsBefore = calls().filter((c) => c.args[0] === 'pr' && c.args[1] === 'view').length
+    await panel.getByRole('button', { name: 'Close pull request', exact: true }).click()
+    await panel.locator('[data-pr-recent="acme/widgets#42"]').click()
+    await panel.locator('[data-testid="pr-title"]').waitFor()
+    const views = calls()
+      .filter((c) => c.args[0] === 'pr' && c.args[1] === 'view')
+      .slice(viewsBefore)
+    assert.deepEqual(
+      views.map((c) => c.token),
+      [null, SHELL_TOKEN],
+      JSON.stringify(views)
+    )
+    unlinkSync(NEEDS_TOKEN)
+    t.check('without a stored login, gh is retried once with the shell token', true)
 
     // 8. Pasting a link in the empty state opens it too.
     await panel.getByRole('button', { name: 'Close pull request', exact: true }).click()
