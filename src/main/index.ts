@@ -40,6 +40,8 @@ import {
 import { cleanupClaveWatchers } from './ipc-handlers/clave-file-handlers'
 import { startMcpServer, stopMcpServer, registerMcpWindowOpener } from './mcp/mcp-server'
 import { usageManager } from './usage-manager'
+import { codexUsageManager } from './codex-usage'
+import { accountLoginManager } from './account-login'
 import { sweepSessionMcpConfigs } from './mcp/mcp-runtime'
 import { registerPreviewScheme, installPreviewProtocol } from './preview-protocol'
 import { hardenViewHost, installViewGuestPolicy } from './view-guests'
@@ -367,6 +369,8 @@ app.on('before-quit', (event) => {
   cleanupTelemetry()
   cleanupMissionControl()
   usageManager.stopPolling()
+  codexUsageManager.stopPolling()
+  accountLoginManager.cancelAll()
   stopMcpServer()
   // Keep the event loop alive until owned event children finish their escalation.
   quitCleanup = ptyManager

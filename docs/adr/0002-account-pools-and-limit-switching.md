@@ -1,6 +1,6 @@
 # ADR 0002: account pools and limit-driven switching
 
-Status: proposed, 2026-09-24
+Status: accepted, 2026-09-25 (implemented in the same change)
 
 ## Context
 
@@ -65,9 +65,11 @@ The `.clave` schema gains an account field that names an account by label, or `a
 
 `clave_open_session` takes the same label or `any`. An agent may ask to move its own session to another account through the MCP tools; the request goes through the same mode setting as a user-initiated switch.
 
-### First cut
+### What shipped
 
-The first delivery is the Accounts page with both login flows, the migration of config-dir accounts, the Codex per-account home, the exhaustion badge, the manual switch with resume, and the poll-driven rotation for new spawns. The `propose` mode and the `automatic` mode, pins, and the `.clave` field come second, once the manual path is proven.
+Everything above, in one change: the Accounts page with both login flows, the migration of config-dir accounts, the Codex per-account home, the exhaustion badge, the manual switch with resume (the tab's menu, `clave_switch_account`), the pool for new spawns, the `propose` and `automatic` modes (global, per workspace, per session), pins, the chat CLI's own limit reports as a trigger, and the `.clave` `account` field through all six mirrors.
+
+Two places where the implementation reads the decisions narrowly. A pin and a session's own mode are session-lifetime, not on the record: a restart of the app brings the tab back unpinned, on the workspace's mode. A Codex TERMINAL's thread is found in the store by cwd and start time, so two Codex terminals opened in the same folder within seconds of each other may resume each other's thread; a chat tab knows its thread from the app-server and never has that ambiguity.
 
 ## Consequences
 

@@ -19,13 +19,25 @@ import type { PinnedGroupSession } from '../store/session-types'
 import { useWorkspaceStore, type Workspace } from '../store/workspace-store'
 import { profilesFor } from '../store/launch-profile-store'
 import {
-  useClaudeProfileStore,
   getClaudeProfile,
-  resolveClaudeProfile,
   claudeProfileSpawnFields,
   sessionAccount,
   type ClaudeProfile
 } from '../store/claude-profile-store'
+import {
+  getCodexAccount,
+  codexAccountSpawnFields,
+  sessionCodexAccount
+} from '../store/codex-account-store'
+import {
+  accountProviderOf,
+  nextAccountFor,
+  resolveAccountRef,
+  sessionAccountExhausted,
+  switchSessionAccount
+} from './switch-account'
+import type { CodexAccount } from '../../../preload/index.d'
+import { effectiveSwitchMode } from '../store/account-policy-store'
 import type { PiThinkingLevel } from '../../../shared/agent-launch'
 import { setActiveWorkspace } from './workspace-actions'
 import { getRegisteredTerminal } from './terminal-registry'
@@ -149,9 +161,15 @@ function handleList(payload: { callerSessionId?: string; workspace?: string }): 
       mode: sessionMode(s),
       alive: s.alive,
       agentState: s.agentState ?? null,
-      // The Claude account the tab runs on; the Default when the tab predates
-      // accounts or was launched without naming one.
-      account: s.claudeMode || s.claudeAgentsMode ? sessionAccount(s) : null,
+      // The account the tab runs on (Claude or Codex); the Default when the
+      // tab predates accounts or was launched without naming one. Whether
+      // that account is about to hit its limit, for an agent to act on.
+      account:
+        s.claudeMode || s.claudeAgentsMode
+          ? { ...sessionAccount(s), exhausted: sessionAccountExhausted(s) }
+          : s.codexMode
+            ? { ...sessionCodexAccount(s), exhausted: sessionAccountExhausted(s) }
+            : null,
       groupId: groupOfSession(state.groups, s.id)?.id ?? null,
       view: s.view ? { url: s.view.url, title: s.view.title ?? null } : null,
       workspaceId: s.workspaceId ?? null,
@@ -339,17 +357,11 @@ function alignSessionToGroupWorkspace(sessionId: string, group: SessionGroup): v
 }
 
 /** The Claude account an agent's spawn runs on: the one it named (an id or a
- *  label), else the one selected in settings. An unknown name errors with the
- *  names that exist, never a silent fall-through to the wrong subscription. */
+ *  label), else the pool's pick from the one selected in settings. An
+ *  unknown name errors with the names that exist, never a silent
+ *  fall-through to the wrong subscription. */
 export function resolveAccountForSpawn(ref: string | undefined): ClaudeProfile {
-  const { profiles, selectedProfileId } = useClaudeProfileStore.getState()
-  if (!ref) return getClaudeProfile(selectedProfileId)
-  const account = resolveClaudeProfile(profiles, ref)
-  if (!account) {
-    const names = profiles.map((p) => `"${p.label}" (${p.id})`).join(', ')
-    throw new Error(`Unknown Claude account "${ref}". Available: ${names}`)
-  }
-  return account
+  return resolveAccountRef('claude', ref) as ClaudeProfile
 }
 
 export async function openSessionProgrammatically(payload: {
@@ -399,14 +411,23 @@ export async function openSessionProgrammatically(payload: {
       : undefined
   if (payload.profile && family && !launchProfileId)
     throw new Error(`Unknown ${family} launch profile "${payload.profile}"`)
-  // The Claude account: the one named, else the one selected in settings —
-  // the same rule the launcher applies, so an agent-opened tab lands on the
-  // account the user would have got from the button. Never for another agent.
+  // The account: the one named, else the pool's pick from the one selected
+  // in settings — the same rule the launcher applies, so an agent-opened tab
+  // lands on the account the user would have got from the button. Claude and
+  // Codex have pools; nothing else does.
   const claudeProfile = claudeMode ? resolveAccountForSpawn(payload.account) : null
-  if (payload.account && !claudeMode) {
-    throw new Error(`The account argument applies to claude mode only (got mode "${mode}")`)
+  const codexAccount = codexMode
+    ? (resolveAccountRef('codex', payload.account) as CodexAccount)
+    : null
+  if (payload.account && !claudeMode && !codexMode) {
+    throw new Error(
+      `The account argument applies to claude and codex modes only (got mode "${mode}")`
+    )
   }
-  const accountFields = claudeProfile ? claudeProfileSpawnFields(claudeProfile) : {}
+  const accountFields = {
+    ...(claudeProfile ? claudeProfileSpawnFields(claudeProfile) : {}),
+    ...(codexAccount ? codexAccountSpawnFields(codexAccount) : {})
+  }
   const info = await window.electronAPI.spawnSession(payload.cwd, {
     claudeMode,
     antigravityMode,
@@ -449,7 +470,8 @@ export async function openSessionProgrammatically(payload: {
     piThinking: info.piThinking,
     claudeProfileId: claudeProfile?.id,
     claudeProfileLabel: claudeProfile?.label,
-    claudeConfigDir: claudeProfile?.configDir || undefined,
+    codexAccountId: codexAccount?.id,
+    codexAccountLabel: codexAccount?.label,
     // Persist so Duplicate re-primes the clone with the same prompt.
     initialPrompt: mode !== 'terminal' ? payload.prompt || undefined : undefined,
     sessionType: 'local',
@@ -1284,6 +1306,64 @@ function handleSwitchWorkspace(payload: { workspace: string }): unknown {
   return { activeWorkspaceId: ws.id, name: ws.name }
 }
 
+/** An agent moves a tab to another account (ADR 0002): the pool's pick for
+ *  "any", a named account otherwise, through the same switch the menu
+ *  makes. `mine` is the calling tab: its own process restarts. */
+async function handleSwitchAccount(payload: {
+  sessionId: string
+  account: string
+  callerSessionId?: string
+}): Promise<{
+  sessionId: string
+  account: { id: string; label: string }
+  resumed: boolean
+  switched: boolean
+  proposed: boolean
+}> {
+  const state = useSessionStore.getState()
+  const id = payload.sessionId === 'mine' ? payload.callerSessionId : payload.sessionId
+  const session = id ? state.sessions.find((s) => s.id === id) : undefined
+  if (!session) throw new Error(`Unknown session "${payload.sessionId}"`)
+  const provider = accountProviderOf(session)
+  if (!provider) throw new Error('Only Claude and Codex tabs run on an account')
+  let target: { id: string; label: string }
+  if (payload.account === 'any') {
+    const next = nextAccountFor(session)
+    if (!next) throw new Error('No other account of this provider has headroom')
+    target = provider === 'codex' ? getCodexAccount(next) : getClaudeProfile(next)
+  } else {
+    target = resolveAccountRef(provider, payload.account)
+  }
+  // An agent's ask goes through the tab's mode (ADR 0002): in propose mode
+  // the user sees the move and decides; a pinned tab is never moved.
+  if (session.accountPinned) {
+    throw new Error('This tab is pinned to its account; the user can unpin it from the tab menu')
+  }
+  if (effectiveSwitchMode(session) === 'propose') {
+    state.setAccountProposal(session.id, {
+      accountId: target.id,
+      label: target.label,
+      reason: 'reported'
+    })
+    return {
+      sessionId: session.id,
+      account: { id: target.id, label: target.label },
+      resumed: false,
+      switched: false,
+      proposed: true
+    }
+  }
+  const result = await switchSessionAccount(session.id, target.id)
+  if (!result.ok) throw new Error(result.error ?? 'The switch failed')
+  return {
+    sessionId: session.id,
+    account: { id: target.id, label: target.label },
+    resumed: result.resumed,
+    switched: true,
+    proposed: false
+  }
+}
+
 async function execute(command: string, payload: unknown): Promise<unknown> {
   switch (command) {
     case 'list':
@@ -1312,6 +1392,10 @@ async function execute(command: string, payload: unknown): Promise<unknown> {
       return handleRename(payload as Parameters<typeof handleRename>[0])
     case 'focus':
       return handleFocus(payload as Parameters<typeof handleFocus>[0])
+    case 'switchAccount':
+      return handleSwitchAccount(
+        payload as { sessionId: string; account: string; callerSessionId?: string }
+      )
     case 'switchWorkspace':
       return handleSwitchWorkspace(payload as Parameters<typeof handleSwitchWorkspace>[0])
     case 'sendToSession':

@@ -37,6 +37,10 @@ export async function run(t) {
       `#!${process.execPath}
 const fs = require('node:fs');
 const argv = process.argv.slice(2);
+// The title generator runs the same profile as a one-shot (-p without the
+// chat's stream flags); it is not the CLI under test and must not race it
+// for the argv file.
+if (argv.includes('-p') && !argv.includes('--input-format')) process.exit(0);
 fs.writeFileSync(${JSON.stringify(`${root}/${family}.json`)}, JSON.stringify(argv));
 const send = f => process.stdout.write(JSON.stringify(f) + '\\n');
 require('node:readline').createInterface({input:process.stdin}).on('line', line => {

@@ -1,10 +1,70 @@
 import { create } from 'zustand'
+import { resolveAccountRef, type AccountProvider } from '../lib/switch-account'
+import { getClaudeProfile } from './claude-profile-store'
+import { getCodexAccount } from './codex-account-store'
 import { substituteTokens } from './prompt-tokens'
 import type { PinnedGroup, PinnedGroupSession, PinnedGroupTerminal, GroupTerminalColor, GroupTerminalConfig } from './session-types'
 import { resolveGroupDefaults } from './group-defaults'
 import { resolveDeclaredGroupView } from '../../../shared/group-view'
 import { useSessionStore } from './session-store'
 import { getActiveWorkspaceId } from './workspace-store'
+
+/** The `.clave` account field of a live session: its account's LABEL when it
+ *  is not the Default (the file is shared between machines, ids are not). */
+function pinnedAccountField(s: {
+  claudeMode?: boolean
+  claudeAgentsMode?: boolean
+  codexMode?: boolean
+  claudeProfileId?: string
+  claudeProfileLabel?: string
+  codexAccountId?: string
+  codexAccountLabel?: string
+}): { account?: string } {
+  if (s.codexMode) {
+    return s.codexAccountId && s.codexAccountId !== 'default' && s.codexAccountLabel
+      ? { account: s.codexAccountLabel }
+      : {}
+  }
+  if (s.claudeMode || s.claudeAgentsMode) {
+    return s.claudeProfileId && s.claudeProfileId !== 'default' && s.claudeProfileLabel
+      ? { account: s.claudeProfileLabel }
+      : {}
+  }
+  return {}
+}
+
+/** The spawn and record fields for a pinned session's account (ADR 0002). */
+function resolvePinnedAccount(
+  session: PinnedGroupSession,
+  groupName: string,
+  pinOtherProvider: boolean
+): {
+  claudeProfileId?: string
+  claudeProfileLabel?: string
+  codexAccountId?: string
+  codexAccountLabel?: string
+} {
+  const provider: AccountProvider | null = session.codexMode
+    ? 'codex'
+    : session.claudeAgentsMode || (session.claudeMode && !pinOtherProvider)
+      ? 'claude'
+      : null
+  if (!provider) return {}
+  let account: { id: string; label: string }
+  try {
+    account = resolveAccountRef(provider, session.account)
+  } catch {
+    account = provider === 'codex' ? getCodexAccount('default') : getClaudeProfile('default')
+    void window.electronAPI?.showNotification?.({
+      title: groupName,
+      body: `Account "${session.account}" is not set up on this Mac: "${session.name}" starts on the Default account.`,
+      sessionId: ''
+    })
+  }
+  return provider === 'codex'
+    ? { codexAccountId: account.id, codexAccountLabel: account.label }
+    : { claudeProfileId: account.id, claudeProfileLabel: account.label }
+}
 
 export type { PinnedGroup }
 
@@ -180,7 +240,7 @@ function syncToClaveFile(pg: PinnedGroup): void {
         ...(p.logo ? { logo: p.logo } : {}),
         ...(p.prompt ? { prompt: p.prompt } : {}),
         ...(p.view ? { view: p.view } : {}),
-        sessions: p.sessions.map((s) => ({ cwd: s.cwd, name: s.name, claudeMode: s.claudeMode, antigravityMode: s.antigravityMode, codexMode: s.codexMode, piMode: s.piMode, claudeAgentsMode: s.claudeAgentsMode, dangerousMode: s.dangerousMode, ...(s.prompt ? { prompt: s.prompt } : {}), ...(s.rootSession ? { rootSession: true } : {}) })),
+        sessions: p.sessions.map((s) => ({ cwd: s.cwd, name: s.name, claudeMode: s.claudeMode, antigravityMode: s.antigravityMode, codexMode: s.codexMode, piMode: s.piMode, claudeAgentsMode: s.claudeAgentsMode, dangerousMode: s.dangerousMode, ...(s.prompt ? { prompt: s.prompt } : {}), ...(s.rootSession ? { rootSession: true } : {}), ...(s.account ? { account: s.account } : {}) })),
         terminals: p.terminals.map((t) => ({ command: t.command, commandMode: t.commandMode, color: t.color, icon: t.icon, cwd: t.cwd, autoLaunchLocalhost: t.autoLaunchLocalhost, persistent: t.persistent, serverUrl: t.serverUrl, groupView: t.groupView })),
         ...(p.category ? { category: p.category } : {})
       })
@@ -202,7 +262,7 @@ function syncToClaveFile(pg: PinnedGroup): void {
 // ── Import / Export ──
 
 function createPinnedFromGroup(
-  g: { name: string; cwd: string; color: string | null; toolbar?: boolean; category?: string; logo?: string; prompt?: string; view?: string; sessions: { cwd: string; name: string; claudeMode: boolean; antigravityMode: boolean; codexMode: boolean; piMode?: boolean; claudeAgentsMode?: boolean; dangerousMode: boolean; prompt?: string; rootSession?: boolean }[]; terminals: { command: string; commandMode: 'prefill' | 'auto'; color: string; icon?: string; cwd?: string; autoLaunchLocalhost?: boolean; persistent?: boolean; serverUrl?: string; groupView?: boolean }[] },
+  g: { name: string; cwd: string; color: string | null; toolbar?: boolean; category?: string; logo?: string; prompt?: string; view?: string; sessions: { cwd: string; name: string; claudeMode: boolean; antigravityMode: boolean; codexMode: boolean; piMode?: boolean; claudeAgentsMode?: boolean; dangerousMode: boolean; prompt?: string; rootSession?: boolean; account?: string }[]; terminals: { command: string; commandMode: 'prefill' | 'auto'; color: string; icon?: string; cwd?: string; autoLaunchLocalhost?: boolean; persistent?: boolean; serverUrl?: string; groupView?: boolean }[] },
   filePath: string,
   groupIndex?: number,
   rootDir?: string | null,
@@ -412,7 +472,8 @@ export async function exportClaveFile(pinnedId: string, folder: string, fileName
       codexMode: s.codexMode,
       piMode: s.piMode,
       claudeAgentsMode: s.claudeAgentsMode,
-      dangerousMode: s.dangerousMode
+      dangerousMode: s.dangerousMode,
+      ...(s.account ? { account: s.account } : {})
     })),
     terminals: pg.terminals.map((t) => ({
       command: t.command,
@@ -571,7 +632,9 @@ export function pinGroupFromCurrent(groupId: string): void {
       // recorded at its absolute cwd (already the root, so the respawn lands
       // there either way); the flag is what tells the `+` of the group this pin
       // stamps out later to land there too, instead of in the group's cwd.
-      ...(group.rootSession ? { rootSession: true } : {})
+      ...(group.rootSession ? { rootSession: true } : {}),
+      // The account by label (ADR 0002): what the file names, never an id.
+      ...pinnedAccountField(s)
     }))
 
   const groupTerminals: PinnedGroupTerminal[] = group.terminals.map((t) => ({
@@ -670,6 +733,10 @@ async function spawnPinnedGroup(
         : session.prompt
           ? substituteTokens(session.prompt, pg.workspaceRoot ?? pg.rootDir ?? null, session.cwd)
           : undefined
+      // The account (ADR 0002): what the file names by label, `any` or nothing
+      // for the pool's pick — the same rule the launcher applies. A name this
+      // Mac does not know falls back to the Default, and says so.
+      const accountFields = resolvePinnedAccount(session, pg.name, !!pinOtherProvider)
       const sessionInfo = await window.electronAPI.spawnSession(spawnCwd, {
         claudeMode: pinOtherProvider ? false : session.claudeMode,
         antigravityMode: session.antigravityMode,
@@ -678,6 +745,7 @@ async function spawnPinnedGroup(
         claudeAgentsMode: session.claudeAgentsMode,
         dangerousMode: session.dangerousMode,
         initialPrompt,
+        ...accountFields,
         // The pin's workspace wins over the active one — an MCP launch of a
         // hidden workspace's pin must not leak its sessions into the active view.
         workspaceId: pg.workspaceId ?? undefined
@@ -697,6 +765,7 @@ async function spawnPinnedGroup(
         piMode: session.piMode,
         claudeAgentsMode: session.claudeAgentsMode,
         dangerousMode: session.dangerousMode,
+        ...accountFields,
         model: sessionInfo.model,
         claudeSessionId: sessionInfo.claudeSessionId,
         piSessionId: sessionInfo.piSessionId,
@@ -862,7 +931,8 @@ export function resyncPinnedGroup(groupId: string): void {
       codexMode: s.codexMode,
       piMode: s.piMode,
       claudeAgentsMode: s.claudeAgentsMode,
-      dangerousMode: s.dangerousMode
+      dangerousMode: s.dangerousMode,
+      ...pinnedAccountField(s)
     }))
 
   // Carry every live-config field; `persistent` lives only on the pin (not on
@@ -934,6 +1004,9 @@ export function isPinnedOutOfSync(groupId: string): boolean {
     const ps = pg.sessions[i]
     if (!s || !ps) return true
     if (s.cwd !== ps.cwd || s.claudeMode !== ps.claudeMode || s.antigravityMode !== ps.antigravityMode || s.codexMode !== ps.codexMode || (!!s.piMode) !== (!!ps.piMode) || (!!s.claudeAgentsMode) !== (!!ps.claudeAgentsMode) || s.dangerousMode !== ps.dangerousMode) return true
+    // An account named by the file that the tab is not on: drift (a tab
+    // switched by hand, or the file's name changed). `any` matches every account.
+    if (ps.account && ps.account !== 'any' && (pinnedAccountField(s).account ?? 'Default') !== ps.account) return true
   }
 
   // Compare terminal count and configs

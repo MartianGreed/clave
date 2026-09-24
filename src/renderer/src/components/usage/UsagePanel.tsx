@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactElement } from 'react'
 import { ArrowPathIcon } from '@heroicons/react/24/outline'
 import type { PiUsageTotals, UsageWindow } from '../../../../preload/index.d'
 import {
-  quotaUsageStores,
+  codexUsageStore,
   claudeUsageStore,
   piUsageStores,
   useUsageNavigation,
@@ -14,7 +14,8 @@ import {
   type ClaudeProfile
 } from '../../store/claude-profile-store'
 import { ClaudeLogo, CodexLogo, AntigravityLogo, PiLogo } from '../icons/cli-logos'
-import { ClaudeAccountsSection } from '../settings/ClaudeAccountsSection'
+import { useCodexAccountStore, describeCodexAccountAuth } from '../../store/codex-account-store'
+import type { CodexAccount } from '../../../../preload/index.d'
 import { SettingsCallout, SettingsRow } from '../settings/primitives'
 
 type Tool = 'claude' | 'codex' | 'antigravity' | 'pi'
@@ -158,8 +159,35 @@ function QuotaWindows({
   )
 }
 
+/** One Codex account's card, like a Claude account's. */
+function CodexAccountUsage({ account }: { account: CodexAccount }): ReactElement {
+  return (
+    <div className="px-3.5 py-3" data-codex-account-usage={account.id}>
+      <QuotaWindows
+        resource={codexUsageStore(account.id)}
+        title={
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="settings-row-title truncate">{account.label}</span>
+            <span className="badge badge-muted flex-shrink-0">
+              {describeCodexAccountAuth(account)}
+            </span>
+          </div>
+        }
+      />
+    </div>
+  )
+}
+
+/** Every Codex account, each with its own windows (ADR 0002). */
 function CodexUsage(): ReactElement {
-  return <QuotaWindows resource={quotaUsageStores.codex} />
+  const accounts = useCodexAccountStore((s) => s.accounts)
+  return (
+    <div className="settings-card">
+      {accounts.map((account) => (
+        <CodexAccountUsage key={account.id} account={account} />
+      ))}
+    </div>
+  )
 }
 
 /** One account's card: its name and how it signs in, then its windows. */
@@ -181,19 +209,15 @@ function ClaudeAccountUsage({ account }: { account: ClaudeProfile }): ReactEleme
   )
 }
 
-/** Every Claude account, each with its own windows and its name over them,
- *  the accounts section under them. */
+/** Every Claude account, each with its own windows and its name over them. */
 function ClaudeUsage(): ReactElement {
   const profiles = useClaudeProfileStore((s) => s.profiles)
   return (
-    <>
-      <div className="settings-card">
-        {profiles.map((account) => (
-          <ClaudeAccountUsage key={account.id} account={account} />
-        ))}
-      </div>
-      <ClaudeAccountsSection />
-    </>
+    <div className="settings-card">
+      {profiles.map((account) => (
+        <ClaudeAccountUsage key={account.id} account={account} />
+      ))}
+    </div>
   )
 }
 
@@ -295,13 +319,14 @@ export function UsagePanel(): ReactElement {
       <ToolToggle tool={tool} onChange={setTool} />
       {tool === 'claude' ? (
         <ClaudeUsage />
+      ) : tool === 'codex' ? (
+        <CodexUsage />
       ) : (
         <div className="settings-card">
           {tool === 'pi' ? (
             <PiUsage />
           ) : (
             <div className="px-3.5 py-3">
-              {tool === 'codex' && <CodexUsage />}
               {tool === 'antigravity' && <ComingSoon label="Antigravity" />}
             </div>
           )}

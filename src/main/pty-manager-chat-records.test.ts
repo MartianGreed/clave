@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => {
       setSessionViewRecord: vi.fn(),
       setSessionWorkspace: vi.fn(),
       setSessionClaudeSessionId: vi.fn(),
+      getSessionRecord: vi.fn(() => null),
+      tmuxNameOf: vi.fn(() => null),
+      waitForTmuxSessionGone: vi.fn(async () => undefined),
       listAdoptableSessions: vi.fn(() => []),
       getSession: vi.fn(),
       getAllSessions: vi.fn(() => [])
@@ -40,7 +43,12 @@ const mocks = vi.hoisted(() => {
   }
 })
 
-vi.mock('./sessions/adapters/pty-backend', () => ({ ptyBackend: mocks.backend }))
+vi.mock('./sessions/adapters/pty-backend', () => ({
+  ptyBackend: mocks.backend,
+  buildSpawnEnv: (base: Record<string, string>) => ({ ...base }),
+  codexHomeForSpawn: () => undefined,
+  getLoginShellEnv: () => ({})
+}))
 vi.mock('./sessions/adapters/pty-adapter', () => ({
   ptyAdapter: { id: 'pty', provider: 'terminal', prepare: vi.fn(), detach: vi.fn() }
 }))

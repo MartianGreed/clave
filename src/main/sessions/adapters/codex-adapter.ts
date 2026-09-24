@@ -249,6 +249,7 @@ export class CodexTranslator {
 interface HandleState {
   spec: SpawnSpec
   profile?: LaunchProfile
+  env?: Record<string, string>
   /** A model chosen after launch; every later turn/start carries it. */
   model?: string | null
   emitter: EventEmitter
@@ -266,25 +267,31 @@ export class CodexAdapter implements SessionAdapter {
   readonly transports = ['events'] as const
   readonly images = true
   private handles = new Map<string, HandleState>()
-  private profiles = new Map<string, LaunchProfile>()
+  private profiles = new Map<string, { profile: LaunchProfile; env?: Record<string, string> }>()
   constructor(
     private connect: (
       cwd: string,
       callbacks: CodexCallbacks,
-      profile?: LaunchProfile
+      profile?: LaunchProfile,
+      env?: Record<string, string>
     ) => CodexConnection = spawnCodexAppServer
   ) {}
 
-  configure(id: string, profile: LaunchProfile): void {
-    this.profiles.set(id, structuredClone(profile))
+  /** Main-only launch context: the profile and the environment the
+   *  app-server starts with (a Codex account's `CODEX_HOME`). Never part of
+   *  the Session record or the wire. */
+  configure(id: string, profile: LaunchProfile, env?: Record<string, string>): void {
+    this.profiles.set(id, { profile: structuredClone(profile), env })
   }
 
   async spawn(spec: SpawnSpec): Promise<SessionHandle> {
     if (this.handles.has(spec.id)) throw new Error(`Codex session already exists: ${spec.id}`)
     const emitter = new EventEmitter()
+    const context = this.profiles.get(spec.id)
     const state: HandleState = {
       spec,
-      profile: this.profiles.get(spec.id),
+      profile: context?.profile,
+      env: context?.env,
       emitter,
       translator: new CodexTranslator((event) => emitter.emit('stream', { kind: 'event', event })),
       sending: false,
@@ -447,7 +454,8 @@ export class CodexAdapter implements SessionAdapter {
             this.finish(state, code)
           }
         },
-        state.profile
+        state.profile,
+        state.env
       )
       await state.connection.request('initialize', {
         clientInfo: { name: 'clave_chat', title: 'Clave', version: '1.0.0' }

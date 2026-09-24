@@ -202,6 +202,8 @@ export interface ClaveFileGroupData {
     dangerousMode: boolean
     prompt?: string
     rootSession?: boolean
+    /** The account by label, or `any` (ADR 0002). */
+    account?: string
   }[]
   terminals: {
     command: string
@@ -235,6 +237,7 @@ export interface ClaveFileWriteData {
     dangerousMode: boolean
     prompt?: string
     rootSession?: boolean
+    account?: string
   }[]
   terminals?: {
     command: string
@@ -325,6 +328,8 @@ export interface SessionRecord {
   configDir?: string
   claudeProfileId?: string
   claudeProfileLabel?: string
+  codexAccountId?: string
+  codexAccountLabel?: string
   /** Workspace this session belongs to (stamped at spawn, inferred from cwd
    *  for legacy records). Absent → unstamped; the renderer assigns active. */
   workspaceId?: string
@@ -384,9 +389,34 @@ export interface UsageLimits {
 export interface ClaudeAccount {
   id: string
   label: string
-  /** Absolute `CLAUDE_CONFIG_DIR`, or '' for the shared `~/.claude`. */
-  configDir: string
   hasToken: boolean
+  /** When the token was captured, or null without one. */
+  tokenSetAt: number | null
+  /** When the token is assumed to stop working (a year), or null. */
+  tokenExpiresAt: number | null
+  /** The service refused the token on its last read. */
+  tokenInvalid: boolean
+}
+
+/** A Codex account as the renderer sees it (ADR 0002): a home per account,
+ *  the Default being the machine's own `~/.codex`. */
+export interface CodexAccount {
+  id: string
+  label: string
+  kind: 'chatgpt' | 'apiKey'
+  hasCredential: boolean
+}
+
+/** A login in flight, or just finished: never the credential it captured. */
+export interface AccountLoginJob {
+  id: string
+  provider: 'claude' | 'codex'
+  accountId: string
+  status: 'running' | 'done' | 'failed' | 'cancelled'
+  url: string | null
+  awaitingCode: boolean
+  message: string | null
+  startedAt: number
 }
 
 export interface PiUsageTotals {
@@ -402,6 +432,8 @@ export interface PiUsageTotals {
 
 export interface UsageError {
   error: string
+  /** The service refused the credential itself. */
+  reason?: 'unauthorized'
 }
 
 export interface GitFileStatus {
@@ -605,6 +637,9 @@ export interface ElectronAPI {
       configDir?: string
       claudeProfileId?: string
       claudeProfileLabel?: string
+      /** The Codex account (ADR 0002); codex mode only. */
+      codexAccountId?: string
+      codexAccountLabel?: string
       workspaceId?: string
       /** Spawning the hidden half of something else — persisted on the record
        *  so the next launch restores it as that half, not as a tab. */
@@ -635,6 +670,7 @@ export interface ElectronAPI {
   ackRehomed: (sessionIds: string[]) => void
   onSessionData: (id: string, callback: (data: string) => void) => () => void
   onSessionExit: (id: string, callback: (exitCode: number) => void) => () => void
+  onSessionLimitReported: (callback: (sessionId: string) => void) => () => void
   onSessionAutoTitle: (sessionId: string, callback: (title: string) => void) => () => void
   onPlanDetected: (sessionId: string, callback: (planPath: string) => void) => () => void
   onClearDetected: (
@@ -823,17 +859,51 @@ export interface ElectronAPI {
     callback: (update: { accountId: string; result: UsageLimits | UsageError }) => void
   ) => () => void
   claudeAccountsList: () => Promise<ClaudeAccount[]>
-  claudeAccountAdd: (input: { label: string; configDir?: string }) => Promise<ClaudeAccount>
+  /** Accounts whose config-dir shape was dropped at this boot: they need a login. */
+  claudeAccountsMigrated: () => Promise<string[]>
+  claudeAccountAdd: (input: { label: string }) => Promise<ClaudeAccount>
   claudeAccountUpdate: (
     id: string,
-    updates: { label?: string; configDir?: string }
+    updates: { label?: string }
   ) => Promise<ClaudeAccount | undefined>
+  claudeAccountReorder: (ids: string[]) => Promise<void>
   claudeAccountRemove: (id: string) => Promise<boolean>
   /** Stores the token and reads the account's limits with it in one call. */
   claudeAccountSetToken: (id: string, token: string) => Promise<UsageLimits | UsageError>
   claudeAccountClearToken: (id: string) => Promise<void>
   onClaudeAccountsChanged: (callback: (accounts: ClaudeAccount[]) => void) => () => void
-  getCodexUsageLimits: () => Promise<UsageLimits | UsageError>
+  codexAccountsList: () => Promise<CodexAccount[]>
+  codexAccountAdd: (input: { label: string; kind?: 'chatgpt' | 'apiKey' }) => Promise<CodexAccount>
+  codexAccountUpdate: (id: string, updates: { label?: string }) => Promise<CodexAccount | undefined>
+  codexAccountReorder: (ids: string[]) => Promise<void>
+  codexAccountRemove: (id: string) => Promise<boolean>
+  codexAccountClearCredential: (id: string) => Promise<void>
+  onCodexAccountsChanged: (callback: (accounts: CodexAccount[]) => void) => () => void
+  accountLoginStart: (provider: 'claude' | 'codex', accountId: string) => Promise<AccountLoginJob>
+  accountLoginApiKey: (accountId: string, apiKey: string) => Promise<AccountLoginJob>
+  accountLoginInput: (jobId: string, text: string) => Promise<void>
+  accountLoginCancel: (jobId: string) => Promise<void>
+  accountLoginList: () => Promise<AccountLoginJob[]>
+  onAccountLoginProgress: (callback: (job: AccountLoginJob) => void) => () => void
+  getCodexUsageLimits: (
+    accountId?: string,
+    options?: { force?: boolean }
+  ) => Promise<UsageLimits | UsageError>
+  getCodexUsageSnapshot: () => Promise<Record<string, UsageLimits | UsageError>>
+  onCodexAccountUsage: (
+    callback: (update: { accountId: string; result: UsageLimits | UsageError }) => void
+  ) => () => void
+  /** The same tab restarted on another account, its conversation resumed;
+   *  `resumed` false means it started fresh (nothing found to resume). */
+  restartSession: (
+    id: string,
+    overrides: {
+      claudeProfileId?: string
+      claudeProfileLabel?: string
+      codexAccountId?: string
+      codexAccountLabel?: string
+    }
+  ) => Promise<(SessionInfo & { resumed: boolean }) | { error: string }>
   getPiUsage: (range: PiUsageTotals['range']) => Promise<PiUsageTotals>
   gitCheckIgnored: (cwd: string, paths: string[]) => Promise<string[]>
   getGitStatus: (cwd: string) => Promise<GitStatusResult>

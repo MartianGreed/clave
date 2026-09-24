@@ -6,7 +6,13 @@ import {
   describeClaudeProfileAuth,
   type ClaudeProfile
 } from '../../store/claude-profile-store'
-import { useClaudeAccountsUsage, headroomLabel } from '../../store/usage-store'
+import {
+  useClaudeAccountsUsage,
+  useCodexAccountsUsage,
+  headroomLabel
+} from '../../store/usage-store'
+import { useCodexAccountStore, describeCodexAccountAuth } from '../../store/codex-account-store'
+import type { CodexAccount } from '../../../../preload/index.d'
 import { useWorkspaceStore } from '../../store/workspace-store'
 import {
   useLaunchPrefsStore,
@@ -130,6 +136,9 @@ export function SessionLauncher({ onRemoteLaunch }: SessionLauncherProps): React
   const profiles = useClaudeProfileStore((s) => s.profiles)
   const selectedProfileId = useClaudeProfileStore((s) => s.selectedProfileId)
   const accountsUsage = useClaudeAccountsUsage((s) => s.byAccount)
+  const codexAccounts = useCodexAccountStore((s) => s.accounts)
+  const selectedCodexAccountId = useCodexAccountStore((s) => s.selectedAccountId)
+  const codexAccountsUsage = useCodexAccountsUsage((s) => s.byAccount)
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const launchProfilePreferences = useLaunchProfileStore((s) => s.preferences)
   void launchProfilePreferences
@@ -277,6 +286,82 @@ export function SessionLauncher({ onRemoteLaunch }: SessionLauncherProps): React
     [accountsUsage, activeWorkspaceId, launchAgent, multiProfile, profiles, selectedProfileId]
   )
 
+  /** A Codex entry: like Claude's, one row per account with its headroom
+   *  when there is more than one account (ADR 0002). */
+  const renderCodexEntry = useCallback(
+    (label: string, shortcut: string | undefined, dangerousMode: boolean) => {
+      const binaryProfiles = profilesFor('codex')
+      const selectedBinaryId = selectedLaunchProfile('codex', activeWorkspaceId).id
+      const launch = (launchProfileId: string, codexAccountId?: string): void =>
+        launchAgent(
+          { kind: 'codex', dangerousMode, codexAccountId, launchProfileId },
+          { kind: 'workspace-root' }
+        )
+      if (codexAccounts.length <= 1 && binaryProfiles.length === 1) {
+        return (
+          <DropdownMenuItem onSelect={() => launch(binaryProfiles[0].id)}>
+            <CodexLogo className="w-3.5 h-3.5 flex-shrink-0 text-text-tertiary" />
+            <span className="flex-1">{label}</span>
+            {shortcut && <DropdownMenuShortcut>{shortcut}</DropdownMenuShortcut>}
+          </DropdownMenuItem>
+        )
+      }
+      const accountRow = (binary: { id: string }, account: CodexAccount): React.JSX.Element => {
+        const headroom = headroomLabel(codexAccountsUsage[account.id])
+        return (
+          <DropdownMenuItem
+            key={`${binary.id}:${account.id}`}
+            data-codex-account={account.id}
+            onSelect={() => launch(binary.id, account.id)}
+            title={`${account.label} · ${describeCodexAccountAuth(account)}`}
+          >
+            <span className="flex-1 truncate">{account.label}</span>
+            {headroom && (
+              <span className="text-[11px] text-text-tertiary tabular-nums flex-shrink-0">
+                {headroom}
+              </span>
+            )}
+            {binary.id === selectedBinaryId && account.id === selectedCodexAccountId && (
+              <CheckIcon className="w-3.5 h-3.5 flex-shrink-0 text-text-tertiary" />
+            )}
+          </DropdownMenuItem>
+        )
+      }
+      return (
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger data-codex-entry={label}>
+            <CodexLogo className="w-3.5 h-3.5 flex-shrink-0 text-text-tertiary" />
+            <span className="flex-1">{label}</span>
+            <ChevronRightIcon className="w-3 h-3 flex-shrink-0 text-text-tertiary" />
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            {codexAccounts.length > 1
+              ? binaryProfiles.map((binary) => (
+                  <div key={binary.id}>
+                    <DropdownMenuLabel>
+                      {binaryProfiles.length > 1 ? `${binary.name} · account` : 'Account'}
+                    </DropdownMenuLabel>
+                    {codexAccounts.map((account) => accountRow(binary, account))}
+                  </div>
+                ))
+              : [
+                  <DropdownMenuLabel key="label">Launch profile</DropdownMenuLabel>,
+                  ...binaryProfiles.map((binary) => (
+                    <DropdownMenuItem key={binary.id} onSelect={() => launch(binary.id)}>
+                      <span className="flex-1 truncate">{binary.name}</span>
+                      {binary.id === selectedBinaryId && (
+                        <CheckIcon className="w-3.5 h-3.5 flex-shrink-0 text-text-tertiary" />
+                      )}
+                    </DropdownMenuItem>
+                  ))
+                ]}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      )
+    },
+    [activeWorkspaceId, codexAccounts, codexAccountsUsage, launchAgent, selectedCodexAccountId]
+  )
+
   const renderAgentEntry = useCallback(
     (
       kind: Exclude<AgentKind, 'claude' | 'claude-agents'>,
@@ -399,13 +484,8 @@ export function SessionLauncher({ onRemoteLaunch }: SessionLauncherProps): React
                   'Antigravity CLI',
                   antigravityShortcut ?? undefined
                 )}
-                {renderAgentEntry('codex', 'Codex CLI', codexShortcut ?? undefined)}
-                {renderAgentEntry(
-                  'codex',
-                  'Codex CLI (YOLO)',
-                  yoloCodexShortcut ?? undefined,
-                  true
-                )}
+                {renderCodexEntry('Codex CLI', codexShortcut ?? undefined, false)}
+                {renderCodexEntry('Codex CLI (YOLO)', yoloCodexShortcut ?? undefined, true)}
                 {renderAgentEntry('pi', 'Pi', piShortcut ?? undefined)}
 
                 {connectedRemoteLocations.map((loc) => (
