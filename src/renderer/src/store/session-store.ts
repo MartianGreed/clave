@@ -277,6 +277,7 @@ interface SessionState {
   updateSessionAlive: (id: string, alive: boolean) => void
   setSessionActivity: (id: string, status: ActivityStatus) => void
   setAgentState: (id: string, state: import('./session-types').AgentRunState) => void
+  setBackgroundTaskCount: (id: string, count: number) => void
   setSessionPromptWaiting: (id: string, promptType: string | null) => void
   setSessionDetectedUrl: (id: string, url: string | null) => void
   setSessionServerStatus: (id: string, status: import('./session-types').ServerStatus) => void
@@ -1264,6 +1265,17 @@ export const useSessionStore = create<SessionState>((set) => ({
       if (!session || session.agentState === agentState) return state
       return {
         sessions: state.sessions.map((s) => (s.id === id ? { ...s, agentState } : s))
+      }
+    }),
+
+  setBackgroundTaskCount: (id, count) =>
+    set((state) => {
+      const session = state.sessions.find((s) => s.id === id)
+      if (!session || (session.backgroundTasks ?? 0) === count) return state
+      return {
+        sessions: state.sessions.map((s) =>
+          s.id === id ? { ...s, backgroundTasks: count || undefined } : s
+        )
       }
     }),
 

@@ -75,6 +75,7 @@ function SessionIcon({ session }: { session: Session }) {
   // Lifecycle-aware providers share these complementary status visuals:
   // the ICON color carries "is it running" and the DOT carries "does it need me".
   //   working → blue pulsing icon, no dot
+  //   background → blue icon, slow pulse (turn over, shells/subagents still running)
   //   blocked → neutral icon, amber dot (waiting on a permission/selection prompt)
   //   done & unseen → neutral icon, green dot (finished while you were away; clears on view)
   //   idle / done-seen / empty → neutral icon, no dot
@@ -91,6 +92,8 @@ function SessionIcon({ session }: { session: Session }) {
   const blocked = (isClaudeCode || isCodex) && state === 'blocked'
   const doneUnseen = hasLifecycleState && state === 'done' && session.hasUnseenActivity
   const ended = hasLifecycleState && state === 'ended'
+  const background =
+    hasLifecycleState && !working && !blocked && !ended && (session.backgroundTasks ?? 0) > 0
 
   // A pending cross-tab message (accent dot) is provider-agnostic and takes
   // precedence over the Claude-only status dots — it's an explicit "another
@@ -107,13 +110,26 @@ function SessionIcon({ session }: { session: Session }) {
   return (
     <span
       className="sidebar-tab-icon relative flex-shrink-0"
-      title={injectedFrom ? `Message from ${injectedFrom}` : undefined}
-      style={working ? { animation: 'pulse-dot 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite' } : undefined}
+      title={
+        injectedFrom
+          ? `Message from ${injectedFrom}`
+          : background
+            ? `${session.backgroundTasks} running in the background`
+            : undefined
+      }
+      data-background={background ? 'true' : undefined}
+      style={
+        working
+          ? { animation: 'pulse-dot 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite' }
+          : background
+            ? { animation: 'pulse-dot 5s cubic-bezier(0.4, 0, 0.6, 1) infinite' }
+            : undefined
+      }
     >
       <Icon
         className={cn(
           'transition-colors duration-300',
-          working && 'text-status-working',
+          (working || background) && 'text-status-working',
           ended && 'text-text-tertiary opacity-50'
         )}
       />

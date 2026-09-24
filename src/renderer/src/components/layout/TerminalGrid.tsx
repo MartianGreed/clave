@@ -148,8 +148,18 @@ export function TerminalGrid(): React.JSX.Element {
   const visibleCount = selectedTerminalIds.length + selectedFileTabIds.length
   const { cols, rows } = computeGridLayout(visibleCount)
 
+  // A linked document turns the pane into ONE frame: the session fills its left
+  // side without a card of its own, and the document is a card inset in the
+  // rest (.linked-document-frame / .linked-document-slot) — the conversation
+  // and its document read as one surface, not as two windows side by side.
   return (
-    <div className="flex-1 relative overflow-hidden">
+    <div
+      className={
+        linkedActive
+          ? 'flex-1 relative overflow-hidden floating-card linked-document-frame'
+          : 'flex-1 relative overflow-hidden'
+      }
+    >
       {/* "Select a session" overlay when nothing is selected */}
       {!hasSelection && !viewGroup && !viewSession && (
         <div className="absolute inset-0 flex items-center justify-center text-text-tertiary text-sm z-10">
@@ -249,20 +259,8 @@ export function TerminalGrid(): React.JSX.Element {
           <LinkedDocumentPanel document={doc} />
         </div>
       ))}
-      {selectedSessionIds.length === 1 &&
-        linked.find((d) => d.sessionId === selectedSessionIds[0] && d.hidden) && (
-          <button
-            className="panel-tab linked-document-reopen"
-            onClick={() => {
-              const doc = linked.find((d) => d.sessionId === selectedSessionIds[0])!
-              void window.electronAPI.linkedDocuments.update(doc.id, doc.revision, {
-                hidden: false
-              })
-            }}
-          >
-            Open linked document
-          </button>
-        )}
+      {/* A hidden document is reopened from the session's own header
+          (LinkedDocumentReopen), not from a chip floating over its content. */}
 
       {/* Grid renders ALL terminals and ALL file tabs to keep them alive; the
           unselected ones are hidden (see each loop below). */}
@@ -293,7 +291,11 @@ export function TerminalGrid(): React.JSX.Element {
           return (
             <div
               key={session.id}
-              className="min-h-0 min-w-0 h-full floating-card"
+              className={
+                linkedActive
+                  ? 'min-h-0 min-w-0 h-full overflow-hidden'
+                  : 'min-h-0 min-w-0 h-full floating-card'
+              }
               style={{ display: isSelected ? undefined : 'none' }}
             >
               <TerminalErrorBoundary sessionId={session.id}>

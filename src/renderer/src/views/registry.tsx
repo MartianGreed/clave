@@ -15,10 +15,14 @@ import { TerminalPanel } from '../components/terminal/TerminalPanel'
 import { useViewSessionStore } from './session-store'
 import { bindKernelState } from './kernel-state'
 import { useSessionLog } from './conversation-store'
+import { clearSessionDraft } from './draft-store'
 import { PluginViewSurface } from './PluginViewSurface'
 import { availableViews, resolveView, type AvailableView } from './resolution'
 import { emitTabClosed } from '../lib/exchange-capture'
 import { ConfirmDialog } from '@clave/ui/components'
+import { LinkedDocumentReopen } from '../components/files/LinkedDocumentReopen'
+import { useBackgroundTasks } from './background-tasks'
+import { BackgroundTasksChip } from './BackgroundTasksChip'
 
 /** Bundled native views, keyed by the id a session carries: `<pluginId>/<viewId>`.
  *  A plugin contributing several views has one entry per view, which is what
@@ -29,11 +33,13 @@ const nativeViews: Record<string, ComponentType<ChatViewProps>> = {
 }
 /** What this build can mount, handed to the pure resolution in `resolution.ts`. */
 const implemented: ReadonlySet<string> = new Set(Object.keys(nativeViews))
-type DotStatus = 'working' | 'waiting' | 'ready' | 'inactive'
-function dotStatus(state: string): DotStatus {
+type DotStatus = 'working' | 'waiting' | 'background' | 'ready' | 'inactive'
+/** `background`: the turn is over but work it started still runs. */
+function dotStatus(state: string, background = 0): DotStatus {
   if (state === 'working') return 'working'
   if (state === 'blocked') return 'waiting'
   if (state === 'ended') return 'inactive'
+  if (background > 0) return 'background'
   return 'ready'
 }
 export function SessionViewBadge({ sessionId }: { sessionId: string }): React.JSX.Element | null {
@@ -136,6 +142,12 @@ export function RegisteredSessionView({
   // the pane falls back to the terminal, and a claim kept there would never
   // reach zero — main would go on streaming into a log nobody reads.
   useSessionLog(session?.transport === 'events' && viewId ? sessionId : '')
+  // Background shells and subagents outlive the turn that started them; the
+  // header and the sidebar say so, or a finished-looking chat hides live work.
+  const backgroundTasks = useBackgroundTasks(sessionId)
+  useEffect(() => {
+    useViewSessionStore.getState().setBackgroundTaskCount(sessionId, backgroundTasks.length)
+  }, [sessionId, backgroundTasks.length])
   // Every view this session can be read in is mounted for the pane's lifetime
   // and all but one are hidden. Switching therefore finds a view exactly as it
   // was left — including the state a view keeps privately rather than reading
@@ -208,6 +220,7 @@ export function RegisteredSessionView({
       // The provider may already have exited, as in the terminal header.
     }
     useViewSessionStore.getState().removeSession(sessionId)
+    clearSessionDraft(sessionId)
     setShowConfirm(false)
   }
   // v1 describes exactly one transport. A future dual-transport record can pass
@@ -228,7 +241,10 @@ export function RegisteredSessionView({
     >
       <header className="pane-header chat-header">
         <div className="pane-header-lead">
-          <span className="pane-status-dot" data-status={dotStatus(meta.state)} />
+          <span
+            className="pane-status-dot"
+            data-status={dotStatus(meta.state, backgroundTasks.length)}
+          />
           <span className="pane-header-title" title={session.cwd}>
             {name ?? session.title}
           </span>
@@ -239,6 +255,8 @@ export function RegisteredSessionView({
           )}
         </div>
         <div className="pane-header-actions">
+          <LinkedDocumentReopen sessionId={sessionId} />
+          <BackgroundTasksChip tasks={backgroundTasks} />
           <span className="chat-state" data-state={meta.state}>
             {meta.state}
           </span>

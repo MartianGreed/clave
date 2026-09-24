@@ -266,6 +266,9 @@ export interface Session {
   activityStatus: ActivityStatus
   /** Deterministic Claude run state from CC hooks; undefined until first signal. */
   agentState?: AgentRunState
+  /** How many background shells/subagents a chat session left running past its
+   *  turn, from the provider's own list. Runtime only; absent means none. */
+  backgroundTasks?: number
   promptWaiting: string | null
   claudeMode: boolean
   antigravityMode: boolean

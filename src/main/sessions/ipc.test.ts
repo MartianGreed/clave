@@ -357,3 +357,54 @@ it('hands each user message to the title generator with the sending window', () 
   sessionManager.kill(id)
   sessionManager.forget(id)
 })
+
+it('keeps the built-in CLIs raw frames in main and passes everything else to the window', () => {
+  const id = `ipc-raw-${++sequence}`
+  const adapter = new EchoAdapter()
+  const session = {
+    id,
+    provider: 'echo',
+    transport: 'events' as const,
+    cwd: '/project',
+    windowKey: 'window',
+    state: 'idle' as const,
+    createdAt: 1,
+    adapterId: 'echo',
+    title: 'Echo'
+  }
+  sessionManager.adopt(session, adapter.prepare(session), adapter)
+  const sender = Object.assign(new EventEmitter(), {
+    id: 500 + sequence,
+    isDestroyed: () => false,
+    send: vi.fn()
+  })
+  mocks.handlers.get('sessions:subscribe')({ sender }, id)
+  const local = vi.fn()
+  sessionManager.subscribe(id, local)
+  sender.send.mockClear()
+  const emit = (event: unknown): void => {
+    ;(adapter as unknown as { emitter: (h: { id: string }) => EventEmitter })
+      .emitter({ id })
+      .emit('stream', { kind: 'event', event })
+  }
+  const claudeChunk = {
+    type: 'provider_event',
+    provider: 'claude',
+    payload: { type: 'stream_event', event: { type: 'content_block_delta' } }
+  }
+  const codexFrame = { type: 'provider_event', provider: 'codex', payload: { method: 'x' } }
+  const pluginNotice = { type: 'provider_event', provider: 'echo', payload: { notice: 'hi' } }
+  const text = { type: 'assistant_text', delta: 'kept', final: false }
+  for (const event of [claudeChunk, codexFrame, pluginNotice, text]) emit(event)
+  const sent = sender.send.mock.calls.map(([, value]) => value.event)
+  expect(sent).toEqual([pluginNotice, text])
+  // Main's own consumers still see every frame.
+  expect(local.mock.calls.map(([value]) => value.event)).toEqual([
+    claudeChunk,
+    codexFrame,
+    pluginNotice,
+    text
+  ])
+  sessionManager.kill(id)
+  sessionManager.forget(id)
+})

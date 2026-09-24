@@ -110,6 +110,20 @@ export const CommandOptionSchema = z.object({
 })
 export type CommandOption = z.infer<typeof CommandOptionSchema>
 export type SessionInput = z.infer<typeof SessionInputSchema>
+/** One piece of work the agent left running past its turn: a background shell,
+ *  a background subagent. The turn can be `done` while these still run. */
+export const BackgroundTaskSchema = z.object({
+  id: z.string(),
+  kind: z.enum(['shell', 'agent', 'other']),
+  description: z.string(),
+  /** The tool call that started it, when the provider says. */
+  toolUseId: z.string().optional(),
+  /** When this host first heard of it (epoch ms), for the elapsed timer. */
+  startedAt: z.number(),
+  /** Where the provider writes its output, when it says. */
+  outputFile: z.string().optional()
+})
+export type BackgroundTask = z.infer<typeof BackgroundTaskSchema>
 export const SessionEventSchema = z.discriminatedUnion('type', [
   UserMessageSchema,
   z.object({ type: z.literal('assistant_text'), delta: z.string(), final: z.boolean() }),
@@ -147,6 +161,9 @@ export const SessionEventSchema = z.discriminatedUnion('type', [
      that it was cut short, never a failure. A view mutes the message that
      started it rather than raising an error card over it. */
   z.object({ type: z.literal('turn_interrupted') }),
+  /* Everything still running in the background, whole, each time it changes:
+     a snapshot replaces the last one, and an empty list means nothing is. */
+  z.object({ type: z.literal('background_tasks'), tasks: z.array(BackgroundTaskSchema) }),
   z.object({ type: z.literal('provider_event'), provider: z.string(), payload: z.unknown() })
 ])
 export type SessionEvent = z.infer<typeof SessionEventSchema>
