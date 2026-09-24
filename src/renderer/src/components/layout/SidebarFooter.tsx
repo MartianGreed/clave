@@ -111,7 +111,7 @@ export function UpdateBanner(): React.ReactElement {
                 </button>
                 <button
                   onClick={handleUpdate}
-                  className="px-2 py-0.5 text-[11px] font-medium text-white bg-accent hover:bg-accent-hover rounded-md transition-colors"
+                  className="px-2 py-0.5 text-[11px] font-medium text-action-foreground bg-action hover:bg-action-hover rounded-md transition-colors"
                 >
                   Update
                 </button>

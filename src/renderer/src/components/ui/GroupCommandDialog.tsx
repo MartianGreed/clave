@@ -246,7 +246,7 @@ export function GroupCommandDialog({
                     <button
                       type="button"
                       onClick={handleSave}
-                      className="btn-dialog text-accent hover:brightness-110 outline-none"
+                      className="btn-dialog text-action hover:brightness-110 outline-none"
                     >
                       Save
                     </button>

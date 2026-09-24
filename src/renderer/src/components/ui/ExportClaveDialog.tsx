@@ -140,7 +140,7 @@ export function ExportClaveDialog({
                     <button
                       type="button"
                       onClick={handleExport}
-                      className="btn-dialog text-accent hover:brightness-110 outline-none"
+                      className="btn-dialog text-action hover:brightness-110 outline-none"
                     >
                       Export
                     </button>

@@ -13,15 +13,36 @@
   --color-text-secondary: var(--text-secondary);
   --color-text-tertiary: var(--text-tertiary);
 
-  --color-accent: #5e6ad2;
-  --color-accent-hover: #6e79dd;
+  /* Two colour roles, and the rule that splits them: verbs are ink, states
+     are blue, everything else is neutral.
+
+     --color-action is what a button that DOES something is filled with (Send,
+     Save, Allow, Create): the theme's own primary ink, opaque, with the
+     theme's ground as its label. A verb does not need a hue to be found — it
+     is the darkest (or lightest) thing on the page — and a hue spent on it is
+     a hue no longer free to say "this is on".
+
+     --color-accent is that hue: a signal blue, cut per theme so it clears
+     4.5:1 as text on --surface-50 everywhere, and used ONLY for state — on,
+     selected, active, focus, links, a drag target, progress. It is never a
+     fill under white text any more; the one Linear indigo it replaces was the
+     same hex in all four themes, clashed with the warm ramps, and missed
+     4.5:1 as text on three of them.
+
+     Both are restated per theme below and aliased here so Tailwind generates
+     bg-action / text-action-foreground / text-accent from them. */
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-action: var(--action);
+  --color-action-hover: var(--action-hover);
+  --color-action-foreground: var(--action-foreground);
 
   /* Git status tones. Two of them deliberately leave git's convention behind.
      Orange means "careful", and it was painted on the two things in a repo that
      least deserve it: a file you modified, and a commit waiting on the remote.
      A healthy repo showed a wall of warnings for doing exactly what it is for.
-     Modified takes the app's own accent family — work in progress is yours, not
-     a fault — and incoming goes plainly informational. Green, red and blue keep
+     Modified takes a violet of its own — work in progress is yours, not a
+     fault — and incoming goes plainly informational. Green, red and blue keep
      their conventional meanings, where the convention is actually saying
      something. Orange survives in one place only, the warning glyph on a file
      that an incoming change and your working tree both touch: a real heads-up,
@@ -55,9 +76,13 @@
   --color-success: #22c55e;
   --color-warning: #f59e0b;
   /* The switch's knob: white on every theme, over the accent when on and the
-     surface-300 track when off, both dark enough on every ramp to carry it. */
+     surface-300 track when off. On the dark themes the blue track is light,
+     and that is fine: a knob is a shape the track frames, not a label, and
+     the one place white may sit on the accent. */
   --color-switch-knob: #ffffff;
-  --color-ring: #5e6ad2;
+  /* Focus is a state, so the ring is the accent — and it names the alias, not
+     --accent, so a skin that sets only --color-accent moves the ring too. */
+  --color-ring: var(--color-accent);
 
   /* Border-radius scale — app-wide roundness, slightly tighter than Tailwind's
      defaults. Every rounded-* utility resolves to these, and the design-system
@@ -286,6 +311,20 @@
   --surface-100: #1d1c19;
   --surface-raised: #161513;
   --raised-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 12px rgb(0 0 0 / 0.22);
+  /* The two colour roles (see --color-action in @theme). The action is this
+     theme's opaque primary ink with its --surface-0 as the label; its hover
+     steps 12% toward --surface-50, a press you see without a second hue. The
+     accent is the state blue: lighter on hover on the dark grounds, darker on
+     the light ones, so a hover always moves away from the ground. */
+  --accent: #5aa2f7;
+  --accent-hover: #78b4f9;
+  --action: #f1f0ee;
+  --action-hover: #d7d6d4;
+  --action-foreground: #0e0d0c;
+  /* A raised control (.btn-secondary): a hairline edge and a soft drop in one
+     box-shadow, so it costs no layout. Restated per theme because an edge
+     that reads on off-black is invisible on warm white, and the reverse. */
+  --raised-control-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.16), 0 1px 2px rgb(0 0 0 / 0.4);
   --surface-200: #262420;
   --surface-300: #2f2c28;
   --surface-400: #38352f;
@@ -351,10 +390,10 @@
   --claude-toggle-active: rgba(217, 119, 87, 0.18);
   --claude-toggle-glow: rgba(217, 119, 87, 0.25);
   --heatmap-0: #211f1b;
-  --heatmap-1: rgba(94, 106, 210, 0.3);
-  --heatmap-2: rgba(94, 106, 210, 0.5);
-  --heatmap-3: rgba(94, 106, 210, 0.7);
-  --heatmap-4: rgba(94, 106, 210, 0.95);
+  --heatmap-1: color-mix(in srgb, var(--accent) 30%, transparent);
+  --heatmap-2: color-mix(in srgb, var(--accent) 50%, transparent);
+  --heatmap-3: color-mix(in srgb, var(--accent) 70%, transparent);
+  --heatmap-4: color-mix(in srgb, var(--accent) 95%, transparent);
 }
 
 /* Light theme — Linear-inspired warm grays */
@@ -387,6 +426,12 @@
   --surface-100: #eeedeb;
   --surface-raised: #ffffff;
   --raised-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 12px rgb(0 0 0 / 0.05);
+  --accent: #1f5fcf;
+  --accent-hover: #1a51b1;
+  --action: #1b1b18;
+  --action-hover: #353532;
+  --action-foreground: #fbfbf9;
+  --raised-control-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.16), 0 1px 2px rgb(0 0 0 / 0.08);
   --surface-200: #e4e3e0;
   --surface-300: #d7d6d3;
   --surface-400: #c9c8c5;
@@ -417,10 +462,10 @@
   --claude-toggle-active: rgba(217, 119, 87, 0.14);
   --claude-toggle-glow: rgba(217, 119, 87, 0.17);
   --heatmap-0: #e4e3e0;
-  --heatmap-1: rgba(94, 106, 210, 0.2);
-  --heatmap-2: rgba(94, 106, 210, 0.4);
-  --heatmap-3: rgba(94, 106, 210, 0.65);
-  --heatmap-4: rgba(94, 106, 210, 0.9);
+  --heatmap-1: color-mix(in srgb, var(--accent) 20%, transparent);
+  --heatmap-2: color-mix(in srgb, var(--accent) 40%, transparent);
+  --heatmap-3: color-mix(in srgb, var(--accent) 65%, transparent);
+  --heatmap-4: color-mix(in srgb, var(--accent) 90%, transparent);
   --color-wellbeing-gentle: oklch(0.55 0.15 85);
   --color-wellbeing-gentle-bg: oklch(0.95 0.03 85);
   --color-wellbeing-gentle-border: oklch(0.8 0.08 85);
@@ -459,6 +504,12 @@
   --surface-100: #e8e4dd;
   --surface-raised: #fcfaf7;
   --raised-shadow: 0 1px 2px rgb(60 45 30 / 0.05), 0 4px 12px rgb(60 45 30 / 0.06);
+  --accent: #1f5bc4;
+  --accent-hover: #1a4ea8;
+  --action: #1b1610;
+  --action-hover: #34302a;
+  --action-foreground: #f5f1eb;
+  --raised-control-shadow: 0 0 0 0.5px rgb(60 45 30 / 0.22), 0 1px 2px rgb(60 45 30 / 0.1);
   --surface-200: #ddd9d1;
   --surface-300: #d0cbc3;
   --surface-400: #c3bdb4;
@@ -486,10 +537,10 @@
   --claude-toggle-active: rgba(217, 119, 87, 0.18);
   --claude-toggle-glow: rgba(217, 119, 87, 0.22);
   --heatmap-0: #ddd9d1;
-  --heatmap-1: rgba(94, 106, 210, 0.2);
-  --heatmap-2: rgba(94, 106, 210, 0.4);
-  --heatmap-3: rgba(94, 106, 210, 0.65);
-  --heatmap-4: rgba(94, 106, 210, 0.9);
+  --heatmap-1: color-mix(in srgb, var(--accent) 20%, transparent);
+  --heatmap-2: color-mix(in srgb, var(--accent) 40%, transparent);
+  --heatmap-3: color-mix(in srgb, var(--accent) 65%, transparent);
+  --heatmap-4: color-mix(in srgb, var(--accent) 90%, transparent);
   --color-wellbeing-gentle: oklch(0.5 0.12 85);
   --color-wellbeing-gentle-bg: oklch(0.85 0.04 85);
   --color-wellbeing-gentle-border: oklch(0.7 0.08 85);
@@ -552,6 +603,12 @@
   --surface-100: #3e3a35;
   --surface-raised: #34302c;
   --raised-shadow: 0 1px 2px rgb(9 6 4 / 0.34), 0 4px 12px rgb(9 6 4 / 0.26);
+  --accent: #78b0f5;
+  --accent-hover: #93c0f7;
+  --action: #efece9;
+  --action-hover: #d9d5d2;
+  --action-foreground: #2b2722;
+  --raised-control-shadow: 0 0 0 0.5px rgba(255, 243, 232, 0.16), 0 1px 2px rgb(9 6 4 / 0.4);
   --surface-200: #4c4743;
   --surface-300: #5a5651;
   --surface-400: #6a6560;
@@ -591,10 +648,10 @@
   --claude-toggle-active: rgba(217, 119, 87, 0.2);
   --claude-toggle-glow: rgba(217, 119, 87, 0.26);
   --heatmap-0: #3a3631;
-  --heatmap-1: rgba(94, 106, 210, 0.3);
-  --heatmap-2: rgba(94, 106, 210, 0.5);
-  --heatmap-3: rgba(94, 106, 210, 0.7);
-  --heatmap-4: rgba(94, 106, 210, 0.95);
+  --heatmap-1: color-mix(in srgb, var(--accent) 30%, transparent);
+  --heatmap-2: color-mix(in srgb, var(--accent) 50%, transparent);
+  --heatmap-3: color-mix(in srgb, var(--accent) 70%, transparent);
+  --heatmap-4: color-mix(in srgb, var(--accent) 95%, transparent);
   /* Lifted off dark's 0.25 backgrounds: those were solved against off-black and
      land almost on this theme's own surface, so the chip would lose its edge. */
   --color-wellbeing-gentle: oklch(0.78 0.14 85);

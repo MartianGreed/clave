@@ -30,7 +30,7 @@ export function RemotePathInput({ defaultPath = '~', onSubmit, onCancel }: Remot
       />
       <button
         onClick={handleSubmit}
-        className="h-control-md px-3 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent/90 transition-colors"
+        className="h-control-md px-3 rounded-lg bg-action text-action-foreground text-xs font-medium hover:bg-action-hover transition-colors"
       >
         Open
       </button>

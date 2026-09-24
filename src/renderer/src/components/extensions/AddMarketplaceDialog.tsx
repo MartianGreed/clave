@@ -102,7 +102,7 @@ export function AddMarketplaceDialog({ isOpen, onAdd, onCancel, busy }: AddMarke
                       type="button"
                       onClick={submit}
                       disabled={!canAdd}
-                      className="btn-dialog text-accent hover:brightness-110 outline-none disabled:opacity-40"
+                      className="btn-dialog text-action hover:brightness-110 outline-none disabled:opacity-40"
                     >
                       {busy ? 'Adding…' : 'Add'}
                     </button>

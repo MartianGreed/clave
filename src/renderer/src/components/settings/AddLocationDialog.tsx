@@ -381,7 +381,7 @@ export function AddLocationDialog({ onClose }: AddLocationDialogProps): React.JS
                 setStep('test')
               }}
               disabled={!credentialsValid}
-              className="btn-dialog text-accent disabled:opacity-40 disabled:cursor-not-allowed"
+              className="btn-dialog text-action disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Test connection
             </button>
@@ -391,13 +391,13 @@ export function AddLocationDialog({ onClose }: AddLocationDialogProps): React.JS
               type="button"
               onClick={() => setStep('summary')}
               disabled={!testResult?.success}
-              className="btn-dialog text-accent disabled:opacity-40 disabled:cursor-not-allowed"
+              className="btn-dialog text-action disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Continue
             </button>
           )}
           {step === 'summary' && (
-            <button type="button" onClick={handleFinish} className="btn-dialog text-accent">
+            <button type="button" onClick={handleFinish} className="btn-dialog text-action">
               Done
             </button>
           )}

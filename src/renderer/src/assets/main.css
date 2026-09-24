@@ -3,11 +3,14 @@
 @import "@clave/ui/styles.css";
 @source "../../../../packages/ui/src";
 
-/* Feature-owned CodeMirror themes. */
+/* Feature-owned CodeMirror themes. The selection is each theme's accent blue
+   restated as a literal, not a var(--accent) mix: lib/skin.ts snapshots these
+   --cm-* values while the previous skin's tokens are still on the root, so a
+   reference would freeze the selection in the theme being left. */
 [data-theme="dark"],
 :root {
   /* CodeMirror syntax tokens — driven by CSS vars so the editor recolors on theme switch */
-  --cm-selection: rgba(94, 106, 210, 0.3);
+  --cm-selection: rgba(90, 162, 247, 0.3);
   --cm-active-line: rgba(255, 255, 255, 0.04);
   --cm-keyword: #ff7b72;
   --cm-comment: #8b949e;
@@ -25,7 +28,7 @@
 
 [data-theme="light"] {
   /* CodeMirror syntax tokens — GitHub-light-inspired, tuned for the warm light surface */
-  --cm-selection: rgba(94, 106, 210, 0.18);
+  --cm-selection: rgba(31, 95, 207, 0.18);
   --cm-active-line: rgba(0, 0, 0, 0.03);
   --cm-keyword: #cf222e;
   --cm-comment: #6e7781;
@@ -43,7 +46,7 @@
 
 [data-theme="coffee"] {
   /* CodeMirror syntax tokens — warm palette tuned for the cream surface */
-  --cm-selection: rgba(94, 106, 210, 0.18);
+  --cm-selection: rgba(31, 91, 196, 0.18);
   --cm-active-line: rgba(120, 100, 80, 0.05);
   --cm-keyword: #b02a37;
   --cm-comment: #9b8d7a;
@@ -63,7 +66,7 @@
   /* CodeMirror syntax tokens — dark's github-dark family, desaturated a notch
      for the lifted ground and with the two greys (comment, punctuation) taken
      off their cool #8b949e onto the theme's own warm axis. */
-  --cm-selection: rgba(94, 106, 210, 0.32);
+  --cm-selection: rgba(120, 176, 245, 0.32);
   --cm-active-line: rgba(255, 243, 232, 0.052);
   --cm-keyword: #ff8b7e;
   --cm-comment: #8a8279;

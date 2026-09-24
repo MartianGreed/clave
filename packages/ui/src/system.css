@@ -1394,7 +1394,9 @@ body,
 
 /* ── Buttons ── */
 
-/* Primary: filled accent background */
+/* Primary: the verb, filled with the theme's ink. Not the accent: the accent
+   says "this is on", and a button that says it before anything has happened
+   leaves the real state with no colour of its own. */
 .btn-primary {
   display: inline-flex;
   align-items: center;
@@ -1405,21 +1407,27 @@ body,
   border-radius: var(--control-radius);
   font-size: var(--control-text);
   font-weight: var(--font-weight-medium);
-  color: white;
-  background-color: var(--color-accent);
+  color: var(--color-action-foreground);
+  background-color: var(--color-action);
   transition:
     background-color 150ms,
     scale 120ms var(--ease-out-expo);
 }
 .btn-primary:hover {
-  background-color: color-mix(in oklch, var(--color-accent), transparent 10%);
+  background-color: var(--color-action-hover);
 }
 .btn-primary:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-/* Secondary: ghost with optional border */
+/* Secondary: a neutral raised control, the quieter partner beside a primary.
+   It keeps a body of its own (the raised surface, a hairline edge and a soft
+   drop, all one box-shadow so it takes no layout) because a bare word next to
+   an ink-filled button reads as a label rather than as the other choice. It
+   draws its own edge, so a border utility beside it doubles the line. A
+   control that stands among icons and links in a bar is not this: it takes
+   the borderless family of its box (.panel-icon-btn, .btn-icon, .launcher-btn). */
 .btn-secondary {
   display: inline-flex;
   align-items: center;
@@ -1430,16 +1438,16 @@ body,
   border-radius: var(--control-radius);
   font-size: var(--control-text);
   font-weight: var(--font-weight-medium);
-  color: var(--text-secondary);
-  background-color: transparent;
+  color: var(--text-primary);
+  background-color: var(--surface-raised);
+  box-shadow: var(--raised-control-shadow);
   transition:
     color 150ms,
     background-color 150ms,
     scale 120ms var(--ease-out-expo);
 }
 .btn-secondary:hover {
-  color: var(--text-primary);
-  background-color: var(--surface-200);
+  background-color: var(--surface-100);
 }
 .btn-secondary:disabled {
   opacity: 0.4;
@@ -3212,13 +3220,15 @@ details[open] > .chat-tool-row .chat-tool-chevron,
 .chat-prompt-btn:active {
   scale: 0.97;
 }
+/* The prompt's answer (Allow, Submit) is the verb of the card: the ink. */
 .chat-prompt-btn[data-primary='true'] {
-  border-color: var(--color-accent);
-  background-color: var(--color-accent);
-  color: white;
+  border-color: var(--color-action);
+  background-color: var(--color-action);
+  color: var(--color-action-foreground);
 }
 .chat-prompt-btn[data-primary='true']:hover {
-  background-color: color-mix(in oklch, var(--color-accent), transparent 10%);
+  border-color: var(--color-action-hover);
+  background-color: var(--color-action-hover);
 }
 .chat-prompt-btn:disabled {
   opacity: 0.4;
@@ -3447,9 +3457,9 @@ details[open] > .chat-tool-row .chat-tool-chevron,
   cursor: not-allowed;
 }
 /* One button, two kinds. Send and stop are the same element turning, not two
-   taking turns: its colour crosses over and the arrow gives way to the square
-   in place, both glyphs stacked in one cell, so the state change is seen to
-   happen where the finger already is. */
+   taking turns: the arrow gives way to the square in place, both glyphs
+   stacked in one cell, so the state change is seen to happen where the
+   finger already is. */
 .chat-send {
   display: inline-grid;
   place-items: center;
@@ -3458,8 +3468,8 @@ details[open] > .chat-tool-row .chat-tool-chevron,
   height: var(--control-h-sm);
   margin-bottom: calc(var(--spacing) / 2);
   border-radius: var(--radius-full);
-  color: white;
-  background-color: var(--color-accent);
+  color: var(--color-action-foreground);
+  background-color: var(--color-action);
   transition:
     background-color var(--default-transition-duration),
     color var(--default-transition-duration),
@@ -3483,14 +3493,19 @@ details[open] > .chat-tool-row .chat-tool-chevron,
   opacity: 1;
   scale: 1;
 }
+/* Send and stop are both verbs, so both wear the ink; only the glyph turns. */
 .chat-send:hover {
-  background-color: var(--color-accent-hover);
+  background-color: var(--color-action-hover);
 }
 .chat-send:active:not(:disabled) {
   scale: 0.97;
 }
+/* An empty composer has nothing to send: a grey disc, not a faded ink one.
+   The ink at 0.4 over a dark ground is a mid grey anyway, just a muddier one,
+   and on the light themes it read as a button that was merely pale. */
 .chat-send:disabled {
-  opacity: 0.4;
+  color: var(--text-tertiary);
+  background-color: var(--surface-200);
   cursor: not-allowed;
 }
 
@@ -3702,13 +3717,6 @@ details[open] > .chat-tool-row .chat-tool-chevron,
 .chat-composer-tool svg {
   width: var(--chat-glyph);
   height: var(--chat-glyph);
-}
-.chat-send[data-kind='stop'] {
-  color: var(--text-primary);
-  background-color: var(--surface-200);
-}
-.chat-send[data-kind='stop']:hover {
-  background-color: var(--surface-300);
 }
 .chat-composer-footer {
   display: flex;

@@ -87,7 +87,9 @@ whole app moves; add a literal, and it stops.
   accent fill) — never a color utility bolted on.
 - Never add `hover:bg-*` to any of these; the class owns its hover.
 
-**Text buttons:** `.btn-primary` (accent fill), `.btn-secondary`, `.btn-dialog`
+**Text buttons:** `.btn-primary` (the action ink), `.btn-secondary` (a neutral
+raised control: `--surface-raised`, primary text, its edge and drop drawn by
+`--raised-control-shadow`, so never add a border utility), `.btn-dialog`
 (the Cancel/Confirm footer pair), `.launcher-btn` / `.panel-tab` /
 `.group-switcher-chip` (28px chip: px-2, 13px text like a menu row, hover surface-100, selected
 surface-200). Disabled is always `opacity: 0.4` + `cursor: not-allowed`.
@@ -172,7 +174,15 @@ the card. `tests/e2e/sidebar-foot.spec.mjs` asserts both the inset and the tint.
 Text: `--text-primary` / `--text-secondary` / `--text-tertiary` (resting icon
 color). Borders: `--color-border` (a panel's one structural border) →
 `--border-subtle` (inner seams) → `--rule-color` (repeating list hairlines).
-Accent: `--color-accent` — state and primary actions only, never decoration.
+
+**Colour roles: verbs are ink, states are blue, everything else is neutral.** A
+button that does something (Send, Save, Allow) is filled with `--color-action`
+and labelled with `--color-action-foreground` (`bg-action
+text-action-foreground hover:bg-action-hover`): the theme's own primary ink
+on its ground. `--color-accent` is a per-theme signal blue reserved for state:
+on, selected, active, focus, links, a drag target, progress. White text never
+sits on the accent; if something filled with it needs a label, it is a verb
+and wants the action role instead.
 
 Every ink clears 4.5:1 on `--surface-50` in every theme, tertiary included (it
 is the branch names, counters and placeholders people actually read). Keyboard
@@ -246,7 +256,8 @@ primitive paths are compatibility re-exports for one release.
   inventory comes from form-factor commit `76c0568`: 116 theme-block token names,
   of which 14 CodeMirror tokens intentionally remain in the app. It also pins each
   theme's own overrides, so dropping a light-theme value cannot fall back silently
-  to dark. The brief's count of 122 does not match this baseline.
+  to dark. The brief's count of 122 does not match this baseline. The colour
+  roles (accent, action, the raised control's shadow) grew it to 125.
 - `tests/visual/ui-parity.mjs` runs the real, hidden Electron app. Build the baseline
   revision and run `node tests/visual/ui-parity.mjs baseline /tmp/clave-ui-baseline`,
   then build the changed revision and run the same script with `compare`. It checks
