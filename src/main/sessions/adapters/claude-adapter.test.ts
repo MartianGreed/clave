@@ -1092,3 +1092,92 @@ it('sends attached images as content blocks and streams the message without them
   child.emit('close', 0)
   await adapter.kill(handle)
 })
+
+// Frame shapes as the installed CLI wrote them for `Bash` with
+// `run_in_background: true` (captured 2026-09-24): the list, the task's start,
+// the call's result naming the output file, then completion after the turn.
+const bgResult = (id: string): unknown => ({
+  type: 'user',
+  message: {
+    role: 'user',
+    content: [
+      {
+        type: 'tool_result',
+        tool_use_id: id,
+        content: `Command running in background with ID: b1. Output is being written to: /tmp/tasks/b1.output. You will be notified when it completes`
+      }
+    ]
+  }
+})
+const lastBackground = ():
+  | Extract<SessionEvent, { type: 'background_tasks' }>['tasks']
+  | undefined =>
+  (
+    events.filter((e) => e.type === 'background_tasks').at(-1) as
+      | Extract<SessionEvent, { type: 'background_tasks' }>
+      | undefined
+  )?.tasks
+it('publishes a background shell, with its call and output file, until the CLI retires it', () => {
+  feed({
+    type: 'system',
+    subtype: 'background_tasks_changed',
+    tasks: [{ task_id: 'b1', task_type: 'local_bash', description: 'Watch the build' }]
+  })
+  feed({
+    type: 'system',
+    subtype: 'task_started',
+    task_id: 'b1',
+    tool_use_id: 'toolu_1',
+    description: 'Watch the build',
+    is_backgrounded: true,
+    task_type: 'local_bash'
+  })
+  feed(bgResult('toolu_1'))
+  expect(lastBackground()).toEqual([
+    expect.objectContaining({
+      id: 'b1',
+      kind: 'shell',
+      description: 'Watch the build',
+      toolUseId: 'toolu_1',
+      outputFile: '/tmp/tasks/b1.output'
+    })
+  ])
+  // The turn ending says nothing about the background.
+  feed({ type: 'result', subtype: 'success', is_error: false, result: 'ok' })
+  expect(lastBackground()).toHaveLength(1)
+  feed({ type: 'system', subtype: 'task_updated', task_id: 'b1', patch: { status: 'completed' } })
+  expect(lastBackground()).toEqual([])
+  // Every frame stays on the stream for a view that reads it raw.
+  expect(
+    events.filter(
+      (e) =>
+        e.type === 'provider_event' &&
+        (e.payload as { subtype?: string }).subtype === 'task_updated'
+    )
+  ).toHaveLength(1)
+})
+it('drops a task the authoritative list no longer names, so nothing stays running forever', () => {
+  feed({
+    type: 'system',
+    subtype: 'task_started',
+    task_id: 'a1',
+    description: 'Review the diff',
+    is_backgrounded: true,
+    task_type: 'local_agent'
+  })
+  expect(lastBackground()).toEqual([expect.objectContaining({ id: 'a1', kind: 'agent' })])
+  feed({ type: 'system', subtype: 'background_tasks_changed', tasks: [] })
+  expect(lastBackground()).toEqual([])
+})
+it('ignores a foreground task and retires one on its notification', () => {
+  feed({ type: 'system', subtype: 'task_started', task_id: 'f1', is_backgrounded: false })
+  expect(lastBackground()).toBeUndefined()
+  feed({ type: 'system', subtype: 'task_started', task_id: 'b2', is_backgrounded: true })
+  feed({ type: 'system', subtype: 'task_notification', task_id: 'b2', status: 'completed' })
+  expect(lastBackground()).toEqual([])
+})
+it('empties the list when the CLI exits', () => {
+  feed({ type: 'system', subtype: 'task_started', task_id: 'b3', is_backgrounded: true })
+  translator.clearBackground()
+  expect(lastBackground()).toEqual([])
+})

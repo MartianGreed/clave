@@ -12,6 +12,7 @@ import {
   AgentQuestionSchema,
   type SessionInput,
   type SessionEvent,
+  type BackgroundTask,
   type ModelOption,
   type CommandOption
 } from '../../../shared/session-model'
@@ -124,7 +125,82 @@ export class ClaudeStreamTranslator {
    *  user]" acknowledgement, consumed by the result that closes the turn.
    *  That result says `is_error` with no text, which read as a failure. */
   interrupted = false
+  /** task_id → the work the CLI reports running in the background. */
+  private readonly background = new Map<string, BackgroundTask>()
+  /** tool_use_id → the output file its "running in background" result named. */
+  private readonly outputFiles = new Map<string, string>()
   constructor(private readonly emit: (event: SessionEvent) => void) {}
+  /** Publish the background list whole; a snapshot replaces the last. */
+  private publishBackground(): void {
+    this.emit({ type: 'background_tasks', tasks: [...this.background.values()] })
+  }
+  /** Nothing outlives the CLI: its exit empties the list, once. */
+  clearBackground(): void {
+    if (!this.background.size) return
+    this.background.clear()
+    this.publishBackground()
+  }
+  /**
+   * The CLI's own record of background work, which is what lets the chat say
+   * "still running" after the turn ends. `background_tasks_changed` is the
+   * authoritative list — a task it no longer names is gone, which is how the
+   * list clears itself instead of keeping a dead task "running" — and the
+   * per-task frames fill in what the list lacks (the tool call, the output
+   * file) and retire a task even from a CLI that never sends the list.
+   * Returns false for any frame that is not one of these.
+   */
+  private backgroundFrame(p: Record<string, unknown>): boolean {
+    const kindOf = (type: unknown): BackgroundTask['kind'] =>
+      typeof type !== 'string'
+        ? 'other'
+        : /bash|shell/.test(type)
+          ? 'shell'
+          : /agent/.test(type)
+            ? 'agent'
+            : 'other'
+    const track = (id: string, type: unknown, description: unknown, toolUseId?: string): void => {
+      const known = this.background.get(id)
+      const tool = toolUseId ?? known?.toolUseId
+      const outputFile = known?.outputFile ?? (tool ? this.outputFiles.get(tool) : undefined)
+      this.background.set(id, {
+        id,
+        kind: known?.kind ?? kindOf(type),
+        description:
+          typeof description === 'string' && description ? description : (known?.description ?? id),
+        startedAt: known?.startedAt ?? Date.now(),
+        ...(tool ? { toolUseId: tool } : {}),
+        ...(outputFile ? { outputFile } : {})
+      })
+    }
+    if (p.subtype === 'background_tasks_changed') {
+      const tasks = z
+        .array(z.object({ task_id: z.string(), task_type: z.unknown(), description: z.unknown() }))
+        .catch([])
+        .parse(p.tasks)
+      const live = new Set(tasks.map((t) => t.task_id))
+      for (const id of this.background.keys()) if (!live.has(id)) this.background.delete(id)
+      for (const t of tasks) track(t.task_id, t.task_type, t.description)
+    } else if (p.subtype === 'task_started') {
+      // A foreground task (a subagent the turn waits on) is the turn's own
+      // work, already on screen as its tool call.
+      if (p.is_backgrounded === false || typeof p.task_id !== 'string') return true
+      track(
+        p.task_id,
+        p.task_type,
+        p.description,
+        typeof p.tool_use_id === 'string' ? p.tool_use_id : undefined
+      )
+    } else if (p.subtype === 'task_updated') {
+      const status = z.object({ status: z.string() }).safeParse(p.patch)
+      if (!status.success || status.data.status === 'running' || typeof p.task_id !== 'string')
+        return true
+      if (!this.background.delete(p.task_id)) return true
+    } else if (p.subtype === 'task_notification') {
+      if (typeof p.task_id !== 'string' || !this.background.delete(p.task_id)) return true
+    } else return false
+    this.publishBackground()
+    return true
+  }
   /** A control_response answering one of our initialize requests; false for any other. */
   private listRequest(p: Record<string, unknown>): boolean {
     const response = z
@@ -249,6 +325,9 @@ export class ClaudeStreamTranslator {
         providerSessionId: typeof p.session_id === 'string' ? p.session_id : null
       })
       this.emit({ type: 'state_change', state: 'working' })
+    } else if (p.type === 'system' && this.backgroundFrame(p)) {
+      // Kept on the stream too: a view may still read the raw frame.
+      fallback()
     } else if (p.type === 'stream_event') {
       const e = envelope.parse(p.event)
       if (e.type === 'message_start') {
@@ -285,6 +364,7 @@ export class ClaudeStreamTranslator {
             this.emit({ type: 'tool_call', ...tool })
           }
         } else if (block.type === 'tool_result') {
+          this.noteOutputFile(z.string().parse(block.tool_use_id), block.content)
           // `is_error` is the only word anyone gets that the tool failed: the
           // content of a failed call is the error text and reads like any other
           // output. Dropping it here left every view guessing from prose.
@@ -397,6 +477,24 @@ export class ClaudeStreamTranslator {
       this.streamed = false
       this.finished = false
     } else fallback()
+  }
+  /** A background call's result names the file its output goes to; keep it
+   *  for the task that call started, whichever of the two frames came first. */
+  private noteOutputFile(toolUseId: string, content: unknown): void {
+    const text =
+      typeof content === 'string'
+        ? content
+        : Array.isArray(content)
+          ? content.map((c) => (typeof c?.text === 'string' ? c.text : '')).join('\n')
+          : ''
+    const file = /Output is being written to: (\S+?)\.?(?:\s|$)/.exec(text)?.[1]
+    if (!file) return
+    this.outputFiles.set(toolUseId, file)
+    for (const task of this.background.values())
+      if (task.toolUseId === toolUseId && !task.outputFile) {
+        task.outputFile = file
+        this.publishBackground()
+      }
   }
   private finish(): void {
     if (this.finished) return
@@ -543,6 +641,7 @@ export class ClaudeAdapter implements SessionAdapter {
         for (const request of live.translator.listRequests.values())
           request.reject(new Error('Claude session has ended'))
         live.translator.listRequests.clear()
+        live.translator.clearBackground()
         deleteSessionMcpConfig(spec.id)
         emit({ type: 'state_change', state: 'ended' })
         for (const listener of emitter.listeners('exit')) {

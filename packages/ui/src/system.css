@@ -2389,6 +2389,12 @@ button.extension-card:hover {
 .pane-status-dot[data-status='waiting'] {
   background-color: var(--color-status-waiting);
 }
+/* The turn is over, but a shell or subagent it started still runs: the
+   working colour at half the tempo, so it reads "alive" without reading "busy". */
+.pane-status-dot[data-status='background'] {
+  background-color: var(--color-status-working);
+  animation: pulse-dot 5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
 
 /* ── Conversation views ──────────────────────────────────────────────────
    The chat view: the host frames it (.chat-host, the pane header above), the
