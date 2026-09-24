@@ -46,15 +46,15 @@ whole app moves; add a literal, and it stops.
 
 ## Boxes (panels, cards, overlays)
 
-| Surface | Class | Look |
-|---|---|---|
-| Terminal panes, main views | `.floating-card` | radius-xl, 1px `--color-border`, `--surface-0`, **no shadow** (flat on purpose) |
-| Frames: the toolbar, the launcher, the switcher, the side-panel bars | `.frame` / `.launcher-panel` / `.group-switcher-panel` / `.panel-bar` | one control tall, the control's corner, 70% surface-0; the controls inside are one size down |
-| The sidebar's foot | `.sidebar-panel` | a surface: radius-xl, same material at 70% surface-0 |
-| The side panel's Files / Git switch | `.panel-tabs` | same material and border, but one control tall: a 28px track, 24px `.panel-tab` items on `--radius-md`, held in the 34px row by its margins |
-| Menus, popovers, dropdowns, floating widgets | `.menu-surface` | radius-xl, border, surface-0, `--overlay-shadow` |
-| Document-sized floaters (file preview, diff panel, palette) | `.menu-surface menu-surface--sheet` | same, heavier `--overlay-shadow-lg` |
-| Modal dialogs | `.modal-card` (+ `.modal-pop` for motion, `.modal-scrim`) | radius-xl, border, surface-0, overlay-shadow-lg |
+| Surface                                                              | Class                                                                 | Look                                                                                                                                        |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Terminal panes, main views                                           | `.floating-card`                                                      | radius-xl, 1px `--color-border`, `--surface-0`, **no shadow** (flat on purpose)                                                             |
+| Frames: the toolbar, the launcher, the switcher, the side-panel bars | `.frame` / `.launcher-panel` / `.group-switcher-panel` / `.panel-bar` | one control tall, the control's corner, 70% surface-0; the controls inside are one size down                                                |
+| The sidebar's foot                                                   | `.sidebar-panel`                                                      | a surface: radius-xl, same material at 70% surface-0                                                                                        |
+| The side panel's Files / Git switch                                  | `.panel-tabs`                                                         | same material and border, but one control tall: a 28px track, 24px `.panel-tab` items on `--radius-md`, held in the 34px row by its margins |
+| Menus, popovers, dropdowns, floating widgets                         | `.menu-surface`                                                       | radius-xl, border, surface-0, `--overlay-shadow`                                                                                            |
+| Document-sized floaters (file preview, diff panel, palette)          | `.menu-surface menu-surface--sheet`                                   | same, heavier `--overlay-shadow-lg`                                                                                                         |
+| Modal dialogs                                                        | `.modal-card` (+ `.modal-pop` for motion, `.modal-scrim`)             | radius-xl, border, surface-0, overlay-shadow-lg                                                                                             |
 
 - A box's **contents sit 2px from its edge** (`.launcher-row` is `padding: 0 2px`;
   the message trail uses `px-0.5 py-0.5`). Controls fill the box; the box does not
@@ -72,12 +72,12 @@ whole app moves; add a literal, and it stops.
 
 **Icon buttons — the decision is "what box does it sit in":**
 
-| Where it sits | Class | Size / hover |
-|---|---|---|
-| Inside a panel, bar, or floating box (side panel path bar, terminal header, message trail, git bar) | `.panel-icon-btn` | 28px (`--control-h-md`) box, 16px icon (`w-4 h-4`), hover `--surface-100`, `data-active="true"` = accent tint (toggles), `:disabled` = 0.4; inside a frame the Frames rule makes it 24px with a 14px glyph |
-| The sidebar launcher row specifically | `.launcher-icon-btn` | identical look; launcher-local name |
-| The sidebar's foot panel | `.sidebar-footer-btn` (and `.sidebar-footer-line` for the row-shaped one) | identical box, but the hover fill is `--field-fill` — the user's own palette, not `--surface-100` |
-| The app toolbar and standalone spots | `.btn-icon btn-icon-md` (also `-sm`/`-xs`) | fixed square per size, hover `--surface-200`, `:disabled` = 0.4 |
+| Where it sits                                                                                       | Class                                                                     | Size / hover                                                                                                                                                                                               |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Inside a panel, bar, or floating box (side panel path bar, terminal header, message trail, git bar) | `.panel-icon-btn`                                                         | 28px (`--control-h-md`) box, 16px icon (`w-4 h-4`), hover `--surface-100`, `data-active="true"` = accent tint (toggles), `:disabled` = 0.4; inside a frame the Frames rule makes it 24px with a 14px glyph |
+| The sidebar launcher row specifically                                                               | `.launcher-icon-btn`                                                      | identical look; launcher-local name                                                                                                                                                                        |
+| The sidebar's foot panel                                                                            | `.sidebar-footer-btn` (and `.sidebar-footer-line` for the row-shaped one) | identical box, but the hover fill is `--field-fill` — the user's own palette, not `--surface-100`                                                                                                          |
+| The app toolbar and standalone spots                                                                | `.btn-icon btn-icon-md` (also `-sm`/`-xs`)                                | fixed square per size, hover `--surface-200`, `:disabled` = 0.4                                                                                                                                            |
 
 - The sizes are **boxes, not paddings** — a fixed square, glyph chosen to read
   well inside it: `w-4 h-4` (16px) in a 28px box, `w-3.5` in 24px, `w-3` in 20px.
@@ -126,23 +126,23 @@ surface-200). Disabled is always `opacity: 0.4` + `cursor: not-allowed`.
 The settings are built from `components/settings/primitives.tsx` and the `── Settings ──`
 block of `packages/ui/src/system.css`, and from nothing else: a page never styles a control of its own.
 
-| Piece | Component / class | Look |
-|---|---|---|
-| The page | `SettingsPage` (`.settings-page-header`, `-title`, `-description`, `-actions`) | one width for every page (`max-w-3xl`), an 18px title, a 13px description, the page's actions on the right |
-| A section | `SettingsSection` (`.settings-section-title`, `-description`) | 13px primary title with room for a glyph (the agent families' logos), 12px secondary description |
-| A card | `SettingsCard` (`.settings-card`) | the panel material: radius-xl, `--color-border`, `--surface-50`, rows seamed by `--border-subtle` |
-| A row | `SettingsRow` (`.settings-row`, `-title`, `-description`) | text left, the controls right in `.settings-row-controls` (one gap, the control's); `.settings-row-action` is the full-width add row |
-| A row's metadata | `tags` on `SettingsRow` (`.settings-row-tags` of `.badge badge-muted`) | chips under the description (a plugin's permissions): never a second row pretending to be a second setting |
-| A value a row only states | `.settings-row-value` | the density stop, a token count, "Never": control label size, secondary ink, tabular |
-| A quiet fact beside a title | `.badge badge-muted` | "Built in", "Active", "This Mac", how an account signs in; never the two colour utilities by hand |
-| One of a set | `Radio` (`.radio`, `data-checked`) | 14px ring on the field fill, the accent when chosen; never a hand-rolled circle or a native radio |
-| A form field's label | `.field-label` | above an `.input-compact` in a dialog or a form row |
-| A select | `SettingsSelect` (`.select-trigger`, `.select-menu`, `.select-option`) | a 28px trigger cut like `.input-compact` with the caret held off the edge, the options on `.menu-surface` / `.menu-item`; never a native `<select>` |
-| A switch | `Toggle` / `ToggleRow` (`.switch`, `.switch-knob`) | 28×16, `data-checked`, the knob on `--color-switch-knob` |
-| A callout | `SettingsCallout` (`.settings-callout[data-tone]`) | a confirmation or a picker under a card, the tone on the border only; `.settings-card + .settings-callout` owns the gap, never an `mt-*` |
-| A callout inside a card | `SettingsCallout inset` (`.settings-callout--inset`) | the confirmation attached to the row it guards (a plugin's enable review), a notice, a form the row opened: no outline of its own, the tone as a wash on the ground. A callout with its border INSIDE a card is a card in a card, the defect that earned this row |
-| A callout's actions | `actions` on `SettingsCallout` (`.settings-callout-actions`) | Cancel then the primary, right-aligned on the control ramp with the control's gap. `.btn-dialog` is the modal footer pair and never appears in a callout |
-| The sidebar's groups | `.settings-nav-label` over `.sidebar-item` rows | regular case, 11px tertiary, like `.menu-label` |
+| Piece                       | Component / class                                                              | Look                                                                                                                                                                                                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The page                    | `SettingsPage` (`.settings-page-header`, `-title`, `-description`, `-actions`) | one width for every page (`max-w-3xl`), a title one type step above the section headings, a 13px description, the page's actions on the right                                                                                                                     |
+| A section                   | `SettingsSection` (`.settings-section-title`, `-description`)                  | 15px primary title at default density, with room for a glyph (the agent families' logos), 12px secondary description                                                                                                                                              |
+| A card                      | `SettingsCard` (`.settings-card`)                                              | the page ground: radius-xl, `--color-border`, transparent fill, rows seamed by `--border-subtle`                                                                                                                                                                  |
+| A row                       | `SettingsRow` (`.settings-row`, `-title`, `-description`)                      | text left, the controls right in `.settings-row-controls` (one gap, the control's); `.settings-row-action` is the full-width add row                                                                                                                              |
+| A row's metadata            | `tags` on `SettingsRow` (`.settings-row-tags` of `.badge badge-muted`)         | chips under the description (a plugin's permissions): never a second row pretending to be a second setting                                                                                                                                                        |
+| A value a row only states   | `.settings-row-value`                                                          | the density stop, a token count, "Never": control label size, secondary ink, tabular                                                                                                                                                                              |
+| A quiet fact beside a title | `.badge badge-muted`                                                           | "Built in", "Active", "This Mac", how an account signs in; never the two colour utilities by hand                                                                                                                                                                 |
+| One of a set                | `Radio` (`.radio`, `data-checked`)                                             | 14px ring on the field fill, the accent when chosen; never a hand-rolled circle or a native radio                                                                                                                                                                 |
+| A form field's label        | `.field-label`                                                                 | above an `.input-compact` in a dialog or a form row                                                                                                                                                                                                               |
+| A select                    | `SettingsSelect` (`.select-trigger`, `.select-menu`, `.select-option`)         | a 28px trigger cut like `.input-compact` with the caret held off the edge, the options on `.menu-surface` / `.menu-item`; never a native `<select>`                                                                                                               |
+| A switch                    | `Toggle` / `ToggleRow` (`.switch`, `.switch-knob`)                             | 36×22 in settings (28×16 elsewhere), `data-checked`, the knob on `--color-switch-knob`                                                                                                                                                                            |
+| A callout                   | `SettingsCallout` (`.settings-callout[data-tone]`)                             | a confirmation or a picker under a card, the tone on the border only; `.settings-card + .settings-callout` owns the gap, never an `mt-*`                                                                                                                          |
+| A callout inside a card     | `SettingsCallout inset` (`.settings-callout--inset`)                           | the confirmation attached to the row it guards (a plugin's enable review), a notice, a form the row opened: no outline of its own, the tone as a wash on the ground. A callout with its border INSIDE a card is a card in a card, the defect that earned this row |
+| A callout's actions         | `actions` on `SettingsCallout` (`.settings-callout-actions`)                   | Cancel then the primary, right-aligned on the control ramp with the control's gap. `.btn-dialog` is the modal footer pair and never appears in a callout                                                                                                          |
+| The sidebar's groups        | `.settings-nav-label` over `.sidebar-item` rows                                | regular case, control-sized tertiary text, 24px above subsequent groups                                                                                                                                                                                           |
 
 Status in words uses `.status-text[data-status]`; a destructive icon button takes
 `.btn-icon--danger` (the ink turns on hover only); the theme swatches are
@@ -221,8 +221,8 @@ once, after Tailwind and third-party editor styles, and scan the package with
 Tailwind v4's `@source` (relative to the consuming CSS file):
 
 ```css
-@import "tailwindcss";
-@import "@clave/ui/styles.css";
+@import 'tailwindcss';
+@import '@clave/ui/styles.css';
 @source "../../../../packages/ui/src";
 ```
 

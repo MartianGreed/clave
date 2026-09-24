@@ -1854,10 +1854,10 @@ body,
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1.75rem;
+  margin-bottom: 2.25rem;
 }
 .settings-page-title {
-  font-size: 18px;
+  font-size: calc(var(--control-text) + 0.5rem);
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--text-primary);
@@ -1879,14 +1879,19 @@ body,
 /* The settings sidebar's section labels — regular case like .menu-label, the
    sidebar's gutter, a breath above each group. */
 .settings-nav-label {
-  padding: 0.875rem var(--sidebar-row-px) 0.25rem;
-  font-size: 11px;
+  padding: 1.5rem var(--sidebar-row-px) 0.5rem;
+  font-size: var(--control-text);
   font-weight: var(--font-weight-medium);
   color: var(--text-tertiary);
   user-select: none;
 }
-.settings-nav-label:first-child {
-  padding-top: 0.25rem;
+[data-settings-nav] > :first-child > .settings-nav-label {
+  padding-top: 0.75rem;
+}
+
+/* Keep the settings rhythm independent of the dense session lists. */
+.settings-page-sections > * + * {
+  margin-top: 2.25rem;
 }
 
 /* Section title above each settings card, with room for a glyph (the agent
@@ -1895,7 +1900,7 @@ body,
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: var(--control-text);
+  font-size: calc(var(--control-text) + 0.125rem);
   font-weight: var(--font-weight-medium);
   color: var(--text-primary);
 }
@@ -1915,12 +1920,12 @@ body,
   margin-bottom: 0.625rem;
 }
 
-/* Grouped card holding settings rows: the panel material (a step up from the
-   pane it sits on, the panel border), rows separated by hairline seams. */
+/* Grouped settings sit on the page ground. The outline and quiet row seams
+   establish the group without giving it the sidebar's contrasting fill. */
 .settings-card {
   border-radius: var(--radius-xl);
   border: 1px solid var(--color-border);
-  background-color: var(--surface-50);
+  background-color: transparent;
   overflow: hidden;
 }
 .settings-card > * + *,
@@ -1934,8 +1939,8 @@ body,
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  min-height: 2.75rem;
-  padding: 0.625rem 0.875rem; /* py-2.5 px-3.5 */
+  min-height: 3.25rem;
+  padding: 0.875rem 1rem;
 }
 .settings-row-title {
   font-size: var(--control-text);
@@ -2210,6 +2215,20 @@ body,
 }
 .switch[data-checked='true'] .switch-knob {
   translate: 0.75rem 0;
+}
+
+/* Settings have room for a larger switch. Keep the shared switch's color,
+   focus, disabled and motion rules so installed skins still own its state. */
+.settings-scroller .switch {
+  width: 2.25rem;
+  height: 1.375rem;
+}
+.settings-scroller .switch-knob {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+.settings-scroller .switch[data-checked='true'] .switch-knob {
+  translate: 0.875rem 0;
 }
 
 /* A theme's swatch on the Appearance page. The preview inside carries
