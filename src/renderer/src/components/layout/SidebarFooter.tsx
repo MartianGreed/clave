@@ -13,8 +13,8 @@ import { useUpdaterStore } from '../../store/updater-store'
 import { useWorkTrackerStore } from '../../store/work-tracker-store'
 import { useFeedbackStore } from '../../store/feedback-store'
 import {
-  quotaUsageStores,
   claudeUsageStore,
+  codexUsageStore,
   piUsageStores,
   tightestWindow,
   shortLabel,
@@ -26,6 +26,7 @@ import {
   type UsageProvider
 } from '../../store/usage-store'
 import { useClaudeProfileStore } from '../../store/claude-profile-store'
+import { useCodexAccountStore } from '../../store/codex-account-store'
 import { PiLogo } from '../icons/cli-logos'
 import { formatDuration } from '../work-tracker/utils'
 import { ReleaseNotesBadge } from '../help/ReleaseNotesBadge'
@@ -273,16 +274,29 @@ export function SidebarFooter(): React.ReactElement {
       ? null
       : (s.sessions.find((session) => session.id === s.focusedSessionId) ?? null)
   )
-  const accountId = focusedSession?.claudeProfileId ?? selectedProfileId
-  const account = profiles.find((p) => p.id === accountId)
+  const selectedCodexId = useCodexAccountStore((s) => s.selectedAccountId)
+  const codexAccounts = useCodexAccountStore((s) => s.accounts)
+  const accountId =
+    provider === 'codex'
+      ? (focusedSession?.codexAccountId ?? selectedCodexId)
+      : (focusedSession?.claudeProfileId ?? selectedProfileId)
+  const account =
+    provider === 'codex'
+      ? codexAccounts.find((a) => a.id === accountId)
+      : profiles.find((p) => p.id === accountId)
+  const many = provider === 'codex' ? codexAccounts.length > 1 : profiles.length > 1
+  const sessionLabel =
+    provider === 'codex' ? focusedSession?.codexAccountLabel : focusedSession?.claudeProfileLabel
+  const sessionAccountRef =
+    provider === 'codex' ? focusedSession?.codexAccountId : focusedSession?.claudeProfileId
   // A session whose account was removed keeps the label it started with.
   const accountLabel =
-    profiles.length > 1 && account
+    many && account
       ? account.label
-      : !account && focusedSession?.claudeProfileId
-        ? (focusedSession.claudeProfileLabel ?? 'Removed account')
+      : !account && sessionAccountRef
+        ? (sessionLabel ?? 'Removed account')
         : null
-  const quota = provider === 'codex' ? quotaUsageStores.codex() : claudeUsageStore(accountId)()
+  const quota = provider === 'codex' ? codexUsageStore(accountId)() : claudeUsageStore(accountId)()
   const pi = piUsageStores.today()
   const loadUsage =
     provider === 'pi' ? pi.load : provider === 'claude' || provider === 'codex' ? quota.load : null

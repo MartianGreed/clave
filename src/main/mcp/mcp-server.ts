@@ -103,7 +103,8 @@ const SUBJECT_SESSION_COMMANDS = new Set([
   'focus',
   'rename',
   'moveSession',
-  'setSessionView'
+  'setSessionView',
+  'switchAccount'
 ])
 
 /** A workspace ref (id or name) → its id, main-side (the registry is global). */
@@ -399,7 +400,7 @@ function buildServer(callerSessionId: string | undefined): McpServer {
     'clave_list',
     {
       description:
-        'List the open Clave windows (id, workspace, which is yours), the registered workspaces (root folders; each window shows one and scopes what the user sees in it), all groups and sessions (tabs) currently open across every window, plus the pinned workspace groups (launchable templates from .clave files, with their state: idle / active-visible / active-hidden), the focused session, and — when called from inside a Clave tab — which session/group/window is yours. Sessions and groups are annotated with their workspaceId/workspaceName and the windowId they live in; a Claude session also carries its account ({ id, label }, the subscription it runs on).',
+        'List the open Clave windows (id, workspace, which is yours), the registered workspaces (root folders; each window shows one and scopes what the user sees in it), all groups and sessions (tabs) currently open across every window, plus the pinned workspace groups (launchable templates from .clave files, with their state: idle / active-visible / active-hidden), the focused session, and — when called from inside a Clave tab — which session/group/window is yours. Sessions and groups are annotated with their workspaceId/workspaceName and the windowId they live in; a Claude or Codex session also carries its account ({ id, label, exhausted }, the subscription it runs on and whether it is about to hit its limit).',
       inputSchema: {
         workspace: z
           .string()
@@ -481,7 +482,7 @@ function buildServer(callerSessionId: string | undefined): McpServer {
           .max(128)
           .optional()
           .describe(
-            'Claude account (subscription) the new tab runs on: an account id or its exact name as set in Settings → Usage → Claude accounts ("default" is the machine login). claude mode only. Omit to use the account selected in settings. Unknown names error with the list. clave_list reports each session\'s account.'
+            'Account (subscription) the new tab runs on: an account id or its exact name as set in Settings → Accounts ("default" is the machine login), or "any" for whichever account of the pool has headroom. claude and codex modes only. Omit to use the account selected in settings, moved along the pool when that one is about to hit its limit. Unknown names error with the list. clave_list reports each session\'s account.'
           ),
         provider: z.string().min(1).max(200).optional().describe('Pi provider id. Pi mode only.'),
         thinking: z
@@ -718,6 +719,23 @@ function buildServer(callerSessionId: string | undefined): McpServer {
       inputSchema: { sessionId: z.string().describe('Id of the session to focus') }
     },
     (args) => run('focus', args)
+  )
+
+  server.registerTool(
+    'clave_switch_account',
+    {
+      description:
+        'Switch a tab to another account (subscription) when the one it runs on is about to hit its limit, or when the user asks to move it: the same tab, its agent restarted on the other account with the conversation resumed. Claude and Codex tabs only. "mine" moves your own tab (your process restarts; finish what you are writing first). The account is an id, an exact name from Settings → Accounts, or "any" for whichever account of the pool has headroom. Per the mode set in Settings the switch is made at once or proposed to the user first; the answer says which.',
+      inputSchema: {
+        sessionId: z.string().describe('Id of the session to move, or "mine" for the calling tab'),
+        account: z
+          .string()
+          .min(1)
+          .max(128)
+          .describe('Account id, exact name, or "any" for the pool\'s next account with headroom')
+      }
+    },
+    (args) => run('switchAccount', args)
   )
 
   server.registerTool(

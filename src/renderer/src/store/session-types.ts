@@ -297,6 +297,29 @@ export interface Session {
   claudeProfileId?: string
   claudeProfileLabel?: string
   claudeConfigDir?: string
+  /** Codex account this session runs on (ADR 0002). Undefined = the Default,
+   *  the machine's own `~/.codex`. `codexAccountLabel` drives the badge. */
+  codexAccountId?: string
+  codexAccountLabel?: string
+  /** Bumped by a restart on another account: the pane remounts on it, so
+   *  the terminal reconnects to the new process under the same id. */
+  restartEpoch?: number
+  /** Pinned to its account (ADR 0002): never moved by the policy, never
+   *  proposed a move; the menu can still switch it by hand. Session-lifetime. */
+  accountPinned?: boolean
+  /** This session's own switching mode, over the workspace's. */
+  accountSwitchMode?: 'propose' | 'automatic'
+  /** The move the policy proposes (or, in automatic mode, will make once the
+   *  agent is idle): the account to go to. Null = nothing proposed. */
+  accountProposal?: { accountId: string; label: string; reason: 'limit' | 'reported' } | null
+  /** The proposal the user dismissed, by account, so it is not re-raised
+   *  until the account changes. */
+  accountProposalDismissed?: string | null
+  /** The CLI itself reported the account's limit (a chat stream event). */
+  limitReported?: boolean
+  /** True between the kill and the respawn of an account switch, so the
+   *  exit is not announced as the session ending. */
+  restarting?: boolean
   /** One-shot prompt this session was launched with (agent modes only), so
    *  Duplicate can re-prime the clone. Not persisted to the tmux sidecar, so a
    *  session re-adopted after an app restart loses it (the resumed conversation
@@ -408,6 +431,7 @@ export type ActiveView = 'terminals' | 'settings' | 'agents' | 'extensions'
 export type SettingsSection =
   | 'plugins'
   | 'general'
+  | 'accounts'
   | 'agents'
   | 'appearance'
   | 'keymaps'
@@ -434,6 +458,11 @@ export interface PinnedGroupSession {
    *  was rooted at) instead of at `cwd`. `cwd` still defines the project dir that
    *  feeds the prompt path tokens. No-op if the pin has no workspaceRoot. */
   rootSession?: boolean
+  /** The account (subscription) the session starts on, by LABEL as set in
+   *  Settings → Accounts, or `any` for the pool's pick (ADR 0002). Labels,
+   *  not ids: a `.clave` is shared between machines. Claude and Codex
+   *  sessions only. An unknown label falls back to the Default with a note. */
+  account?: string
 }
 
 export interface PinnedGroupTerminal {
@@ -470,10 +499,10 @@ export interface PinnedGroup {
   terminals: PinnedGroupTerminal[]
   createdAt: number
   filePath?: string | null
-  rootDir?: string | null  // Root dir for resolving paths (null = file's parent dir)
-  workspaceRoot?: string | null  // Absolute root of the workspace that discovered this pin; feeds rootSession spawn + prompt path tokens. null = standalone import.
-  groupIndex?: number  // Position in multi-group .clave file (0-based)
-  toolbar?: boolean    // Show this group's terminals as toolbar quick-actions
+  rootDir?: string | null // Root dir for resolving paths (null = file's parent dir)
+  workspaceRoot?: string | null // Absolute root of the workspace that discovered this pin; feeds rootSession spawn + prompt path tokens. null = standalone import.
+  groupIndex?: number // Position in multi-group .clave file (0-based)
+  toolbar?: boolean // Show this group's terminals as toolbar quick-actions
   logo?: string | null // Absolute path to logo image
   category?: string | null // Category label for organizing pins in the sidebar
   discoveredBy?: string | null // filePath of workspace profile that auto-discovered this pin

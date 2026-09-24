@@ -1,5 +1,13 @@
 import { randomUUID } from 'node:crypto'
-import { ptyBackend, type PtySession, type PtySpawnOptions } from './sessions/adapters/pty-backend'
+import {
+  ptyBackend,
+  buildSpawnEnv,
+  codexHomeForSpawn,
+  getLoginShellEnv,
+  type PtySession,
+  type PtySpawnOptions
+} from './sessions/adapters/pty-backend'
+import { codexRoot, findCodexThreadForSession } from './session-history/codex'
 import { ptyAdapter } from './sessions/adapters/pty-adapter'
 import { ClaudeAdapter, findTranscript } from './sessions/adapters/claude-adapter'
 import { CodexAdapter } from './sessions/adapters/codex-adapter'
@@ -27,9 +35,57 @@ sessionManager.registerAdapter(codexAdapter)
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+/**
+ * Whether a provider's own frame says the account is out (ADR 0002): Claude's
+ * `rate_limit_event` with a rejected status, Codex's `account/rateLimits/updated`
+ * at the cap or with a reached type. Pure, for the tests; every other frame is
+ * nothing.
+ */
+export function providerEventReportsLimit(provider: string, payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object') return false
+  const p = payload as Record<string, unknown>
+  if (provider === 'claude') {
+    if (p.type !== 'rate_limit_event') return false
+    const info = p.rate_limit_info as Record<string, unknown> | undefined
+    return info?.status === 'rejected'
+  }
+  if (provider === 'codex') {
+    if (p.method !== 'account/rateLimits/updated') return false
+    const params = p.params as Record<string, unknown> | undefined
+    const limits = params?.rateLimits as Record<string, unknown> | undefined
+    if (!limits) return false
+    if (limits.rateLimitReachedType) return true
+    for (const slot of ['primary', 'secondary']) {
+      const w = limits[slot] as Record<string, unknown> | undefined
+      if (w && typeof w.usedPercent === 'number' && w.usedPercent >= 95) return true
+    }
+  }
+  return false
+}
+
+/** What a restart on another account changes: the account fields only. */
+export interface RestartOverrides {
+  claudeProfileId?: string
+  claudeProfileLabel?: string
+  codexAccountId?: string
+  codexAccountLabel?: string
+}
+
 class PtyManager {
   private eventSessions = new Map<string, PtySession>()
   private listeners = new Map<string, () => void>()
+  /** What each live session was spawned with, so a restart on another
+   *  account (ADR 0002) rebuilds the same spawn with the account changed. */
+  private spawns = new Map<string, { cwd: string; options?: PtySpawnOptions }>()
+  /** A Codex chat session's thread, from the app-server's own meta. */
+  private codexThreads = new Map<string, string>()
+  private limitListeners = new Set<(sessionId: string) => void>()
+
+  /** A chat session's CLI reported its account's limit (ADR 0002). */
+  onLimitReported(listener: (sessionId: string) => void): () => void {
+    this.limitListeners.add(listener)
+    return () => this.limitListeners.delete(listener)
+  }
 
   async spawn(cwd: string, options?: PtySpawnOptions): Promise<PtySession> {
     const family = options?.piMode
@@ -117,9 +173,14 @@ class PtyManager {
       })
     }
     if (isEvents && adapter.id === 'codex-chat') {
+      // The account's home reaches the app-server the way it reaches a
+      // Codex terminal: synced now, set on the process (ADR 0002).
       codexAdapter.configure(
         session.id,
-        launchProfileManager.resolve('codex', options?.workspaceId, profileId)
+        launchProfileManager.resolve('codex', options?.workspaceId, profileId),
+        buildSpawnEnv(getLoginShellEnv(), {
+          codexHome: codexHomeForSpawn('codex', options?.codexAccountId)
+        })
       )
     }
     const handle = isEvents
@@ -145,6 +206,8 @@ class PtyManager {
       throw error
     }
     if (isEvents) this.eventSessions.set(session.id, session)
+    if (isEvents) session.startedAt = Date.now()
+    this.spawns.set(session.id, { cwd, options })
     if (isEvents && adapter.id === 'claude-chat') this.writeChatRecord(session, profileId, options)
     // A fresh conversation is named by its first message (the terminal path
     // reads it off the transcript; a chat tab's crosses `sessions:write`). A
@@ -207,6 +270,17 @@ class PtyManager {
         // nothing, so it never erases a model already known here.
         const session = this.eventSessions.get(id)
         if (session && stream.event.model) session.model = stream.event.model
+        // The thread the app-server opened: what a restart resumes.
+        if (sessionManager.get(id)?.adapterId === 'codex-chat' && stream.event.providerSessionId) {
+          this.codexThreads.set(id, stream.event.providerSessionId)
+        }
+      }
+      if (
+        stream.kind === 'event' &&
+        stream.event.type === 'provider_event' &&
+        providerEventReportsLimit(stream.event.provider, stream.event.payload)
+      ) {
+        for (const listener of this.limitListeners) listener(id)
       }
       if (stream.kind === 'pty') onData(decoder.decode(stream.data, { stream: true }))
     })
@@ -243,7 +317,71 @@ class PtyManager {
     this.listeners.delete(id)
     if (this.eventSessions.has(id)) titleGenerator.cleanup(id)
     this.eventSessions.delete(id)
+    if (killTmuxSession) {
+      this.spawns.delete(id)
+      this.codexThreads.delete(id)
+    }
     sessionManager.forget(id)
+  }
+
+  /** The conversation a session would resume: Claude's session id, a Codex
+   *  chat's thread, or the rollout a Codex terminal wrote (found by its cwd
+   *  and start). Null when the session has nothing to resume. */
+  conversationIdOf(id: string): string | null {
+    const session = this.getSession(id)
+    if (!session) return null
+    if (session.claudeSessionId) return session.claudeSessionId
+    const chatThread = this.codexThreads.get(id)
+    if (chatThread) return chatThread
+    const spawn = this.spawns.get(id)
+    if (spawn?.options?.codexMode && session.startedAt) {
+      return findCodexThreadForSession(
+        session.cwd,
+        session.startedAt,
+        codexRoot(getLoginShellEnv())
+      )
+    }
+    return null
+  }
+
+  /**
+   * The spawn that brings a session back on another account (ADR 0002): the
+   * same cwd, agent and profile, the conversation resumed, the tab's id kept
+   * so the sidebar, the MCP addressing and the capture stay on it. Read
+   * BEFORE the kill: the kill forgets the spawn. Null for a session this
+   * process did not spawn (nothing to rebuild from).
+   */
+  restartSpawn(
+    id: string,
+    overrides: RestartOverrides
+  ): { cwd: string; options: PtySpawnOptions; resumed: boolean } | null {
+    const spawn = this.spawns.get(id)
+    if (!spawn) return null
+    const conversationId = this.conversationIdOf(id)
+    const previous = spawn.options ?? {}
+    const options: PtySpawnOptions = {
+      ...previous,
+      adoptSessionId: id,
+      // A fresh tmux name: the old session may still be dying (see
+      // killAndWait) and `-A` on its name would reattach the old process.
+      adoptTmuxName: undefined,
+      resumeSessionId: conversationId ?? undefined,
+      claudeSessionId: undefined,
+      piSessionId: undefined,
+      // The prompt and the command ran once already.
+      initialPrompt: undefined,
+      initialCommand: undefined,
+      autoExecute: undefined,
+      ...overrides
+    }
+    return { cwd: spawn.cwd, options, resumed: conversationId !== null }
+  }
+
+  /** `kill`, resolved once a tmux-backed process is really gone. */
+  async killAndWait(id: string): Promise<void> {
+    const tmuxName = ptyBackend.tmuxNameOf(id)
+    await this.kill(id, true)
+    if (tmuxName) await ptyBackend.waitForTmuxSessionGone(tmuxName)
   }
   async killAll(): Promise<void> {
     await Promise.all(sessionManager.list().map((session) => this.kill(session.id, false)))
@@ -268,6 +406,8 @@ class PtyManager {
     if (sessionManager.get(id)) sessionManager.update(id, { windowKey })
     ptyBackend.setSessionWindowKey(id, windowKey)
   }
+  /** The persisted record of a live session, as it is now. */
+  getSessionRecord = ptyBackend.getSessionRecord.bind(ptyBackend)
   setSessionViewRecord = ptyBackend.setSessionViewRecord.bind(ptyBackend)
   setSessionWorkspace = ptyBackend.setSessionWorkspace.bind(ptyBackend)
   setSessionClaudeSessionId = ptyBackend.setSessionClaudeSessionId.bind(ptyBackend)

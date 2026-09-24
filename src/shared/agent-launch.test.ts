@@ -90,6 +90,43 @@ describe('agent argv', () => {
     ).toEqual(['codex', '--yolo', '-m', 'gpt-5.5', '-c', 'tui.terminal_title=["app-name","status","spinner"]'])
   })
 
+  it('resumes a Codex thread through the resume subcommand, the id last', () => {
+    const profile = {
+      id: 'codex',
+      name: 'Codex',
+      family: 'codex' as const,
+      command: ['codex'],
+      additionalArgs: ['--search']
+    }
+    expect(
+      buildAgentArgv({
+        kind: 'codex',
+        profile,
+        resumeSessionId: 'thread-1',
+        dangerousMode: true,
+        model: 'gpt-5.5'
+      })
+    ).toEqual([
+      'codex',
+      '--search',
+      'resume',
+      '--dangerously-bypass-approvals-and-sandbox',
+      '-m',
+      'gpt-5.5',
+      '-c',
+      'tui.terminal_title=["app-name","status","spinner"]',
+      'thread-1'
+    ])
+    expect(buildAgentArgv({ kind: 'codex', profile, resumeSessionId: 'thread-1' })).toEqual([
+      'codex',
+      '--search',
+      'resume',
+      '-c',
+      'tui.terminal_title=["app-name","status","spinner"]',
+      'thread-1'
+    ])
+  })
+
   it('preserves the TokenOps command vector and appends Clave-owned Claude args', () => {
     const profile = prefs.customProfiles[0]
     expect(

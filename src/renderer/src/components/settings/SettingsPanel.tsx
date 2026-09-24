@@ -35,6 +35,7 @@ import {
 import { LocationsTab } from './LocationsTab'
 import { UpdatesTab } from './UpdatesTab'
 import { UsagePanel } from '../usage/UsagePanel'
+import { AccountsSettings } from './AccountsSettings'
 import {
   SettingsPage,
   SettingsSection,
@@ -198,6 +199,7 @@ export function SettingsPanel(): React.JSX.Element {
         {settingsSection === 'updates' && <UpdatesTab />}
         {settingsSection === 'plugins' && <PluginsTab />}
         {settingsSection === 'usage' && <UsageSettings />}
+        {settingsSection === 'accounts' && <AccountsSettings />}
       </div>
     </div>
   )
@@ -427,7 +429,7 @@ function UsageSettings(): React.JSX.Element {
   return (
     <SettingsPage
       title="Usage"
-      description="Each provider's rate-limit windows, and for Claude every account you handed Clave, read every five minutes."
+      description="Each provider's rate-limit windows, one card per account, read every five minutes. Accounts are added and signed in under Accounts."
     >
       <UsagePanel />
     </SettingsPage>

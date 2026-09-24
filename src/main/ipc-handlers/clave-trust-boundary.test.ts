@@ -156,6 +156,16 @@ describe('sanitizeElevated — what "Open safely" must strip', () => {
     expect(g.name).toBe('Docs')
     expect(g.cwd).toBe('/tmp/docs')
   })
+
+  it("keeps a session's account: it routes the session, it drives nothing (ADR 0002)", () => {
+    const out = sanitizeElevated(
+      single(group({ sessions: [session({ account: 'Work', prompt: 'brief' })] }))
+    )
+    const g = out as ClaveFileReadResult & ClaveGroupData
+    expect(g.sessions[0].account).toBe('Work')
+    expect(g.sessions[0].prompt).toBeUndefined()
+    expect(describeElevated(out)).toEqual({ autoCommands: [], prompts: [], dangerous: false })
+  })
 })
 
 describe('the two must agree', () => {

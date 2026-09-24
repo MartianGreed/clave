@@ -281,9 +281,15 @@ export function buildAgentArgv(input: {
     if (input.claudeSettings) argv.push('--settings', input.claudeSettings)
     if (input.mcpConfigPath) argv.push('--mcp-config', input.mcpConfigPath)
   } else if (input.kind === 'codex') {
-    if (input.dangerousMode) argv.push('--yolo')
+    // A resumed thread goes through the `resume` subcommand, which takes the
+    // long spelling of the approvals flag and the thread id last.
+    if (input.resumeSessionId) argv.push('resume')
+    if (input.dangerousMode) {
+      argv.push(input.resumeSessionId ? '--dangerously-bypass-approvals-and-sandbox' : '--yolo')
+    }
     if (input.model) argv.push('-m', input.model)
     argv.push('-c', CODEX_TITLE_CONFIG)
+    if (input.resumeSessionId) argv.push(input.resumeSessionId)
   } else if (input.kind === 'antigravity') {
     if (input.initialPrompt) argv.push('-i', input.initialPrompt)
     return argv

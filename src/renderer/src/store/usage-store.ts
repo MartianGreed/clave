@@ -3,6 +3,7 @@ import type { PiUsageTotals, UsageError, UsageLimits, UsageWindow } from '../../
 import type { Session } from './session-types'
 import { createUsageResource, type UsageResource } from './usage-resource'
 import { DEFAULT_CLAUDE_PROFILE_ID } from './claude-profile-store'
+import { DEFAULT_CODEX_ACCOUNT_ID } from './codex-account-store'
 
 export type UsageProvider = 'claude' | 'codex' | 'pi' | 'antigravity'
 export const USAGE_PROVIDER_LABELS = {
@@ -68,9 +69,25 @@ export function claudeUsageStore(
 
 /** The machine login's cache, the one every pre-account caller reads. */
 export const useUsageStore = claudeUsageStore(DEFAULT_CLAUDE_PROFILE_ID)
-export const useCodexUsageStore = createUsageResource(() =>
-  limits(window.electronAPI.getCodexUsageLimits())
-)
+
+// Codex is one cache per account too (ADR 0002): each account is a home of
+// its own, read on its own clock by main and pushed (`usage:codex-account`).
+const codexStores = new Map<string, ClaudeUsageResource>()
+
+export function codexUsageStore(accountId: string = DEFAULT_CODEX_ACCOUNT_ID): ClaudeUsageResource {
+  let store = codexStores.get(accountId)
+  if (!store) {
+    store = createUsageResource(({ force }) =>
+      limits(window.electronAPI.getCodexUsageLimits(accountId, { force }))
+    )
+    codexStores.set(accountId, store)
+    store.subscribe((state) => mirrorCodexAccount(accountId, state))
+  }
+  return store
+}
+
+/** The machine's own Codex home, the one every pre-account caller reads. */
+export const useCodexUsageStore = codexUsageStore(DEFAULT_CODEX_ACCOUNT_ID)
 export const piUsageStores = {
   today: createUsageResource(() => window.electronAPI.getPiUsage('today')),
   '7d': createUsageResource(() => window.electronAPI.getPiUsage('7d')),
@@ -92,18 +109,37 @@ export interface AccountUsageSummary {
 export const useClaudeAccountsUsage = create<{ byAccount: Record<string, AccountUsageSummary> }>(
   () => ({ byAccount: {} })
 )
+export const useCodexAccountsUsage = create<{ byAccount: Record<string, AccountUsageSummary> }>(
+  () => ({ byAccount: {} })
+)
+
+function summarize(state: UsageResource<UsageLimits>): AccountUsageSummary {
+  return {
+    status: state.status,
+    tightest: state.status === 'error' ? null : tightestWindow(state.data?.windows ?? []),
+    error: state.error
+  }
+}
 
 function mirrorAccount(accountId: string, state: UsageResource<UsageLimits>): void {
   useClaudeAccountsUsage.setState((current) => ({
-    byAccount: {
-      ...current.byAccount,
-      [accountId]: {
-        status: state.status,
-        tightest: state.status === 'error' ? null : tightestWindow(state.data?.windows ?? []),
-        error: state.error
-      }
-    }
+    byAccount: { ...current.byAccount, [accountId]: summarize(state) }
   }))
+}
+
+function mirrorCodexAccount(accountId: string, state: UsageResource<UsageLimits>): void {
+  useCodexAccountsUsage.setState((current) => ({
+    byAccount: { ...current.byAccount, [accountId]: summarize(state) }
+  }))
+}
+
+/** The per-account summaries of a provider, for the pool and the menus. */
+export function accountsUsageFor(
+  provider: 'claude' | 'codex'
+): Record<string, AccountUsageSummary> {
+  return provider === 'codex'
+    ? useCodexAccountsUsage.getState().byAccount
+    : useClaudeAccountsUsage.getState().byAccount
 }
 
 /** Take main's read for an account, creating the resource when the account is
@@ -130,6 +166,30 @@ export async function primeClaudeAccountsUsage(accountIds: string[]): Promise<vo
     if (known && !('error' in known)) publishClaudeAccountUsage(id, known)
     // Forced, or main would answer with the very error it cached.
     else void claudeUsageStore(id).getState().load({ force: true })
+  }
+}
+
+export function publishCodexAccountUsage(
+  accountId: string,
+  result: UsageLimits | UsageError
+): void {
+  const store = codexUsageStore(accountId)
+  if ('error' in result) store.getState().publishError(result.error)
+  else store.getState().publish(result)
+}
+
+/** The Codex accounts' reads at boot: what main already holds, from its
+ *  snapshot. Nothing is read live here — a Codex read is a `codex
+ *  app-server` process, and main's five-minute clock starts one per account
+ *  seconds after boot anyway; a window that needs a number sooner (the foot
+ *  on a Codex tab, the Usage page) loads its store on demand. */
+export async function primeCodexAccountsUsage(
+  accounts: { id: string; hasCredential: boolean }[]
+): Promise<void> {
+  const snapshot = await window.electronAPI.getCodexUsageSnapshot?.().catch(() => ({}))
+  for (const { id } of accounts) {
+    const known = snapshot?.[id]
+    if (known && !('error' in known)) publishCodexAccountUsage(id, known)
   }
 }
 
@@ -212,7 +272,7 @@ if (typeof window !== 'undefined') {
   const refresh = (): void => {
     for (const store of [
       ...claudeStores.values(),
-      useCodexUsageStore,
+      ...codexStores.values(),
       ...Object.values(piUsageStores)
     ]) {
       if (store.getState().status !== 'idle') void store.getState().load()
@@ -225,5 +285,8 @@ if (typeof window !== 'undefined') {
   })
   window.electronAPI?.onClaudeAccountUsage?.(({ accountId, result }) =>
     publishClaudeAccountUsage(accountId, result)
+  )
+  window.electronAPI?.onCodexAccountUsage?.(({ accountId, result }) =>
+    publishCodexAccountUsage(accountId, result)
   )
 }

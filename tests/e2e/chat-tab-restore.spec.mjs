@@ -84,6 +84,10 @@ function writeFixtures() {
     `#!${process.execPath}
 const fs = require('node:fs'); const path = require('node:path'); const readline = require('node:readline');
 const argv = process.argv.slice(2);
+// The title generator runs the same command as a one-shot (-p without the
+// chat's stream flags): not the CLI under test, and it must not land in the
+// argv log or write a transcript under a null id.
+if (argv.includes('-p') && !argv.includes('--input-format')) process.exit(0);
 fs.appendFileSync(${JSON.stringify(ARGV_LOG)}, JSON.stringify({ pid: process.pid, argv }) + '\\n');
 const at = (flag) => argv.includes(flag) ? argv[argv.indexOf(flag) + 1] : null;
 const sid = at('--resume') || at('--session-id');

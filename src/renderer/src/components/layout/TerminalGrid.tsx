@@ -315,7 +315,13 @@ export function TerminalGrid(): React.JSX.Element {
                     locationId={session.locationId}
                   />
                 ) : (
-                  <RegisteredSessionView sessionId={session.id} />
+                  // Keyed on the restart epoch: a switch to another account
+                  // (ADR 0002) brings a new process under the same id, and
+                  // the pane reconnects to it by mounting afresh.
+                  <RegisteredSessionView
+                    key={`${session.id}:${session.restartEpoch ?? 0}`}
+                    sessionId={session.id}
+                  />
                 )}
               </TerminalErrorBoundary>
             </div>

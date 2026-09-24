@@ -144,6 +144,8 @@ export async function run(t) {
     const back = () => win.getByRole('button', { name: 'Back to sessions', exact: true }).click()
 
     // ── Settings: paste a token, see it proven ───────────────────────────
+    // Usage shows one card per account; the account itself is added on the
+    // Accounts page (ADR 0002), where a token can still be pasted.
     await footer().click()
     const claudePanel = win.locator('div[data-usage-provider="claude"]')
     await claudePanel.waitFor()
@@ -152,8 +154,11 @@ export async function run(t) {
       await claudePanel.locator('[data-claude-account-usage]').count(),
       1
     )
-    await claudePanel.getByRole('button', { name: 'Add account', exact: true }).click()
-    const form = claudePanel.locator('[data-claude-token-form]')
+    await win.locator('[data-settings-nav-row="accounts"]').click()
+    const accountsPage = win.locator('[data-settings-page="accounts"]')
+    await accountsPage.waitFor()
+    await accountsPage.getByRole('button', { name: 'Add with a token', exact: true }).click()
+    const form = accountsPage.locator('[data-claude-token-form]')
     await form.waitFor()
     await form.getByLabel('Account name').fill('Work')
     await form.getByLabel('Claude Code token').fill(WORK_TOKEN)
@@ -168,7 +173,15 @@ export async function run(t) {
     t.check('the probe carries the token as a bearer', probes[0].token === WORK_TOKEN, probes[0].masked)
     t.check('the probe is a message, not the usage endpoint', probes[0].url.endsWith('/v1/messages') && probes[0].method === 'POST', { url: probes[0].url, method: probes[0].method })
     await form.getByRole('button', { name: 'Done', exact: true }).click()
-
+    t.equal(
+      'two accounts: two rows on the Accounts page, the token dated',
+      await accountsPage.locator('[data-claude-account-row]').count(),
+      2
+    )
+    const tokenRowText = await accountsPage.locator('[data-claude-account-row]').nth(1).textContent()
+    t.check('the row says how long the token has', tokenRowText.includes('expires in 12 months'), tokenRowText)
+    await win.locator('[data-settings-nav-row="usage"]').click()
+    await claudePanel.waitFor()
     t.equal(
       'two accounts: two cards on the Claude tab',
       await claudePanel.locator('[data-claude-account-usage]').count(),
@@ -184,7 +197,9 @@ export async function run(t) {
     t.check('the Work card names the account and its credential', (await workCard.textContent()).includes('Work') && (await workCard.textContent()).includes('Token'))
 
     // A refused token leaves no half-account behind.
-    await claudePanel.getByRole('button', { name: 'Add account', exact: true }).click()
+    await win.locator('[data-settings-nav-row="accounts"]').click()
+    await accountsPage.waitFor()
+    await accountsPage.getByRole('button', { name: 'Add with a token', exact: true }).click()
     await form.getByLabel('Account name').fill('Broken')
     await form.getByLabel('Claude Code token').fill('not-a-token')
     await form.getByRole('button', { name: 'Add account', exact: true }).click()
@@ -196,7 +211,7 @@ export async function run(t) {
     await form.getByRole('button', { name: 'Cancel', exact: true }).click()
     t.equal(
       'the refused account was not kept',
-      await claudePanel.locator('[data-claude-account-row]').count(),
+      await accountsPage.locator('[data-claude-account-row]').count(),
       2
     )
     const accounts = await win.evaluate(() => window.electronAPI.claudeAccountsList())
@@ -218,11 +233,18 @@ export async function run(t) {
     t.check('an unknown account is refused, naming the ones that exist', rejected?.includes('Unknown Claude account "Nobody"') && rejected.includes('"Work"'), rejected)
     let wrongMode = null
     try {
-      await callMcp(app, 'openSession', { cwd: ROOT, mode: 'codex', account: 'Work' })
+      await callMcp(app, 'openSession', { cwd: ROOT, mode: 'pi', account: 'Work' })
     } catch (e) {
       wrongMode = e.message
     }
-    t.check('an account on another agent is refused', wrongMode?.includes('claude mode only'), wrongMode)
+    t.check('an account on an agent without a pool is refused', wrongMode?.includes('claude and codex modes only'), wrongMode)
+    let wrongProvider = null
+    try {
+      await callMcp(app, 'openSession', { cwd: ROOT, mode: 'codex', account: 'Work' })
+    } catch (e) {
+      wrongProvider = e.message
+    }
+    t.check("a Claude account is not a Codex account", wrongProvider?.includes('Unknown Codex account "Work"'), wrongProvider)
 
     const opened = await callMcp(app, 'openSession', {
       cwd: ROOT,
@@ -315,8 +337,10 @@ export async function run(t) {
     await claudeEntry.hover()
     // Two launch profiles (the built-in claude and printenv), so the submenu
     // groups the accounts under each; the rows read are printenv's.
+    // The exact label: the chat twin of the profile ("printenv (chat)") has
+    // a group of its own in the same submenu.
     const accountGroup = (menu) =>
-      menu.locator('div').filter({ has: win.locator('.menu-label', { hasText: 'printenv' }) })
+      menu.locator('div').filter({ has: win.locator('.menu-label', { hasText: /^printenv · account$/ }) })
     const rows = accountGroup(win.locator('[role="menu"]').last()).locator('[data-claude-account]')
     await until(async () => (await rows.count()) === 2)
     t.equal('hovering Claude Code offers both accounts', await rows.count(), 2)
