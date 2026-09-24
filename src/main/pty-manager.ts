@@ -148,8 +148,17 @@ class PtyManager {
     if (isEvents && adapter.id === 'claude-chat') this.writeChatRecord(session, profileId, options)
     // A fresh conversation is named by its first message (the terminal path
     // reads it off the transcript; a chat tab's crosses `sessions:write`). A
-    // resumed one keeps the name it was saved under.
-    if (isEvents && !resume) titleGenerator.scheduleChatTitle(session.id)
+    // resumed one keeps the name it was saved under. The title runs the agent
+    // the tab runs when that agent is Claude, on the tab's account; the title
+    // generator's resolver names Claude for another agent's tab (Codex, a
+    // plugin), never that agent's own command.
+    if (isEvents && !resume)
+      titleGenerator.scheduleChatTitle(session.id, {
+        workspaceId: options?.workspaceId,
+        launchProfileId: profileId,
+        claudeProfileId: options?.claudeProfileId,
+        configDir: options?.configDir
+      })
     return session
   }
 

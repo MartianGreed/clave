@@ -3,6 +3,7 @@ import { execFile, spawn } from 'child_process'
 import * as fs from 'fs'
 import * as path from 'path'
 import { getLoginShellEnv } from './pty-manager'
+import { oneShotEnv } from './claude-one-shot'
 import { repoRootAsAsked } from './git-repo-root'
 import type {
   GitBatchOp,
@@ -936,9 +937,7 @@ Rules:
 ${recentMessages ? `Recent commits for style reference:\n${recentMessages}\n\n` : ''}Staged diff:
 ${diff}`
 
-    const env = { ...getLoginShellEnv() }
-    // Remove CLAUDECODE to avoid "nested session" detection
-    delete env.CLAUDECODE
+    const env = oneShotEnv(getLoginShellEnv())
 
     console.log('[git] Spawning claude CLI for commit message generation...')
     return runClaudePrompt(prompt, env, '[git]')
@@ -1261,8 +1260,7 @@ Line 2: A 1-2 sentence description explaining what changed and why
 
 No quotes, no markdown, no extra formatting. Just two lines of plain text.`
 
-    const env = { ...getLoginShellEnv() }
-    delete env.CLAUDECODE
+    const env = oneShotEnv(getLoginShellEnv())
 
     const stdout = await runClaudePrompt(prompt, env, '[git:group-summary]')
     const lines = stdout.split('\n').filter(Boolean)

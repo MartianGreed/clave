@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
 import {
+  BUILT_IN_LAUNCH_PROFILES,
   DEFAULT_LAUNCH_PROFILE_PREFERENCES,
   chatProfileSource,
   resolveLaunchProfile,
@@ -250,6 +251,28 @@ export class LaunchProfileManager {
   }
 
   /**
+   * The profile that starts the Claude CLI itself, for a one-shot Clave runs on
+   * a session's behalf (its tab's title). The session's own profile when that
+   * is a Claude CLI — the built-in, a custom command, the chat variant of
+   * either — else the workspace's default Claude; and when neither starts the
+   * CLI (the echo fixture, a plugin's agent, another family's chat), the
+   * built-in `claude`. A profile that no longer resolves is not worth losing
+   * the title over: it falls through the same way.
+   */
+  resolveClaudeCli(workspaceId?: string | null, profileId?: string | null): LaunchProfile {
+    for (const id of [profileId, undefined]) {
+      let profile: LaunchProfile
+      try {
+        profile = this.resolve('claude', workspaceId, id)
+      } catch {
+        continue
+      }
+      if (startsClaudeCli(profile)) return profile
+    }
+    return BUILT_IN_LAUNCH_PROFILES.find((profile) => profile.family === 'claude')!
+  }
+
+  /**
    * The profile id this call actually asked for: the first of explicit id,
    * workspace override, then global default that is PRESENT.
    *
@@ -287,6 +310,14 @@ export class LaunchProfileManager {
 export const launchProfileManager = new LaunchProfileManager(
   path.join(app.getPath('userData'), 'agent-launch-profiles.json')
 )
+
+/** Does this profile's command start the Claude CLI? An events profile does
+ *  only when its adapter is the Claude chat's; the echo fixture never. */
+function startsClaudeCli(profile: LaunchProfile): boolean {
+  if (profile.family !== 'claude' || profile.id === DEV_ECHO_PROFILE.id) return false
+  const events = eventsProfile(profile.id)
+  return !events || events.adapterId === 'claude-chat'
+}
 
 /** Development fixture exposed through the existing profile picker only. */
 const DEV_ECHO_PROFILE: LaunchProfile = {

@@ -9,11 +9,37 @@ const mocks = vi.hoisted(() => ({
   execFile: vi.fn(),
   prompts: [] as string[],
   stdout: 'follow the first message',
-  error: null as Error | null
+  error: null as Error | null,
+  /** The launch profile manager's Claude-CLI resolver, answering with the tab's profile. */
+  resolve: vi.fn(),
+  profile: {
+    id: 'work',
+    name: 'Work',
+    family: 'claude' as const,
+    command: ['/opt/agents/claude-work', '--profile', 'work'],
+    additionalArgs: ['--add-dir', '/tmp']
+  },
+  /** The account store: one token account, `acct-work`. */
+  getToken: vi.fn((id: string | undefined) => (id === 'acct-work' ? 'sk-ant-oat01-account' : undefined))
 }))
 vi.mock('electron', () => ({ BrowserWindow: class {} }))
 vi.mock('child_process', () => ({ execFile: mocks.execFile }))
-vi.mock('./sessions/adapters/pty-backend', () => ({ getLoginShellEnv: () => ({ PATH: '/bin' }) }))
+// The login shell of the machine this was found on: a Nushell profile that
+// exported a `claude setup-token` token as ANTHROPIC_API_KEY.
+vi.mock('./sessions/adapters/pty-backend', () => ({
+  getLoginShellEnv: () => ({ PATH: '/bin', CLAUDECODE: '1', ANTHROPIC_API_KEY: 'sk-ant-oat01-login' }),
+  getUserShell: () => '/bin/zsh',
+  accountTokenForSpawn: (kind: string, id: string | undefined) =>
+    kind === 'claude' ? mocks.getToken(id) : undefined
+}))
+vi.mock('./launch-profile-manager', () => ({
+  launchProfileManager: { resolveClaudeCli: mocks.resolve }
+}))
+// The profile's command is found on the login PATH: it starts directly.
+vi.mock('./shell-launch', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./shell-launch')>()),
+  findExecutable: (command: string) => command
+}))
 vi.mock('./session-history', () => ({ TITLE_HELPER_MARKER: 'Generate a short 2-4 word title' }))
 
 import { TITLE_CLI_ARGS, cleanup, notifyChatMessage, scheduleChatTitle } from './title-generator'
@@ -61,6 +87,7 @@ beforeEach(() => {
   mocks.prompts.length = 0
   mocks.stdout = 'follow the first message'
   mocks.error = null
+  mocks.resolve.mockReturnValue(mocks.profile)
   mocks.execFile.mockImplementation(
     (_cmd: string, _args: string[], _opts: unknown, callback: Callback) => {
       const stdin = { write: (text: string) => mocks.prompts.push(text), end: vi.fn() }
@@ -78,10 +105,47 @@ describe('a chat tab is named by its first message', () => {
     notifyChatMessage(id, 'please make the sidebar tab follow the first message I send', win)
     await settled()
     expect(mocks.execFile).toHaveBeenCalledTimes(1)
-    expect(mocks.execFile.mock.calls[0][0]).toBe('claude')
-    expect(mocks.execFile.mock.calls[0][1]).toEqual(TITLE_CLI_ARGS)
+    expect(mocks.execFile.mock.calls[0][0]).toBe('/opt/agents/claude-work')
+    expect(mocks.execFile.mock.calls[0][1]).toEqual(['--profile', 'work', ...TITLE_CLI_ARGS])
     expect(mocks.prompts.join('')).toContain('follow the first message I send')
     expect(send).toHaveBeenCalledWith(`session:auto-title:${id}`, 'follow the first message')
+  })
+
+  it('runs the CLI in a one-shot environment: no nested marker, the token where the CLI reads it, time to boot', async () => {
+    // With the token left in ANTHROPIC_API_KEY the API answers 401 and the
+    // CLI retries past any timeout; the heuristic then named every tab.
+    const id = `chat-${++sequence}`
+    const { win } = window()
+    scheduleChatTitle(id)
+    notifyChatMessage(id, 'please make the sidebar tab follow the first message I send', win)
+    await settled()
+    const opts = mocks.execFile.mock.calls[0][2] as { env: Record<string, string>; timeout: number }
+    expect(opts.env.CLAUDECODE).toBeUndefined()
+    expect(opts.env.ANTHROPIC_API_KEY).toBeUndefined()
+    expect(opts.env.CLAUDE_CODE_OAUTH_TOKEN).toBe('sk-ant-oat01-login')
+    expect(opts.env.PATH).toBe('/bin')
+    expect(opts.timeout).toBeGreaterThanOrEqual(30000)
+  })
+
+  it("runs the agent the tab runs: its workspace's profile, on its account", async () => {
+    // A tab on a custom Claude profile and a token account is named by that
+    // command on that account — the same as the conversation itself, so a
+    // usage cap or a binary only the profile knows never lands on the machine
+    // login by surprise.
+    const id = `chat-${++sequence}`
+    const { win } = window()
+    scheduleChatTitle(id, {
+      workspaceId: 'ws-1',
+      launchProfileId: 'chat:claude:work',
+      claudeProfileId: 'acct-work',
+      configDir: '/Users/me/.claude-work'
+    })
+    notifyChatMessage(id, 'please make the sidebar tab follow the first message I send', win)
+    await settled()
+    expect(mocks.resolve).toHaveBeenCalledWith('ws-1', 'chat:claude:work')
+    const opts = mocks.execFile.mock.calls[0][2] as { env: Record<string, string> }
+    expect(opts.env.CLAUDE_CODE_OAUTH_TOKEN).toBe('sk-ant-oat01-account')
+    expect(opts.env.CLAUDE_CONFIG_DIR).toBe('/Users/me/.claude-work')
   })
 
   it('asks once: a later message changes nothing', async () => {
