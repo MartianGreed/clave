@@ -361,6 +361,88 @@ it('derives a launch profile from an enabled adapter plugin and hides it once di
     lookup.mockRestore()
   }
 })
+// A one-shot Clave runs for a session (its tab's title) must start the Claude
+// CLI, whatever the session runs: found when the chat spec's echo fixture was
+// handed the one-shot and printed its arguments back as the tab's name.
+describe('the profile that starts the Claude CLI for a one-shot', () => {
+  const work = {
+    id: 'work',
+    name: 'Work',
+    family: 'claude' as const,
+    command: ['/opt/agents/claude-work', '--profile', 'work'],
+    additionalArgs: ['--add-dir', '/tmp']
+  }
+  function onDarwinWithChat(test: () => void): void {
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
+    const echo = new EchoAdapter()
+    const lookup = vi
+      .spyOn(sessionManager, 'getAdapter')
+      .mockImplementation((id: string) =>
+        id === 'claude-chat' || id === 'codex-chat' ? echo : undefined
+      )
+    try {
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      test()
+    } finally {
+      syncPluginAdapters({ list: () => [] })
+      Object.defineProperty(process, 'platform', { value: platform.value })
+      lookup.mockRestore()
+    }
+  }
+
+  it("a Claude session's own profile, terminal or chat, carrying its command", () => {
+    onDarwinWithChat(() =>
+      withManager((manager) => {
+        manager.upsert(work)
+        expect(manager.resolveClaudeCli(null, 'work').command).toEqual(work.command)
+        expect(manager.resolveClaudeCli(null, 'chat:claude:work').command).toEqual(work.command)
+        expect(manager.resolveClaudeCli(null, 'claude-chat').command).toEqual(['claude'])
+        expect(manager.resolveClaudeCli(null, 'builtin-claude').id).toBe('builtin-claude')
+      })
+    )
+  })
+
+  it("another family's chat is named by the workspace's default Claude", () => {
+    onDarwinWithChat(() =>
+      withManager((manager) => {
+        manager.upsert(work)
+        manager.setGlobalDefault('claude', 'work')
+        expect(manager.resolveClaudeCli(null, 'codex-chat').id).toBe('work')
+        manager.setWorkspaceDefault('ws-1', 'claude', 'builtin-claude')
+        expect(manager.resolveClaudeCli('ws-1', 'codex-chat').id).toBe('builtin-claude')
+      })
+    )
+  })
+
+  it("a plugin's agent as the default, on or off, yields the built-in claude", () => {
+    onDarwinWithChat(() =>
+      withManager((manager) => {
+        syncPluginAdapters({ list: () => [adapterPlugin(true)] })
+        manager.setGlobalDefault('claude', 'acme-agent')
+        expect(manager.resolve('claude').id).toBe('acme-agent')
+        expect(manager.resolveClaudeCli(null, 'acme-agent').command).toEqual(['claude'])
+        expect(manager.resolveClaudeCli(null, undefined).id).toBe('builtin-claude')
+        // Switched off, `resolve` refuses the stored default by name; the title
+        // is not worth that refusal.
+        syncPluginAdapters({ list: () => [adapterPlugin(false)] })
+        expect(() => manager.resolve('claude')).toThrow()
+        expect(manager.resolveClaudeCli(null, undefined).id).toBe('builtin-claude')
+      })
+    )
+  })
+
+  it('a deleted profile falls through to the default', () => {
+    onDarwinWithChat(() =>
+      withManager((manager) => {
+        manager.upsert(work)
+        manager.setGlobalDefault('claude', 'work')
+        expect(manager.resolveClaudeCli(null, 'chat:claude:gone').id).toBe('work')
+        expect(manager.resolveClaudeCli(null, 'gone').id).toBe('work')
+      })
+    )
+  })
+})
+
 describe('the view a profile opens its sessions in', () => {
   it('names the chat view on both built-in chat profiles', () => {
     expect(eventsProfile('claude-chat')?.viewId).toBe('clave.chat-view/chat')

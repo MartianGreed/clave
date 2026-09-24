@@ -3,15 +3,29 @@ import { existsSync, watchFile, unwatchFile, watch, readFileSync, promises as fs
 import { join, dirname } from 'path'
 import { homedir } from 'os'
 import { BrowserWindow } from 'electron'
-import { getLoginShellEnv } from './sessions/adapters/pty-backend'
+import { accountTokenForSpawn, getLoginShellEnv, getUserShell } from './sessions/adapters/pty-backend'
+import { launchProfileManager } from './launch-profile-manager'
+import { buildOneShotLaunch, type OneShotLaunch } from './claude-one-shot'
 import { TITLE_HELPER_MARKER } from './session-history'
 
 // --- Session tracking ---
+
+/** What the title one-shot needs to run the agent the session runs: the
+ *  workspace and profile that resolve its command, the account it is on. All
+ *  optional: a session with none of it is named by the workspace's default
+ *  Claude on the machine login, as every session was before profiles. */
+export interface TitleLaunchContext {
+  workspaceId?: string
+  launchProfileId?: string
+  claudeProfileId?: string
+  configDir?: string
+}
 
 interface SessionEntry {
   cwd: string
   claudeSessionId: string
   win: BrowserWindow
+  launch: TitleLaunchContext
   jsonlPath: string
   titleDone: boolean
   planDetected: boolean
@@ -31,13 +45,14 @@ const sessions = new Map<string, SessionEntry>()
  *  spawn when it starts a fresh conversation and leaves it with the first
  *  message that reads as an intention; a resumed conversation never enters it
  *  and keeps the name it was saved under. */
-const chatAwaitingTitle = new Set<string>()
+const chatAwaitingTitle = new Map<string, TitleLaunchContext>()
 
 // --- Title generation queue (prevent concurrent CLI spawns) ---
 
 interface TitleJob {
   sessionId: string
   userMessage: string
+  launch: TitleLaunchContext
   resolve: (title: string) => void
   reject: (err: Error) => void
 }
@@ -50,7 +65,7 @@ function processNextTitle(): void {
   if (activeTitleJobs >= MAX_CONCURRENT_TITLES || titleQueue.length === 0) return
   const job = titleQueue.shift()!
   activeTitleJobs++
-  runTitleGeneration(job.sessionId, job.userMessage)
+  runTitleGeneration(job.sessionId, job.userMessage, job.launch)
     .then(job.resolve)
     .catch(job.reject)
     .finally(() => {
@@ -72,11 +87,12 @@ export function scheduleTitleGeneration(
   sessionId: string,
   cwd: string,
   claudeSessionId: string,
-  win: BrowserWindow
+  win: BrowserWindow,
+  launch: TitleLaunchContext = {}
 ): void {
   const jsonlPath = getJsonlPath(cwd, claudeSessionId)
   const entry: SessionEntry = {
-    cwd, claudeSessionId, win, jsonlPath,
+    cwd, claudeSessionId, win, launch, jsonlPath,
     titleDone: false, planDetected: false, pendingClear: false, dirWatcher: null,
     scanOffset: 0, scanPartial: ''
   }
@@ -151,8 +167,8 @@ function watchJsonl(sessionId: string, entry: SessionEntry): void {
 }
 
 /** A chat tab that just started a fresh conversation: its first message names it. */
-export function scheduleChatTitle(sessionId: string): void {
-  chatAwaitingTitle.add(sessionId)
+export function scheduleChatTitle(sessionId: string, launch: TitleLaunchContext = {}): void {
+  chatAwaitingTitle.set(sessionId, launch)
 }
 
 /** A user message a chat tab just sent. The first one worth a title — not a
@@ -160,12 +176,13 @@ export function scheduleChatTitle(sessionId: string): void {
  *  same channel a terminal tab's title arrives on. Anything else leaves the tab
  *  waiting for the message that does state what the conversation is about. */
 export function notifyChatMessage(sessionId: string, text: string, win: BrowserWindow): void {
-  if (!chatAwaitingTitle.has(sessionId)) return
+  const launch = chatAwaitingTitle.get(sessionId)
+  if (!launch) return
   const message = text.trim()
   if (!isValidMessage(message)) return
   chatAwaitingTitle.delete(sessionId)
   console.log(`[title-gen] Chat ${sessionId} message: "${message.slice(0, 80)}"`)
-  generateTitle(sessionId, message)
+  generateTitle(sessionId, message, launch)
     .then((title) => {
       if (!win.isDestroyed()) win.webContents.send(`session:auto-title:${sessionId}`, title)
     })
@@ -247,7 +264,7 @@ async function processJsonl(sessionId: string, entry: SessionEntry): Promise<voi
       entry.titleDone = true
       console.log(`[title-gen] Session ${sessionId} message: "${userMessage.slice(0, 80)}"`)
 
-      generateTitle(sessionId, userMessage)
+      generateTitle(sessionId, userMessage, entry.launch)
         .then((title) => {
           if (entry.win && !entry.win.isDestroyed()) {
             entry.win.webContents.send(`session:auto-title:${sessionId}`, title)
@@ -320,6 +337,10 @@ function extractPlanPath(entry: Record<string, unknown>): string | null {
 
 // --- Title generation ---
 
+/** A cold CLI boot is 5–9s on a laptop with nothing else running; 15s lost
+ *  the model to the heuristic under load, and nothing said so. */
+export const TITLE_TIMEOUT_MS = 30_000
+
 /** A title is one short Haiku turn that needs no tool, no skill and no MCP
  *  server: the CLI is told so, or it connects every server the user has
  *  configured and offers every skill before it can answer — a second full
@@ -338,14 +359,42 @@ export const TITLE_CLI_ARGS = [
   ''
 ]
 
-function generateTitle(sessionId: string, userMessage: string): Promise<string> {
+function generateTitle(
+  sessionId: string,
+  userMessage: string,
+  launch: TitleLaunchContext
+): Promise<string> {
   return new Promise((resolve, reject) => {
-    titleQueue.push({ sessionId, userMessage, resolve, reject })
+    titleQueue.push({ sessionId, userMessage, launch, resolve, reject })
     processNextTitle()
   })
 }
 
-function runTitleGeneration(sessionId: string, userMessage: string): Promise<string> {
+/**
+ * The agent the session runs, ready to answer one prompt: its launch profile's
+ * command (a custom binary, a wrapper, a version manager's shim), on its
+ * account. The manager answers with a profile that starts the Claude CLI —
+ * the session's own, the workspace's default, or the built-in — so a Codex
+ * chat, a plugin's agent or the echo fixture is still named by Claude.
+ */
+function titleLaunch(context: TitleLaunchContext): OneShotLaunch {
+  return buildOneShotLaunch({
+    profile: launchProfileManager.resolveClaudeCli(context.workspaceId, context.launchProfileId),
+    args: TITLE_CLI_ARGS,
+    loginEnv: getLoginShellEnv(),
+    account: {
+      configDir: context.configDir,
+      oauthToken: accountTokenForSpawn('claude', context.claudeProfileId)
+    },
+    userShell: getUserShell()
+  })
+}
+
+function runTitleGeneration(
+  sessionId: string,
+  userMessage: string,
+  context: TitleLaunchContext
+): Promise<string> {
   const prompt = `${TITLE_HELPER_MARKER} based on what the user asked.
 Rules:
 - Return ONLY the title, no quotes, no explanation
@@ -356,14 +405,13 @@ Rules:
 User's message:
 ${userMessage}`
 
-  const env = { ...getLoginShellEnv() }
-  delete env.CLAUDECODE
+  const launch = titleLaunch(context)
 
   return new Promise<string>((resolve, reject) => {
     const child = execFile(
-      'claude',
-      TITLE_CLI_ARGS,
-      { env, encoding: 'utf-8', maxBuffer: 1024 * 1024, timeout: 15000 },
+      launch.file,
+      launch.args,
+      { env: launch.env, encoding: 'utf-8', maxBuffer: 1024 * 1024, timeout: TITLE_TIMEOUT_MS },
       (err, stdout, stderr) => {
         if (err) {
           console.error('[title-gen] claude CLI error:', err.message, stderr)

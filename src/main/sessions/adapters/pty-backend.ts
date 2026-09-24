@@ -12,7 +12,7 @@ import { workspaceManager } from '../../workspace-manager'
 import { dismissSessionOffers } from '../../copy-offer-manager'
 import { launchProfileManager } from '../../launch-profile-manager'
 import { claudeAccountsManager } from '../../claude-accounts'
-import { resolvePosixShellLaunch } from '../../shell-launch'
+import { resolvePosixShellLaunch, shellSingleQuote } from '../../shell-launch'
 import { CODEX_TITLE_CONFIG } from '../../../shared/codex-state'
 import { isValidModelName } from '../../../shared/model-name'
 import { tmuxKillSessionArgs } from '../../tmux-args'
@@ -25,10 +25,7 @@ import {
 
 const isWindows = process.platform === 'win32'
 
-/** Wrap a string as a single shell-quoted token (safe for embedding in `zsh -c`). */
-export function shellSingleQuote(s: string): string {
-  return `'${s.replace(/'/g, `'\\''`)}'`
-}
+export { shellSingleQuote }
 
 /**
  * Claude session ids are UUIDs. They are interpolated into the shell command

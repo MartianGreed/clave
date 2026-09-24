@@ -61,9 +61,15 @@ export function registerPtyHandlers(): void {
       !options?.claudeAgentsMode
     const isResumed = !!options?.resumeSessionId
 
-    // Schedule title generation for new Claude-mode sessions
+    // A fresh Claude session is named by its first message, by the agent it
+    // runs: its resolved profile, on its account.
     if (isClaudeMode && !isResumed && session.claudeSessionId && win) {
-      titleGenerator.scheduleTitleGeneration(session.id, session.cwd, session.claudeSessionId, win)
+      titleGenerator.scheduleTitleGeneration(session.id, session.cwd, session.claudeSessionId, win, {
+        workspaceId,
+        launchProfileId: session.launchProfileId,
+        claudeProfileId: options?.claudeProfileId,
+        configDir: options?.configDir
+      })
     }
 
     // Attach listeners now so the channels are ready before the renderer

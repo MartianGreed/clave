@@ -6,6 +6,11 @@ export interface ShellLaunch {
   args: string[]
 }
 
+/** Wrap a string as a single shell-quoted token (safe for embedding in `zsh -c`). */
+export function shellSingleQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`
+}
+
 /**
  * Shells whose command language is POSIX sh. They parse Clave's agent wrapper
  * as written, so the user's own shell stays in charge — and with it the

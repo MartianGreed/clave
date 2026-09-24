@@ -56,6 +56,7 @@ vi.mock('./sessions/adapters/codex-adapter', () => ({
   CodexAdapter: class {
     id = 'codex-chat'
     provider = 'codex'
+    configure = vi.fn()
   }
 }))
 vi.mock('./sessions/adapters/echo-adapter', () => ({
@@ -69,7 +70,7 @@ vi.mock('./title-generator', () => mocks.title)
 vi.mock('./launch-profile-manager', () => ({
   defaultViewFor: () => 'clave.chat-view/chat',
   eventsProfile: (id?: string) =>
-    id === 'claude-chat' ? { id: 'claude-chat', adapterId: 'claude-chat' } : undefined,
+    id === 'claude-chat' || id === 'codex-chat' ? { id, adapterId: id } : undefined,
   isEchoLaunchProfile: () => false,
   launchProfileManager: { resolve: () => ({ id: 'claude-chat' }) }
 }))
@@ -161,9 +162,37 @@ describe('a Claude chat tab survives a restart', () => {
 // a fresh conversation — the terminal path decides the same at spawn — and a
 // resumed conversation keeps the name it was saved under.
 describe('a chat tab is named by its first message', () => {
-  it('a fresh chat tab waits for its first message', async () => {
-    const session = await ptyManager.spawn('/project', { launchProfileId: 'claude-chat' })
-    expect(mocks.title.scheduleChatTitle).toHaveBeenCalledWith(session.id)
+  it('a fresh chat tab waits for its first message, to be named by the agent it runs', async () => {
+    const session = await ptyManager.spawn('/project', {
+      launchProfileId: 'claude-chat',
+      workspaceId: 'ws-1',
+      claudeProfileId: 'acct-work',
+      configDir: '/Users/me/.claude-work'
+    })
+    expect(mocks.title.scheduleChatTitle).toHaveBeenCalledWith(session.id, {
+      workspaceId: 'ws-1',
+      launchProfileId: 'claude-chat',
+      claudeProfileId: 'acct-work',
+      configDir: '/Users/me/.claude-work'
+    })
+  })
+
+  it('a chat on another agent waits too, with its own profile for the resolver to refuse', async () => {
+    // Codex answers no Claude prompt; the launch profile manager's Claude-CLI
+    // resolver is what turns this profile into the workspace's Claude.
+    mocks.manager.getAdapter.mockImplementation((id: string) =>
+      id === 'codex-chat'
+        ? { id: 'codex-chat', provider: 'codex', spawn: mocks.claude.spawn, kill: mocks.claude.kill }
+        : mocks.claude
+    )
+    const session = await ptyManager.spawn('/project', {
+      launchProfileId: 'codex-chat',
+      workspaceId: 'ws-1'
+    })
+    expect(mocks.title.scheduleChatTitle).toHaveBeenCalledWith(
+      session.id,
+      expect.objectContaining({ workspaceId: 'ws-1', launchProfileId: 'codex-chat' })
+    )
   })
 
   it('a resumed conversation keeps the name it was saved under', async () => {
@@ -182,7 +211,7 @@ describe('a chat tab is named by its first message', () => {
       adoptSessionId: TAB,
       resumeSessionId: CONVERSATION
     })
-    expect(mocks.title.scheduleChatTitle).toHaveBeenCalledWith(TAB)
+    expect(mocks.title.scheduleChatTitle).toHaveBeenCalledWith(TAB, expect.anything())
   })
 
   it('a closed tab stops waiting', async () => {
