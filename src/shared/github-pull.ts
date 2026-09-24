@@ -496,6 +496,38 @@ export const ghArgs = {
   ]
 }
 
+/** The environment variables `gh` reads a token from, in the order it
+ *  prefers them — and it prefers either over the login it stored itself. */
+export const GH_TOKEN_VARIABLES = ['GH_TOKEN', 'GITHUB_TOKEN'] as const
+
+export interface GhSpawnEnv {
+  /** The environment `gh` runs in first: the login shell's, with every token
+   *  variable removed, so the stored login (`gh auth login`) is the account. */
+  env: Record<string, string>
+  /** The login shell's environment as it came, when it carried a token: the
+   *  one retry when `gh` has no stored login, for the user whose only
+   *  sign-in is that variable. Absent when there was no token to fall back on. */
+  withToken?: Record<string, string>
+}
+
+/** `gh` honours `GH_TOKEN` and `GITHUB_TOKEN` over the account it stored at
+ *  `gh auth login`, and a login shell often exports one of them for something
+ *  else — a fine-grained PAT for one repository, a CI token, a leftover — which
+ *  cannot see the repositories the stored login can. The panel promised the
+ *  user's own sign-in, so that is what runs: the stored login first, the
+ *  environment's token only when there is no stored login to use. */
+export function ghSpawnEnv(loginEnv: Record<string, string>): GhSpawnEnv {
+  const env = { ...loginEnv }
+  let carried = false
+  for (const name of GH_TOKEN_VARIABLES) {
+    if (env[name] !== undefined) {
+      carried = true
+      delete env[name]
+    }
+  }
+  return carried ? { env, withToken: { ...loginEnv } } : { env }
+}
+
 /** How a `gh` run failed, for the panel to say the right thing: no `gh` on the
  *  machine, an account that is not signed in, or the command's own words. */
 export type GithubFailureKind = 'missing' | 'auth' | 'failed'

@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { getLoginShellEnv } from './sessions/adapters/pty-backend'
 import {
   ghArgs,
+  ghSpawnEnv,
   pullRequestFromGh,
   splitUnifiedDiff,
   type GithubResult,
@@ -18,9 +19,14 @@ import {
  * user's own login. Clave holds no GitHub token and never sees one — `gh`
  * keeps its credentials, and every call is one `gh pr …` with the login
  * shell's PATH (the packaged app's own PATH has no `gh` in it, see the PATH
- * gotcha in CLAUDE.md). Arguments are built by `ghArgs` in the shared module
- * and validated in the IPC handler before they get here; bodies travel on
- * stdin so they can never be read as flags.
+ * gotcha in CLAUDE.md) — minus the shell's own `GH_TOKEN` / `GITHUB_TOKEN`,
+ * which `gh` would take over the stored login (`ghSpawnEnv`): a token the
+ * shell exports for something else cannot see the repositories the login
+ * can, and `gh` then reports the repository as not existing. The token is
+ * tried once, after, only when there is no stored login to use. Arguments
+ * are built by `ghArgs` in the shared module and validated in the IPC
+ * handler before they get here; bodies travel on stdin so they can never be
+ * read as flags.
  */
 
 const TIMEOUT_MS = 60_000
@@ -38,15 +44,27 @@ function classify(stderr: string): GithubFailureKind {
     : 'failed'
 }
 
-/** Run `gh` once. A missing binary is its own failure kind so the panel can
- *  say "install gh" rather than showing an ENOENT. */
-export function runGh(args: string[], input?: string): Promise<GithubResult<GhRun>> {
+/** Run `gh` once on the stored login, and once more on the login shell's own
+ *  token only when `gh` has no login stored. A missing binary is its own
+ *  failure kind so the panel can say "install gh" rather than showing an ENOENT. */
+export async function runGh(args: string[], input?: string): Promise<GithubResult<GhRun>> {
+  const plan = ghSpawnEnv(getLoginShellEnv())
+  const first = await spawnGh(args, plan.env, input)
+  if (first.ok || first.kind !== 'auth' || !plan.withToken) return first
+  return spawnGh(args, plan.withToken, input)
+}
+
+function spawnGh(
+  args: string[],
+  env: Record<string, string>,
+  input?: string
+): Promise<GithubResult<GhRun>> {
   return new Promise((resolve) => {
     const child = execFile(
       'gh',
       args,
       {
-        env: { ...getLoginShellEnv(), GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' },
+        env: { ...env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' },
         encoding: 'utf-8',
         maxBuffer: MAX_BUFFER,
         timeout: TIMEOUT_MS
