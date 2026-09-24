@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   ghArgs,
+  ghSpawnEnv,
   parsePullRequestUrl,
   pullRequestFromGh,
   splitUnifiedDiff,
@@ -275,5 +276,21 @@ describe('splitUnifiedDiff', () => {
   it('is empty for no diff', () => {
     expect(splitUnifiedDiff('')).toEqual([])
     expect(splitUnifiedDiff('\n')).toEqual([])
+  })
+})
+
+describe('ghSpawnEnv', () => {
+  it('runs gh on its stored login by dropping the login shell\'s token variables', () => {
+    const plan = ghSpawnEnv({ PATH: '/bin', GITHUB_TOKEN: 'ghp_x', GH_TOKEN: 'gho_y', HOME: '/h' })
+    expect(plan.env).toEqual({ PATH: '/bin', HOME: '/h' })
+  })
+  it('keeps the token for one retry, for the user whose only sign-in is the variable', () => {
+    const plan = ghSpawnEnv({ PATH: '/bin', GITHUB_TOKEN: 'ghp_x' })
+    expect(plan.withToken).toEqual({ PATH: '/bin', GITHUB_TOKEN: 'ghp_x' })
+  })
+  it('has nothing to retry with when the login shell carried no token', () => {
+    const plan = ghSpawnEnv({ PATH: '/bin' })
+    expect(plan.env).toEqual({ PATH: '/bin' })
+    expect(plan.withToken).toBeUndefined()
   })
 })

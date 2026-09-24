@@ -31,8 +31,12 @@ off, a pull request link is a link to the browser again, and nothing else change
   is synchronous, off the plugin records the plugin UI store keeps current.
 - **`gh` is the process.** Main runs the user's own GitHub CLI
   (`src/main/github-cli.ts`) with the login shell's environment, so the
-  packaged app finds it and the user's own sign-in is used. Clave holds no
-  token. Every call answers a `GithubResult` naming the failure kind — `gh`
+  packaged app finds it and the user's own sign-in is used — minus the
+  shell's `GH_TOKEN` / `GITHUB_TOKEN`, which `gh` would take over the login it
+  stored at `gh auth login` (`ghSpawnEnv`): a token exported for something
+  else cannot see what the login can, and `gh` then reports the repository as
+  not found. That token is tried once, after, only when no login is stored.
+  Clave holds no token of its own. Every call answers a `GithubResult` naming the failure kind — `gh`
   missing, not signed in, or `gh`'s own words — rather than throwing, and the
   panel says which. The arguments are built in `src/shared/github-pull.ts`
   (`ghArgs`): the number and repository are validated by schema in the IPC
