@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { create } from 'zustand'
-import type { SessionEvent } from '../../../shared/session-model'
+import type { BackgroundTask, SessionEvent } from '../../../shared/session-model'
 
 /** One event as it arrived, with the moment it did: a view that groups turns by
  *  time needs the arrival, and the transport carries none. */
@@ -21,6 +21,9 @@ export interface SessionLog {
   exitCode?: number
   /** A subscription that never came up, in the words the main process used. */
   error?: string
+  /** The last `background_tasks` snapshot, kept as it arrives so a reader never
+   *  scans the log for it: that scan ran on every event of every session. */
+  background?: BackgroundTask[]
 }
 const empty: SessionLog = { events: [], ready: false }
 interface ConversationState {
@@ -64,7 +67,8 @@ function attach(sessionId: string): void {
     if (value.kind === 'event')
       patch(sessionId, (log) => ({
         ...log,
-        events: [...log.events, { event: value.event, at: Date.now() }]
+        events: [...log.events, { event: value.event, at: Date.now() }],
+        ...(value.event.type === 'background_tasks' ? { background: value.event.tasks } : {})
       }))
   })
   const stopExit = window.electronAPI.onSessionStreamExit(sessionId, (code) =>

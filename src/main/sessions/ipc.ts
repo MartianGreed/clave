@@ -5,6 +5,9 @@ import { preparePrompt } from './attachments'
 import { windowRegistry } from '../window-registry'
 import * as titleGenerator from '../title-generator'
 
+/** Built-in adapters whose `provider_event` is the CLI's own frame, verbatim. */
+const RAW_WIRE_PROVIDERS: ReadonlySet<string> = new Set(['claude', 'codex'])
+
 let registered = false
 /** Second consumers have independent subscriptions; destroying their window
  * removes only their listeners, never the process or xterm's subscription. */
@@ -44,6 +47,17 @@ export function registerSessionIpc(): void {
     const stream = sessionManager.subscribe(
       id,
       (value) => {
+        // The built-in CLIs' raw wire frames stay in main. No view renders them,
+        // and they are most of the stream: a Claude turn that writes one file
+        // sends hundreds of tool-input chunks, and every event a window
+        // receives re-renders its chat — the flood froze the window under long
+        // lanes. A plugin provider's own events still pass: its view may read them.
+        if (
+          value.kind === 'event' &&
+          value.event.type === 'provider_event' &&
+          RAW_WIRE_PROVIDERS.has(value.event.provider)
+        )
+          return
         if (!sender.isDestroyed()) sender.send(`sessions:stream:${id}`, value)
       },
       windowKey
