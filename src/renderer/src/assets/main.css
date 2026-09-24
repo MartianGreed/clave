@@ -1418,10 +1418,53 @@
   font-size: 13px;
 }
 
-/* Session-linked editing follows the panel family. */
-.linked-document-slot { position: absolute; top: 0; bottom: 0; right: 0; padding-left: var(--space-2, 0.5rem); z-index: 1; }
-.linked-document-panel { display: flex; flex-direction: column; height: 100%; min-width: 0; overflow: hidden; }
-.linked-document-header { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; flex-shrink: 0; flex-wrap: wrap; }
+/* ── Linked document: a card inset in the session's frame ──
+   The pane is ONE floating-card (.linked-document-frame, set by TerminalGrid)
+   holding the session on the left and the document on the right, the way an
+   artifact sits inside a conversation: not a second window beside the tab.
+   The slot is inset by the gutter on three sides; its fourth, the left, is the
+   gap to the session, and that gap is the resize handle. The card takes a
+   surface one step up from the frame's, so border and ground together say
+   "on top of", without the drop shadow panels deliberately do not carry. */
+.linked-document-slot {
+  --linked-inset: var(--space-2, 0.5rem);
+  position: absolute;
+  top: var(--linked-inset);
+  bottom: var(--linked-inset);
+  right: var(--linked-inset);
+  padding-left: var(--linked-inset);
+  z-index: 1;
+}
+.linked-document-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  border: var(--frame-border) solid var(--color-border);
+  background-color: var(--surface-50);
+  animation: linked-document-in 150ms ease-out;
+}
+@keyframes linked-document-in {
+  from { opacity: 0; translate: 8px 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .linked-document-panel { animation: none; }
+}
+/* One row, like an artifact's: kind and title on the left, then save state,
+   the view toggle and hide. The title gives way first; the controls never wrap. */
+.linked-document-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: calc(var(--frame-h) + 1rem);
+  padding: 0 0.5rem 0 0.875rem;
+  border-bottom: 1px solid var(--border-subtle-color);
+  flex-shrink: 0;
+}
+.linked-document-header > :not(:first-child) { flex-shrink: 0; }
+.linked-document-header > [role="status"] { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1; }
 .linked-document-content { flex: 1; overflow: auto; min-height: 0; }
 .linked-document-notice { padding: 0.5rem; font-size: 0.75rem; color: var(--text-secondary); background: var(--surface-100); }
 .linked-email-composer { display: flex; flex-direction: column; min-height: 100%; }
@@ -1581,12 +1624,28 @@
 .linked-email-foot-dot { width: 6px; height: 6px; border-radius: 999px; flex-shrink: 0; background: var(--color-accent); }
 .linked-email-foot-dot[data-state="saving"] { background: var(--text-tertiary); }
 .linked-email-foot-dot[data-state="error"] { background: var(--danger-toggle-icon); }
-.linked-document-divider { position: absolute; left: 0; top: 0; bottom: 0; width: 0.5rem; cursor: col-resize; }
-.linked-document-divider:focus-visible { background: var(--color-accent); }
-.linked-document-reopen { position: absolute; right: 0.5rem; bottom: 0.5rem; z-index: 2; }
+/* The gap between session and card is the handle: invisible at rest, a
+   hairline on approach, the accent while focused — the file tree's handle. */
+.linked-document-divider { position: absolute; left: 0; top: 0; bottom: 0; width: var(--linked-inset); cursor: col-resize; outline: none; }
+.linked-document-divider::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0.75rem;
+  bottom: 0.75rem;
+  width: 1px;
+  translate: -50% 0;
+  border-radius: 1px;
+  background: transparent;
+  transition: background-color 150ms;
+}
+.linked-document-divider:hover::after { background: color-mix(in srgb, var(--color-accent) 50%, transparent); }
+.linked-document-divider:focus-visible::after,
+.linked-document-divider:active::after { background: var(--color-accent); }
 
-.linked-document-titlebar { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border-subtle-color); }
-.linked-document-titlebar > [role="status"] { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A hidden document stays one click away: a chip naming it in the session's
+   header (LinkedDocumentReopen), like an artifact chip in its conversation. */
+.linked-document-reopen { max-width: 12rem; }
 
 /* ── Release notes, HTML branch ────────────────────────────────────────────
    GitHub's releases feed serves each body already rendered to HTML, so the

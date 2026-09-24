@@ -7,6 +7,7 @@ import { cn } from '@clave/ui/components'
 import { safePort } from '../../lib/utils'
 import { ConfirmDialog } from '@clave/ui/components'
 import { SessionCopyOffers } from './SessionCopyOffers'
+import { LinkedDocumentReopen } from '../files/LinkedDocumentReopen'
 
 interface TerminalHeaderProps {
   sessionId: string
@@ -133,6 +134,7 @@ export function TerminalHeader({ sessionId }: TerminalHeaderProps): ReactElement
         </div>
 
         <div className="pane-header-actions">
+          <LinkedDocumentReopen sessionId={sessionId} />
           <SessionCopyOffers sessionId={sessionId} />
           {session.claudeSessionId && (
             <button

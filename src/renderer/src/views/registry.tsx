@@ -20,6 +20,7 @@ import { PluginViewSurface } from './PluginViewSurface'
 import { availableViews, resolveView, type AvailableView } from './resolution'
 import { emitTabClosed } from '../lib/exchange-capture'
 import { ConfirmDialog } from '@clave/ui/components'
+import { LinkedDocumentReopen } from '../components/files/LinkedDocumentReopen'
 
 /** Bundled native views, keyed by the id a session carries: `<pluginId>/<viewId>`.
  *  A plugin contributing several views has one entry per view, which is what
@@ -241,6 +242,7 @@ export function RegisteredSessionView({
           )}
         </div>
         <div className="pane-header-actions">
+          <LinkedDocumentReopen sessionId={sessionId} />
           <span className="chat-state" data-state={meta.state}>
             {meta.state}
           </span>
