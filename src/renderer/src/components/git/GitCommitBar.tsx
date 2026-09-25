@@ -39,10 +39,10 @@ export function PullButton({
   }, [menuOpen])
 
   return (
-    <div className="relative" ref={menuRef}>
+    <div className="relative shrink-0" ref={menuRef}>
       <div className="flex items-center">
         <IconButton
-          className="text-xs font-medium pl-2 pr-1 py-1 rounded-l bg-surface-100 text-text-secondary hover:text-text-primary disabled:opacity-40 transition-all"
+          className="whitespace-nowrap text-xs font-medium pl-2 pr-1 py-1 rounded-l bg-surface-100 text-text-secondary hover:text-text-primary disabled:opacity-40 transition-all"
           disabled={operating}
           onClick={() => handlePull('auto')}
           tooltip="Pull remote changes"
