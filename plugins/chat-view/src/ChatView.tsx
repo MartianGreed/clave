@@ -33,6 +33,7 @@ import type { HistoryListEntry } from '../../../src/preload/index.d'
 import { ChatCode } from './code'
 import { Attachments } from './Attachments'
 import { useComposerFocus } from './focus'
+import { useMessageHistory } from './history'
 import { useTranscriptEnd } from './transcript'
 import { JumpToEnd } from './JumpToEnd'
 import {
@@ -345,6 +346,7 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
   // The draft is the host's, per session, so it survives this view being
   // unmounted and mounted again (PRDCT-2620); the attachments stay here.
   const [draft, setDraft] = useSessionDraft(session.id)
+  const { draft, setDraft, recall } = useMessageHistory(conversation.entries)
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [preparations, setPreparations] = useState<Preparation[]>([])
   const [imagesSupported, setImagesSupported] = useState(false)
@@ -843,6 +845,11 @@ export function ChatView({ session, onState }: ChatViewProps): React.JSX.Element
               if (slashOpen && slashKeys.current?.(event)) {
                 event.preventDefault()
                 event.stopPropagation()
+                return
+              }
+              const recalled = recall(event)
+              if (recalled !== null) {
+                setSlashDismissed(recalled)
                 return
               }
               if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
