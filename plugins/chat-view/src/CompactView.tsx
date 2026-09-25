@@ -17,6 +17,7 @@ import {
 import type { ChatViewProps } from './ChatView'
 import { useComposerFocus } from './focus'
 import { useSessionDraft } from '../../../src/renderer/src/views/draft-store'
+import { useMessageHistory } from './history'
 import { useTranscriptEnd } from './transcript'
 import { JumpToEnd } from './JumpToEnd'
 
@@ -77,6 +78,7 @@ export function CompactView({ session, onState }: ChatViewProps): React.JSX.Elem
     exited || conversation.state === 'ended' ? 'ended' : waiting ? 'blocked' : conversation.state
   useEffect(() => onState(state, conversation.model), [state, conversation.model, onState])
   const [draft, setDraft] = useSessionDraft(session.id)
+  const { draft, setDraft, recall } = useMessageHistory(conversation.entries)
   const [sending, setSending] = useState(false)
   const [failure, setFailure] = useState('')
   const transcript = useTranscriptEnd(conversation.entries, screenSlack)
@@ -152,6 +154,7 @@ export function CompactView({ session, onState }: ChatViewProps): React.JSX.Elem
             aria-label="Message"
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
+              if (recall(event) !== null) return
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault()
                 void send()
